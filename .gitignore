@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Downloaded data (too large for GitHub; run scripts/download_data.py)
+data/
