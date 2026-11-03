@@ -54,6 +54,23 @@ def estimate_caption(risk, ongoing=False):
     return text + "Not medical advice."
 
 
+def risk_card(risk, delta=None):
+    """HTML for a large coloured card: the risk number, how it ranks among past trials, and an optional change.
+
+    Colour follows the rank: green below the median trial, yellow up to the riskiest 10%, red above.
+    """
+    pct = percentile_of(risk)
+    if pct is None:
+        tone, label, sub = "gray", "Estimated termination risk", ""
+    else:
+        tone, label = ("green", "Lower than most past trials") if pct < 50 else (
+            ("yellow", "Higher than most past trials") if pct < 90 else ("red", "Among the riskiest 10% of past trials"))
+        sub = f"Riskier than {pct:.0f}% of historical trials (started 2008-2016)"
+    change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>' if delta is not None else ""
+    return (f'<div class="risk-card {tone}"><div class="num">{risk:.1%}</div><div class="lab">{label}</div>'
+            f'<div class="sub">{sub}</div>{change}</div>')
+
+
 def risk_bar(risk):
     """Horizontal bar from the least to the riskiest historical trials with a marker for this trial.
 
@@ -64,13 +81,13 @@ def risk_bar(risk):
         return None
     fig = go.Figure()
     for start, end, colour, name in [(0, 50, GREEN, "Less risky than half"), (50, 90, YELLOW, "Higher"),
-                                     (90, 100, RED, "Top 10%")]:
+                                     (90, 100, RED, "")]:  # too narrow for a label
         fig.add_trace(go.Bar(x=[end - start], y=[""], base=[start], orientation="h", marker_color=colour,
                              width=0.7, text=name, textposition="inside", insidetextanchor="middle",
                              textfont={"size": 13, "color": "#111827"}, hoverinfo="skip"))
     # An arrow above the bar instead of a line through it, so it never covers the segment labels.
     fig.add_annotation(x=pct, y=0.4, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=True, arrowhead=2,
-                       arrowwidth=3, arrowcolor="#222", ax=0, ay=-38, bgcolor="white", bordercolor="#222", borderpad=3)
+                       arrowwidth=3, arrowcolor="#222", ax=-60 if pct > 80 else (60 if pct < 20 else 0), ay=-38, bgcolor="white", bordercolor="#222", borderpad=3)
     fig.update_layout(
         barmode="overlay", showlegend=False, height=170, margin={"l": 10, "r": 10, "t": 55, "b": 50},
         xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
