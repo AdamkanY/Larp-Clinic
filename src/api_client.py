@@ -60,7 +60,8 @@ def summarize(study):
     return {
         "NCT ID": ident.get("nctId", ""),
         "Title": ident.get("briefTitle", ""),
-        "Phase": ", ".join(p.get("designModule", {}).get("phases", [])) or "N/A",
+        # The API uses "NA" for "not applicable"; show one spelling for both that and a missing phase.
+        "Phase": ", ".join(p.get("designModule", {}).get("phases", [])).replace("NA", "N/A") or "N/A",
         "Status": p.get("statusModule", {}).get("overallStatus", ""),
         "Sponsor": p.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("name", ""),
         "Sponsor type": p.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("class", ""),
