@@ -98,4 +98,17 @@ fig = go.Figure(go.Indicator(
                      {"range": [35, 100], "color": "#f5a3a3"}]},
 ))
 st.plotly_chart(fig, width="stretch")
-st.caption("Relative risk score for comparing trials, not a calibrated probability of termination.")
+
+try:
+    from src.predict import percentile
+
+    rank = percentile(risk)
+except (ImportError, FileNotFoundError):
+    # Older predict.py or no models/score_reference.npy yet: show the probability alone.
+    rank = None
+if rank is not None:
+    st.write(f"Riskier than **{rank:.0f}%** of historical trials (started 2008-2016).")
+st.caption(
+    f"Calibrated estimate: of past trials scored around {risk:.0%}, about {risk:.0%} were terminated early. "
+    "Based only on design information; not medical advice."
+)
