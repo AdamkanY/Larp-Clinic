@@ -1,17 +1,20 @@
-"""Test-set evaluation of the saved models: metrics, calibration, importance.
+"""Test-set evaluation of the saved models: metrics, calibration, importance, ablations.
 
-Everything that touches the test split (start 2017-2019) lives here, so there is
+Everything that scores the test split (start 2017-2019) lives here, so there is
 one code path for it. ``train.py`` calls ``evaluate_saved`` once after saving the
-models; running this file re-evaluates the saved models without retraining.
+models; running this file re-evaluates the saved models without retraining them.
 
-For each model in ``models/`` this:
+For each saved model (``baseline_lr``, ``gbm_uncalibrated``, ``gbm``) this:
   * computes test ROC-AUC, PR-AUC and Brier score, plus precision / recall / F1
     and the confusion matrix at the threshold stored in its metrics JSON (chosen
     on train CV, never on test), and the majority-class baseline;
   * writes those numbers into ``models/<name>_metrics.json`` under ``test``;
-  * draws ``models/calibration_curve.png`` for all models;
+  * adds the before/after calibration comparison to ``gbm_metrics.json`` and
+    draws ``models/calibration_before_after.png``;
   * computes permutation importance on test -> ``models/feature_importance.csv``;
-  * prints a metrics table and the logistic regression coefficients.
+  * runs the feature ablations (GBM refitted on train without features that can
+    be edited after registration) -> ``gbm_metrics.json`` under ``ablations``;
+  * prints the metrics, ablation and logistic regression coefficient tables.
 
 Usage:
     python src/evaluate.py
@@ -28,6 +31,7 @@ from sklearn.inspection import permutation_importance
 from sklearn.metrics import (average_precision_score, brier_score_loss,
                              confusion_matrix, f1_score, precision_recall_curve,
                              precision_score, recall_score, roc_auc_score)
+from sklearn.model_selection import cross_validate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from features import FEATURE_COLUMNS, NUMERIC_FEATURES  # noqa: E402
@@ -35,18 +39,37 @@ from predict import load_model  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
-CALIBRATION_PATH = MODELS_DIR / "calibration_curve.png"
+CALIBRATION_PATH = MODELS_DIR / "calibration_before_after.png"
 IMPORTANCE_PATH = MODELS_DIR / "feature_importance.csv"
 
-MODEL_NAMES = ["baseline_lr", "gbm"]
-DISPLAY_NAMES = {"baseline_lr": "Logistic regression", "gbm": "Gradient boosting"}
+MODEL_NAMES = ["baseline_lr", "gbm_uncalibrated", "gbm"]
+# gbm_uncalibrated ranks trials almost exactly like gbm, so importance is only
+# computed for the two models people will look at.
+IMPORTANCE_MODELS = ["baseline_lr", "gbm"]
+CALIBRATION_PLOT_MODELS = ["gbm_uncalibrated", "gbm"]
+DISPLAY_NAMES = {
+    "baseline_lr": "Logistic regression",
+    "gbm_uncalibrated": "Before: GBM, class_weight='balanced'",
+    "gbm": "After: + isotonic calibration (cv=5)",
+}
+SHORT_NAMES = {"gbm_uncalibrated": "Before", "gbm": "After"}
+
+# Features a sponsor can amend after the trial has started (protocol
+# amendments), so the latest record may not show the design-time value.
+ABLATIONS = {
+    "without_eligibility_text_len": ["eligibility_text_len"],
+    "without_outcome_counts": ["n_primary_outcomes", "n_secondary_outcomes"],
+    "without_both": ["eligibility_text_len", "n_primary_outcomes", "n_secondary_outcomes"],
+}
+
 RANDOM_STATE = 42
 N_PERMUTATION_REPEATS = 10
 N_CALIBRATION_BINS = 10
 
 # Chart tokens (validated categorical slots 1-2 plus neutral chrome), light mode
-# because the PNG goes into reports and slides.
-SERIES_COLORS = {"baseline_lr": "#2a78d6", "gbm": "#eb6834"}
+# because the PNG goes into reports and slides. "After" is the result, so it
+# takes slot 1.
+SERIES_COLORS = {"gbm": "#2a78d6", "gbm_uncalibrated": "#eb6834"}
 SURFACE, INK, INK_2, MUTED = "#fcfcfb", "#0b0b0b", "#52514e", "#898781"
 GRID, AXIS = "#e1e0d9", "#c3c2b7"
 
@@ -78,14 +101,21 @@ def _confusion(y_true, y_pred) -> dict:
     return {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)}
 
 
-def classification_metrics(y_true, proba, threshold: float) -> dict:
-    """Ranking metrics plus thresholded metrics for one model on one split."""
-    y_pred = (proba >= threshold).astype(int)
+def ranking_metrics(y_true, proba) -> dict:
+    """Threshold-free metrics: ranking (ROC-AUC, PR-AUC) and calibration (Brier)."""
     return {
         "roc_auc": float(roc_auc_score(y_true, proba)),
         "pr_auc": float(average_precision_score(y_true, proba)),
         "brier": float(brier_score_loss(y_true, proba)),
         "mean_predicted": float(np.mean(proba)),
+    }
+
+
+def classification_metrics(y_true, proba, threshold: float) -> dict:
+    """Ranking metrics plus thresholded metrics for one model on one split."""
+    y_pred = (proba >= threshold).astype(int)
+    return {
+        **ranking_metrics(y_true, proba),
         "at_threshold": {
             "threshold": float(threshold),
             "precision": float(precision_score(y_true, y_pred, zero_division=0)),
@@ -101,13 +131,15 @@ def majority_baseline(y_true) -> dict:
     """Scores of a model that calls every trial COMPLETED.
 
     A constant score ranks nothing, so ROC-AUC is 0.5 and PR-AUC equals the
-    terminated rate. Any real model has to beat both.
+    terminated rate. Predicting that rate for everyone gives the Brier score a
+    calibrated model has to beat. Any real model has to beat all three.
     """
     y_true = np.asarray(y_true)
     rate = float(y_true.mean())
     return {
         "roc_auc": 0.5,
         "pr_auc": rate,
+        "brier_constant_rate": float(rate * (1 - rate)),
         "terminated_rate": rate,
         "accuracy": 1 - rate,
         "confusion_matrix": _confusion(y_true, np.zeros_like(y_true)),
@@ -126,11 +158,11 @@ def calibration_bins(y_true, proba, n_bins: int = N_CALIBRATION_BINS) -> list:
 
 
 def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> None:
-    """Save a calibration curve (top) and prediction histogram (bottom) per model.
+    """Save calibration curves (top) and prediction histograms (bottom).
 
     Args:
         y_true: test labels.
-        probas: {model name: test probabilities}.
+        probas: {model name: test probabilities}, drawn in this order.
         path: output PNG.
     """
     # Imported here so the app can use the metric helpers without matplotlib.
@@ -146,39 +178,40 @@ def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> Non
 
     ax_cal.plot([0, 1], [0, 1], color=MUTED, linewidth=1)
     ax_cal.text(0.97, 0.93, "perfectly calibrated", color=MUTED, fontsize=8.5,
-                ha="right", va="bottom", rotation=0)
+                ha="right", va="bottom")
     ax_cal.axhline(base_rate, color=AXIS, linewidth=1)
-    ax_cal.text(0.01, base_rate + 0.012, f"test terminated rate {base_rate:.1%}",
-                color=INK_2, fontsize=8.5, va="bottom")
+    ax_cal.text(0.99, base_rate + 0.012, f"test terminated rate {base_rate:.1%}",
+                color=INK_2, fontsize=8.5, va="bottom", ha="right")
 
     bins = np.linspace(0, 1, 41)
-    curves = {}
+    ends = {}
     for name, proba in probas.items():
         points = calibration_bins(y_true, proba)
         xs = [p["mean_predicted"] for p in points]
         ys = [p["observed_rate"] for p in points]
-        curves[name] = (xs[-1], ys[-1])
+        ends[name] = (xs[-1], ys[-1])
         color = SERIES_COLORS.get(name, INK_2)
+        label = (f"{DISPLAY_NAMES.get(name, name)}  "
+                 f"(Brier {brier_score_loss(y_true, proba):.3f})")
         ax_cal.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=6,
-                    markeredgecolor=SURFACE, markeredgewidth=1.5,
-                    label=DISPLAY_NAMES.get(name, name), zorder=3)
+                    markeredgecolor=SURFACE, markeredgewidth=1.5, label=label, zorder=3)
         ax_hist.hist(proba, bins=bins, histtype="step", linewidth=2, color=color,
                      weights=np.full(len(proba), 100 / len(proba)))
     # Direct labels at the curve ends, in ink (the line colour carries identity).
-    # The ends sit close together, so the higher one is nudged up, the rest down.
-    top = max(curves, key=lambda n: curves[n][1])
-    for name, end in curves.items():
-        ax_cal.annotate(DISPLAY_NAMES.get(name, name), end,
+    # If two ends sit close together, the higher one is nudged up, the rest down.
+    top = max(ends, key=lambda n: ends[n][1])
+    for name, end in ends.items():
+        ax_cal.annotate(SHORT_NAMES.get(name, DISPLAY_NAMES.get(name, name)), end,
                         xytext=(8, 9 if name == top else -9), textcoords="offset points",
                         color=INK, fontsize=9, va="center")
 
     ax_cal.set_ylim(0, 1)
     ax_cal.set_ylabel("Observed share terminated", color=INK_2)
-    ax_cal.set_title("Calibration on test trials (start 2017-2019)", color=INK,
-                     loc="left", fontsize=12, pad=22)
-    ax_cal.text(0, 1.02, f"{N_CALIBRATION_BINS} equal-count bins. Below the diagonal = risk "
-                "over-stated (class_weight='balanced')",
-                transform=ax_cal.transAxes, color=INK_2, fontsize=8.5)
+    ax_cal.set_title("Gradient boosting calibration on test trials (start 2017-2019)",
+                     color=INK, loc="left", fontsize=12, pad=22)
+    ax_cal.text(0, 1.02, f"{N_CALIBRATION_BINS} equal-count bins. On the diagonal = "
+                "predicted risk matches observed", transform=ax_cal.transAxes,
+                color=INK_2, fontsize=8.5)
     ax_cal.legend(frameon=False, loc="upper left", bbox_to_anchor=(0, 0.92),
                   labelcolor=INK, fontsize=9)
     ax_hist.set_xlim(0, 1)
@@ -202,8 +235,8 @@ def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> Non
 def permutation_importance_table(models: dict, X, y) -> pd.DataFrame:
     """Drop in test ROC-AUC / PR-AUC when one raw feature column is shuffled.
 
-    The whole pipeline is scored, so each categorical counts as one feature
-    (not one per one-hot column) and both models are directly comparable.
+    The whole model is scored, so each categorical counts as one feature
+    (not one per one-hot column) and the models are directly comparable.
     """
     frames = []
     for name, model in models.items():
@@ -221,6 +254,55 @@ def permutation_importance_table(models: dict, X, y) -> pd.DataFrame:
         frame.insert(1, "rank", range(1, len(frame) + 1))
         frames.append(frame)
     return pd.concat(frames, ignore_index=True)
+
+
+def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dict) -> dict:
+    """Refit the GBM without features that can change after registration.
+
+    ClinicalTrials.gov returns the latest version of each record, so eligibility
+    criteria and outcome lists may have been amended after the trial started.
+    If the model leaned on such edits, dropping those features would cost much
+    more than their honest share. Each variant keeps the tuned hyperparameters
+    (no re-tuning; the grid was flat) and stays uncalibrated, so it is compared
+    with ``gbm_uncalibrated``. Fitting uses train only; test is scored once.
+
+    Args:
+        X_train, y_train, X_test, y_test: the two splits.
+        params: tuned HistGradientBoosting hyperparameters.
+        reference: ``{"cv_roc_auc", "cv_pr_auc", "test_roc_auc", "test_pr_auc"}``
+            of the full-feature ``gbm_uncalibrated``.
+
+    Returns:
+        The ``ablations`` section for ``gbm_metrics.json``.
+    """
+    # Imported here, not at the top, because train.py imports this module.
+    from train import build_gbm_pipeline, make_cv
+
+    runs = [{"name": "all_features", "dropped": [], "n_features": len(FEATURE_COLUMNS),
+             **reference, "delta_test_roc_auc": 0.0, "delta_test_pr_auc": 0.0}]
+    for name, dropped in ABLATIONS.items():
+        model = build_gbm_pipeline(drop=dropped).set_params(
+            **{f"clf__{k}": v for k, v in params.items()})
+        cv = cross_validate(model, X_train, y_train, cv=make_cv(),
+                            scoring=["roc_auc", "average_precision"], n_jobs=-1)
+        proba = model.fit(X_train, y_train).predict_proba(X_test)[:, 1]
+        test_roc = float(roc_auc_score(y_test, proba))
+        test_pr = float(average_precision_score(y_test, proba))
+        runs.append({
+            "name": name, "dropped": dropped, "n_features": len(FEATURE_COLUMNS) - len(dropped),
+            "cv_roc_auc": float(cv["test_roc_auc"].mean()),
+            "cv_pr_auc": float(cv["test_average_precision"].mean()),
+            "test_roc_auc": test_roc, "test_pr_auc": test_pr,
+            "delta_test_roc_auc": test_roc - reference["test_roc_auc"],
+            "delta_test_pr_auc": test_pr - reference["test_pr_auc"],
+        })
+    return {
+        "purpose": "robustness to post-registration edits: gbm_uncalibrated refitted on "
+                   "train without features a sponsor can amend after the start",
+        "model": "gbm_uncalibrated pipeline, same hyperparameters, not re-tuned, uncalibrated",
+        "hyperparameters": params,
+        "runs": runs,
+    }
 
 
 def lr_coefficients(pipeline) -> pd.DataFrame:
@@ -247,18 +329,19 @@ def lr_coefficients(pipeline) -> pd.DataFrame:
 
 
 def print_metrics_table(reports: dict) -> None:
-    """Print CV and test metrics of every model plus the majority baseline."""
+    """Print OOF train and test metrics of every model plus the majority baseline."""
     rows = []
     for name, rep in reports.items():
         test, at = rep["test"], rep["test"]["at_threshold"]
         cm = at["confusion_matrix"]
         rows.append({
             "model": name,
-            "cv_roc_auc": rep["cv"]["best_roc_auc_mean"],
-            "cv_pr_auc": rep["cv"]["best_pr_auc_mean"],
+            "oof_roc_auc": rep["threshold"]["oof_roc_auc"],
+            "oof_pr_auc": rep["threshold"]["oof_pr_auc"],
             "test_roc_auc": test["roc_auc"],
             "test_pr_auc": test["pr_auc"],
             "brier": test["brier"],
+            "mean_pred": test["mean_predicted"],
             "threshold": at["threshold"],
             "precision": at["precision"],
             "recall": at["recall"],
@@ -268,28 +351,35 @@ def print_metrics_table(reports: dict) -> None:
     base = next(iter(reports.values()))["majority_baseline"]
     cm = base["confusion_matrix"]
     rows.append({"model": "majority (all COMPLETED)", "test_roc_auc": base["roc_auc"],
-                 "test_pr_auc": base["pr_auc"],
+                 "test_pr_auc": base["pr_auc"], "brier": base["brier_constant_rate"],
+                 "mean_pred": base["terminated_rate"],
                  "tn/fp/fn/tp": f"{cm['tn']}/{cm['fp']}/{cm['fn']}/{cm['tp']}"})
-    with pd.option_context("display.width", 200, "display.max_columns", 20):
+    with pd.option_context("display.width", 220, "display.max_columns", 20):
         print(pd.DataFrame(rows).set_index("model").round(4).to_string(na_rep="-"))
 
 
-def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES) -> dict:
+def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
+                   X_train=None, y_train=None) -> dict:
     """Evaluate the saved models on test and write every test-time output.
 
     Args:
         X_test, y_test: the test split; loaded from the parquet when omitted.
         names: model names; each needs ``models/<name>.joblib`` and the
             ``models/<name>_metrics.json`` written by ``train.py``.
+        X_train, y_train: the train split, needed to refit the ablations;
+            loaded from the parquet when omitted.
 
     Returns:
         {model name: full metrics dict}, as written to the JSON files.
     """
-    if X_test is None:
+    if X_test is None or X_train is None:
         # Imported here, not at the top, because train.py imports this module.
         from train import load_split
-        X_test, y_test = load_split("test")
-    y_test = np.asarray(y_test)
+        if X_test is None:
+            X_test, y_test = load_split("test")
+        if X_train is None:
+            X_train, y_train = load_split("train")
+    y_test, y_train = np.asarray(y_test), np.asarray(y_train)
 
     models, reports, probas = {}, {}, {}
     for name in names:
@@ -300,20 +390,45 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES) -> dict:
         reports[name]["test"] = classification_metrics(y_test, probas[name], threshold)
         reports[name]["test"]["calibration_bins"] = calibration_bins(y_test, probas[name])
         reports[name]["majority_baseline"] = majority_baseline(y_test)
+
+    print("\n=== Metrics (OOF = out-of-fold on train; test = start 2017-2019) ===")
+    print_metrics_table(reports)
+
+    if {"gbm", "gbm_uncalibrated"} <= set(reports):
+        reports["gbm"].setdefault("calibration", {}).update({
+            "test_before": ranking_metrics(y_test, probas["gbm_uncalibrated"]),
+            "test_after": ranking_metrics(y_test, probas["gbm"]),
+        })
+        cal = reports["gbm"]["calibration"]
+        print(f"\nGBM test Brier: before {cal['test_before']['brier']:.4f} -> after "
+              f"{cal['test_after']['brier']:.4f} (constant base rate: "
+              f"{reports['gbm']['majority_baseline']['brier_constant_rate']:.4f}); "
+              f"ROC-AUC {cal['test_before']['roc_auc']:.4f} -> {cal['test_after']['roc_auc']:.4f}")
+        plot_calibration(y_test, {n: probas[n] for n in CALIBRATION_PLOT_MODELS})
+        print(f"Saved {CALIBRATION_PATH.relative_to(ROOT)}")
+
+        base = reports["gbm_uncalibrated"]
+        print("\nAblations (GBM refitted on train without post-registration-editable features)...")
+        reports["gbm"]["ablations"] = run_ablations(
+            X_train, y_train, X_test, y_test, params=base["cv"]["best_params"],
+            reference={"cv_roc_auc": base["cv"]["best_roc_auc_mean"],
+                       "cv_pr_auc": base["cv"]["best_pr_auc_mean"],
+                       "test_roc_auc": base["test"]["roc_auc"],
+                       "test_pr_auc": base["test"]["pr_auc"]})
+        table = pd.DataFrame(reports["gbm"]["ablations"]["runs"])
+        table["dropped"] = table["dropped"].map(lambda d: ", ".join(d) or "-")
+        print(table.drop(columns="name").round(4).to_string(index=False))
+
+    for name in names:
         metrics_path(name).write_text(json.dumps(reports[name], indent=2) + "\n",
                                       encoding="utf-8")
 
-    print("\n=== Metrics (CV = 5-fold stratified on train; test = start 2017-2019) ===")
-    print_metrics_table(reports)
-
-    plot_calibration(y_test, probas)
-    print(f"\nSaved {CALIBRATION_PATH.relative_to(ROOT)}")
-
+    importance_models = {n: models[n] for n in IMPORTANCE_MODELS if n in models}
     print(f"\nPermutation importance on test ({N_PERMUTATION_REPEATS} repeats per feature)...")
-    importance = permutation_importance_table(models, X_test[FEATURE_COLUMNS], y_test)
+    importance = permutation_importance_table(importance_models, X_test[FEATURE_COLUMNS], y_test)
     importance.to_csv(IMPORTANCE_PATH, index=False, float_format="%.6f")
     print(f"Saved {IMPORTANCE_PATH.relative_to(ROOT)}")
-    for name in names:
+    for name in importance_models:
         top = importance[importance["model"] == name].head(10)
         print(f"\nTop 10 features by test ROC-AUC drop, {name}:")
         print(top[["rank", "feature", "roc_auc_drop_mean", "roc_auc_drop_std",

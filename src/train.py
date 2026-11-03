@@ -1,23 +1,30 @@
-"""Train the two baseline models on the train split and save them to ``models/``.
+"""Train the models on the train split and save them to ``models/``.
 
-Models (one sklearn Pipeline each; every preprocessing step is fitted inside the
-pipeline, so on train folds only):
+Models (every preprocessing step is fitted inside a Pipeline, so on train folds
+only):
 
 * ``baseline_lr``: LogisticRegression(class_weight='balanced').
   numeric -> median impute + standardise; 0/1 flags -> most-frequent impute;
   categorical -> most-frequent impute + one-hot.
-* ``gbm``: HistGradientBoostingClassifier(class_weight='balanced') with native
-  categorical splits. Categories are ordinal-coded (unseen ones become missing)
-  and missing values are left for the trees to route.
+* ``gbm_uncalibrated``: HistGradientBoostingClassifier(class_weight='balanced')
+  with native categorical splits. Categories are ordinal-coded (unseen ones
+  become missing) and missing values are left for the trees to route.
+* ``gbm`` (the app model): the tuned ``gbm_uncalibrated`` pipeline wrapped in
+  ``CalibratedClassifierCV(method='isotonic', cv=5)``, fitted on train. Each of
+  the 5 folds fits the pipeline on 4/5 of train and an isotonic map on the
+  remaining 1/5; predictions average the 5 calibrated copies.
 
 Inputs are exactly ``FEATURE_COLUMNS`` from ``src/features.py``; meta and
 display columns (``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date,
 split, titles, conditions, sponsor name, phase label) never reach a model.
 
 Protocol: hyperparameters are picked by 5-fold stratified CV on train (refit on
-PR-AUC). The decision threshold is the one that maximises F1 on out-of-fold
-train predictions. The test split (start 2017-2019) is used once, by
-``evaluate.evaluate_saved``, after the models are saved.
+PR-AUC); calibration adds no tuned parameters. Every model also gets
+out-of-fold (OOF) train predictions: the decision threshold is the one that
+maximises F1 on them, and the calibrated model's OOF scores are saved as
+``models/score_reference.npy`` for ``predict.percentile``. The test split
+(start 2017-2019) is scored only by ``evaluate.evaluate_saved``, after every
+model is saved.
 
 Usage:
     python src/train.py        # about 5-10 minutes on 4 cores
@@ -35,11 +42,12 @@ import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.base import clone
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.model_selection import (GridSearchCV, ParameterGrid, StratifiedKFold,
                                      cross_val_predict)
 from sklearn.pipeline import Pipeline
@@ -55,6 +63,7 @@ from predict import to_model_frame  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "processed" / "trials.parquet"
 MODELS_DIR = ROOT / "models"
+SCORE_REFERENCE_PATH = MODELS_DIR / "score_reference.npy"
 
 # Must match src/build_dataset.py; check_dataset() fails loudly if they drift.
 SPLITS = {
@@ -64,6 +73,8 @@ SPLITS = {
 RANDOM_STATE = 42
 CV_FOLDS = 5
 REFIT_METRIC = "average_precision"  # PR-AUC: the metric that matters at ~11% positives
+CALIBRATION_METHOD = "isotonic"
+CALIBRATION_CV = 5  # plain int: unshuffled stratified folds; train rows are in random order
 
 # Small grids on purpose: this is a baseline, and every extra cell is another
 # chance to overfit the CV folds. Both grids turned out flat (all cells within
@@ -132,24 +143,48 @@ def build_lr_pipeline() -> Pipeline:
     return Pipeline([("prep", prep), ("clf", clf)])
 
 
-def build_gbm_pipeline() -> Pipeline:
-    """Histogram gradient boosting with native categorical splits."""
+def build_gbm_pipeline(drop=()) -> Pipeline:
+    """Histogram gradient boosting with native categorical splits.
+
+    Args:
+        drop: feature names to leave out (used by the ablations in
+            ``evaluate.py``); the default uses every feature.
+    """
+    categorical = [c for c in CATEGORICAL_FEATURES if c not in drop]
+    other = [c for c in BINARY_FEATURES + NUMERIC_FEATURES if c not in drop]
     # Unseen categories at scoring time (e.g. a new API enum value) become
     # missing instead of crashing the app.
     encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan,
                              encoded_missing_value=np.nan)
-    prep = ColumnTransformer([("cat", encoder, CATEGORICAL_FEATURES),
-                              ("num", "passthrough", BINARY_FEATURES + NUMERIC_FEATURES)],
+    prep = ColumnTransformer([("cat", encoder, categorical), ("num", "passthrough", other)],
                              verbose_feature_names_out=False).set_output(transform="pandas")
     # Early stopping holds out 10% of each *training* fold, never test data.
     clf = HistGradientBoostingClassifier(
-        class_weight="balanced", categorical_features=CATEGORICAL_FEATURES,
+        class_weight="balanced", categorical_features=categorical,
         max_iter=1000, early_stopping=True, n_iter_no_change=20,
         random_state=RANDOM_STATE)
     return Pipeline([("prep", prep), ("clf", clf)])
 
 
+def build_calibrated(base: Pipeline) -> CalibratedClassifierCV:
+    """Isotonic calibration around an (unfitted copy of a) tuned pipeline.
+
+    Isotonic regression learns a monotone map from the model's score to the
+    observed terminated rate on held-out folds, which undoes the upward push
+    of ``class_weight='balanced'`` without changing how trials are ranked.
+    """
+    return CalibratedClassifierCV(clone(base), method=CALIBRATION_METHOD, cv=CALIBRATION_CV)
+
+
 BUILDERS = {"baseline_lr": build_lr_pipeline, "gbm": build_gbm_pipeline}
+# Tuned name -> saved name. The tuned GBM is saved as gbm_uncalibrated; "gbm"
+# is reserved for its calibrated version, the model the app loads.
+SAVED_NAMES = {"baseline_lr": "baseline_lr", "gbm": "gbm_uncalibrated"}
+
+
+def make_cv() -> StratifiedKFold:
+    """The one CV splitter for tuning, OOF predictions and ablations."""
+    return StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
 
 def tune(name: str, X, y, cv) -> GridSearchCV:
@@ -181,6 +216,28 @@ def cv_summary(search: GridSearchCV) -> dict:
     }
 
 
+def out_of_fold(estimator, X, y, cv) -> tuple:
+    """OOF train probabilities and the F1-max threshold chosen on them.
+
+    Every train trial is scored by a copy of ``estimator`` that never saw it,
+    so the threshold (and the percentile reference) are not fitted to their
+    own data. For the calibrated model this is nested: 5 outer folds, each
+    running its own 5-fold calibration inside.
+    """
+    oof = cross_val_predict(clone(estimator), X, y, cv=cv, method="predict_proba",
+                            n_jobs=-1)[:, 1]
+    threshold, oof_f1 = evaluate.best_f1_threshold(y, oof)
+    info = {
+        "value": threshold,
+        "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
+        "oof_f1": oof_f1,
+        "oof_roc_auc": float(roc_auc_score(y, oof)),
+        "oof_pr_auc": float(average_precision_score(y, oof)),
+        "oof_brier": float(brier_score_loss(y, oof)),
+    }
+    return oof, info
+
+
 def split_summary(df: pd.DataFrame) -> dict:
     """Split rule and observed size / base rate per split, for the metrics JSON."""
     out = {"rule": "by start_date, never random"}
@@ -197,19 +254,49 @@ def split_summary(df: pd.DataFrame) -> dict:
     return out
 
 
-def model_details(name: str, model: Pipeline) -> dict:
+def model_details(model) -> dict:
     """Estimator facts worth keeping next to the model file."""
+    if isinstance(model, CalibratedClassifierCV):
+        folds = [c.estimator.named_steps["clf"] for c in model.calibrated_classifiers_]
+        return {"estimator": "CalibratedClassifierCV(HistGradientBoostingClassifier)",
+                "class_weight": "balanced (inside each fold's pipeline)",
+                "calibration_method": model.method,
+                "n_calibration_folds": len(folds),
+                "n_iter_per_fold": [int(f.n_iter_) for f in folds]}
     clf = model.named_steps["clf"]
     details = {"estimator": type(clf).__name__, "class_weight": "balanced"}
-    if name == "gbm":
+    if isinstance(clf, HistGradientBoostingClassifier):
         details["n_iter"] = int(clf.n_iter_)
     else:
         details["n_model_columns"] = int(clf.coef_.shape[1])
     return details
 
 
+def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
+         extra: dict = None) -> None:
+    """Write ``models/<name>.joblib`` and the training part of its metrics JSON."""
+    joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
+    report = {
+        "model": name,
+        "model_file": f"models/{name}.joblib",
+        "trained_on": date.today().isoformat(),
+        "sklearn_version": sklearn.__version__,
+        "python_version": platform.python_version(),
+        "label": {"TERMINATED": 1, "COMPLETED": 0},
+        "split": split_summary(df),
+        "features": {"all": FEATURE_COLUMNS, "categorical": CATEGORICAL_FEATURES,
+                     "binary": BINARY_FEATURES, "numeric": NUMERIC_FEATURES},
+        **model_details(model),
+        "cv": cv_info,
+        "threshold": threshold,
+        **(extra or {}),
+    }
+    evaluate.metrics_path(name).write_text(json.dumps(report, indent=2) + "\n",
+                                           encoding="utf-8")
+
+
 def main() -> None:
-    """Tune, fit and save both models, then evaluate them once on test."""
+    """Tune, fit and save all models, then evaluate them once on test."""
     df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
     X_train, y_train = load_split("train", df)
@@ -218,9 +305,10 @@ def main() -> None:
           f"test: {len(y_test)} trials ({y_test.mean():.2%} terminated)")
     print(f"Features ({len(FEATURE_COLUMNS)}): {', '.join(FEATURE_COLUMNS)}")
 
-    cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+    cv = make_cv()
     MODELS_DIR.mkdir(exist_ok=True)
 
+    tuned = {}
     for name in BUILDERS:
         t0 = time.time()
         print(f"\n--- {name}: grid search ({len(ParameterGrid(PARAM_GRIDS[name]))} "
@@ -230,42 +318,42 @@ def main() -> None:
         print(f"best {cv_info['best_params']}  CV ROC-AUC {cv_info['best_roc_auc_mean']:.4f}"
               f" ± {cv_info['best_roc_auc_std']:.4f}  CV PR-AUC "
               f"{cv_info['best_pr_auc_mean']:.4f} ± {cv_info['best_pr_auc_std']:.4f}")
+        _, threshold = out_of_fold(search.best_estimator_, X_train, y_train, cv)
+        print(f"F1-max threshold on out-of-fold train predictions: {threshold['value']:.4f} "
+              f"(OOF F1 {threshold['oof_f1']:.4f})")
+        save(SAVED_NAMES[name], search.best_estimator_, df, cv_info, threshold)
+        tuned[name] = (search.best_estimator_, cv_info)
+        print(f"Saved models/{SAVED_NAMES[name]}.joblib ({time.time() - t0:.0f}s)")
 
-        # Out-of-fold probabilities: every train trial is scored by a model
-        # that did not see it, so the F1 threshold is not fitted to its own data.
-        oof = cross_val_predict(clone(search.best_estimator_), X_train, y_train, cv=cv,
-                                method="predict_proba", n_jobs=-1)[:, 1]
-        threshold, oof_f1 = evaluate.best_f1_threshold(y_train, oof)
-        print(f"F1-max threshold on out-of-fold train predictions: {threshold:.4f} "
-              f"(OOF F1 {oof_f1:.4f})")
+    t0 = time.time()
+    print(f"\n--- gbm: {CALIBRATION_METHOD} calibration (cv={CALIBRATION_CV}) of the tuned GBM ---")
+    base, base_cv_info = tuned["gbm"]
+    calibrated = build_calibrated(base)
+    oof, threshold = out_of_fold(calibrated, X_train, y_train, cv)
+    print(f"OOF Brier {threshold['oof_brier']:.4f}, OOF ROC-AUC {threshold['oof_roc_auc']:.4f}; "
+          f"F1-max threshold {threshold['value']:.4f} (OOF F1 {threshold['oof_f1']:.4f})")
+    calibrated.fit(X_train, y_train)
+    # Sorted, so predict.percentile is a single binary search.
+    np.save(SCORE_REFERENCE_PATH, np.sort(oof))
+    save("gbm", calibrated, df,
+         {**base_cv_info, "note": "hyperparameters tuned on gbm_uncalibrated; "
+                                  "calibration adds no tuned parameters"},
+         threshold,
+         extra={"calibration": {
+                    "method": CALIBRATION_METHOD,
+                    "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split",
+                    "base_model": "gbm_uncalibrated"},
+                "score_reference": {
+                    "file": f"models/{SCORE_REFERENCE_PATH.name}",
+                    "contents": "sorted out-of-fold calibrated P(TERMINATED) of every "
+                                "train trial (start 2008-2016)",
+                    "n": int(len(oof)),
+                    "quantiles": {f"p{q}": float(np.percentile(oof, q))
+                                  for q in (10, 25, 50, 75, 90, 99)}}})
+    print(f"Saved models/gbm.joblib and models/{SCORE_REFERENCE_PATH.name} "
+          f"({time.time() - t0:.0f}s)")
 
-        model = search.best_estimator_
-        joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
-        report = {
-            "model": name,
-            "model_file": f"models/{name}.joblib",
-            "trained_on": date.today().isoformat(),
-            "sklearn_version": sklearn.__version__,
-            "python_version": platform.python_version(),
-            "label": {"TERMINATED": 1, "COMPLETED": 0},
-            "split": split_summary(df),
-            "features": {"all": FEATURE_COLUMNS, "categorical": CATEGORICAL_FEATURES,
-                         "binary": BINARY_FEATURES, "numeric": NUMERIC_FEATURES},
-            **model_details(name, model),
-            "cv": cv_info,
-            "threshold": {
-                "value": threshold,
-                "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
-                "oof_f1": oof_f1,
-                "oof_roc_auc": float(roc_auc_score(y_train, oof)),
-                "oof_pr_auc": float(average_precision_score(y_train, oof)),
-            },
-        }
-        evaluate.metrics_path(name).write_text(json.dumps(report, indent=2) + "\n",
-                                               encoding="utf-8")
-        print(f"Saved models/{name}.joblib ({time.time() - t0:.0f}s)")
-
-    evaluate.evaluate_saved(X_test, y_test)
+    evaluate.evaluate_saved(X_test, y_test, X_train=X_train, y_train=y_train)
 
 
 if __name__ == "__main__":
