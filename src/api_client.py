@@ -10,10 +10,18 @@ TIMEOUT = 20
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def _get_json(url, params=None):
+    """GET and decode JSON. Raises on any failure, so st.cache_data never stores an error for an hour."""
+    resp = requests.get(url, params=params, timeout=TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def search_trials(query="", status=None, page_size=20, phase=None, condition="", sponsor_class=None):
-    """Search ongoing trials; returns {"studies": [...], "error": str | None}.
+    """Search ongoing trials; returns {"studies": [...], "total": int, "error": str | None}.
 
     Never raises: network problems and empty results come back as a value so the page can show a message.
+    Successful responses are cached for an hour, failures are not.
     """
     status = list(status) if status else ONGOING
     params = {
@@ -34,21 +42,16 @@ def search_trials(query="", status=None, page_size=20, phase=None, condition="",
     if advanced:
         params["filter.advanced"] = " AND ".join(advanced)
     try:
-        resp = requests.get(BASE_URL, params=params, timeout=TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
+        data = _get_json(BASE_URL, params)
     except (requests.RequestException, ValueError) as exc:
         return {"studies": [], "total": 0, "error": f"Could not reach ClinicalTrials.gov: {exc}"}
     return {"studies": data.get("studies", []), "total": data.get("totalCount", 0), "error": None}
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def get_trial(nct_id):
     """Fetch the full record of one trial; returns the study dict or None if not found or unreachable."""
     try:
-        resp = requests.get(f"{BASE_URL}/{nct_id}", timeout=TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()
+        return _get_json(f"{BASE_URL}/{nct_id}")
     except (requests.RequestException, ValueError):
         return None
 
