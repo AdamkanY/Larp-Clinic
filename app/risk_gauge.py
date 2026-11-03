@@ -1,4 +1,4 @@
-"""Shared risk gauge: colour bands come from the historical score distribution, not from fixed guesses."""
+"""Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from."""
 import json
 from pathlib import Path
 
@@ -8,20 +8,24 @@ import streamlit as st
 
 REFERENCE = Path(__file__).resolve().parents[1] / "models" / "score_reference.npy"
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
-# Rough median and 90th percentile of the 2008-2016 training trials, used if the reference file is missing.
-FALLBACK_EDGES = (0.10, 0.22)
-# Percent. Historical scores top out around 35%, so a 0-100 axis would squash every trial into the left corner.
-AXIS_MAX = 40
+GREEN, YELLOW, RED = "#9be7a1", "#ffe08a", "#f5a3a3"
 
 
 @st.cache_data(show_spinner=False)
-def band_edges():
-    """Median and 90th percentile of the historical risk scores, as probabilities."""
+def reference_scores():
+    """Sorted out-of-fold risk scores of the historical training trials, or None if the file is missing."""
     try:
-        median, p90 = np.percentile(np.load(REFERENCE), [50, 90])
-        return float(median), float(p90)
+        return np.sort(np.load(REFERENCE))
     except (OSError, ValueError):
-        return FALLBACK_EDGES
+        return None
+
+
+def percentile_of(risk):
+    """Share of historical trials (in percent) with a lower score than risk; None without the reference file."""
+    reference = reference_scores()
+    if reference is None:
+        return None
+    return float(100.0 * np.searchsorted(reference, risk, side="left") / len(reference))
 
 
 @st.cache_data(show_spinner=False)
@@ -50,20 +54,34 @@ def estimate_caption(risk, ongoing=False):
     return text + "Not medical advice."
 
 
-def risk_gauge(risk):
-    """Plotly gauge for a risk in [0, 1]: green below the median trial, yellow up to the riskiest 10%, red above."""
-    low, high = (edge * 100 for edge in band_edges())
-    return go.Figure(go.Indicator(
-        mode="gauge+number", value=risk * 100, number={"suffix": "%"},
-        gauge={"axis": {"range": [0, AXIS_MAX]}, "bar": {"color": "#333"},
-               "steps": [{"range": [0, low], "color": "#9be7a1"},
-                         {"range": [low, high], "color": "#ffe08a"},
-                         {"range": [high, AXIS_MAX], "color": "#f5a3a3"}]},
-    ))
+def risk_bar(risk):
+    """Horizontal bar from the least to the riskiest historical trials with a marker for this trial.
+
+    Returns None if the reference scores are missing, so callers can simply skip the bar.
+    """
+    pct = percentile_of(risk)
+    if pct is None:
+        return None
+    fig = go.Figure()
+    for start, end, colour, name in [(0, 50, GREEN, "Less risky than half"), (50, 90, YELLOW, "Higher"),
+                                     (90, 100, RED, "Top 10%")]:
+        fig.add_trace(go.Bar(x=[end - start], y=[""], base=[start], orientation="h", marker_color=colour,
+                             text=name, textposition="inside", insidetextanchor="middle", hoverinfo="skip"))
+    fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.5, y1=0.5, line={"color": "#222", "width": 5})
+    fig.add_annotation(x=pct, y=0.5, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=False, yshift=14,
+                       bgcolor="white", bordercolor="#222", borderpad=3)
+    fig.update_layout(
+        barmode="overlay", showlegend=False, height=150, margin={"l": 10, "r": 10, "t": 40, "b": 45},
+        xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
+               "title": "Share of past trials that were less risky than this one"},
+        yaxis={"visible": False},
+    )
+    return fig
 
 
-def gauge_caption():
-    """One sentence explaining what the gauge colours mean."""
-    low, high = band_edges()
-    return (f"Colours compare with historical trials: green = below the median trial ({low:.0%}), "
-            f"yellow = up to the riskiest 10% ({high:.0%}), red = the riskiest 10%.")
+def bar_caption():
+    """One sentence explaining how to read the bar."""
+    reference = reference_scores()
+    count = f"{len(reference):,}" if reference is not None else "the"
+    return (f"The bar ranks this trial among {count} past trials (started 2008-2016): green = less risky than "
+            "half of them, yellow = up to the riskiest 10%, red = the riskiest 10%.")

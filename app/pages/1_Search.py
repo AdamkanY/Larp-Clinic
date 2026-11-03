@@ -8,7 +8,7 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import estimate_caption, gauge_caption, risk_gauge  # noqa: E402
+from risk_gauge import bar_caption, estimate_caption, risk_bar  # noqa: E402
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 
 
@@ -91,10 +91,7 @@ from src.predict import score  # noqa: E402
 # score() reuses the model get_model() already loaded (predict.py caches it per process).
 risk = score(build_features(study))
 
-st.plotly_chart(risk_gauge(risk), width="stretch")
-
-st.caption(gauge_caption())
-
+st.metric("Estimated termination risk", f"{risk:.1%}")
 try:
     from src.predict import percentile
 
@@ -104,4 +101,8 @@ except (ImportError, FileNotFoundError):
     rank = None
 if rank is not None:
     st.write(f"Riskier than **{rank:.0f}%** of historical trials (started 2008-2016).")
+bar = risk_bar(risk)
+if bar is not None:
+    st.plotly_chart(bar, width="stretch")
+    st.caption(bar_caption())
 st.caption(estimate_caption(risk, ongoing=True))

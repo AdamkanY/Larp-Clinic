@@ -8,7 +8,7 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import estimate_caption, gauge_caption, risk_gauge  # noqa: E402
+from risk_gauge import bar_caption, estimate_caption, risk_bar  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
 
 UNSET = "Not specified"
@@ -139,19 +139,19 @@ except ValueError as exc:
 previous = st.session_state.get("previous_risk")
 st.session_state["previous_risk"] = risk
 
-left, right = st.columns([1, 1])
-with left:
-    st.subheader("Estimated termination risk")
-    st.plotly_chart(risk_gauge(risk), width="stretch")
-    st.caption(gauge_caption())
-with right:
-    st.metric("Risk", f"{risk:.1%}", delta=None if previous is None else f"{risk - previous:+.1%}",
-              delta_color="inverse", help="Change compared with your previous input.")
-    try:
-        st.write(f"Riskier than **{percentile(risk):.0f}%** of historical trials (started 2008-2016).")
-    except (ImportError, FileNotFoundError):
-        pass  # models/score_reference.npy not there yet: show the probability alone.
-    st.caption(estimate_caption(risk))
+st.subheader("Estimated termination risk")
+changed = previous is not None and abs(risk - previous) >= 0.0005  # hide a meaningless "+0.0%"
+st.metric("Risk", f"{risk:.1%}", delta=f"{risk - previous:+.1%}" if changed else None,
+          delta_color="inverse", help="Change compared with your previous input.")
+try:
+    st.write(f"Riskier than **{percentile(risk):.0f}%** of historical trials (started 2008-2016).")
+except (ImportError, FileNotFoundError):
+    pass  # models/score_reference.npy not there yet: show the probability alone.
+bar = risk_bar(risk)
+if bar is not None:
+    st.plotly_chart(bar, width="stretch")
+    st.caption(bar_caption())
+st.caption(estimate_caption(risk))
 
 st.subheader("What would lower the risk?")
 changes = lowering_changes(row, score)
