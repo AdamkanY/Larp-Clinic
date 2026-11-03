@@ -10,6 +10,17 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 
+
+@st.cache_resource(show_spinner=False)
+def get_model():
+    """Load the trained model once per server; None while src/predict.py or models/gbm.joblib is missing."""
+    try:
+        from src.predict import load_model
+        return load_model()
+    except (ImportError, FileNotFoundError):
+        return None
+
+
 st.set_page_config(page_title="Search - Trial-Radar", page_icon="🔎", layout="wide")
 st.title("🔎 Search trials")
 
@@ -69,15 +80,15 @@ st.write("**Interventions:**", ", ".join(
 st.write("**Summary:**", p.get("descriptionModule", {}).get("briefSummary", "N/A"))
 
 st.subheader("Termination risk")
-try:
-    # The model and feature code come from other team members and may not exist yet.
-    from src.features import build_features
-    from src.predict import load_model, score
-
-    risk = float(score(load_model(), build_features(study)))
-except Exception:
+if get_model() is None:
     st.info("Model coming soon. The risk gauge appears here once the model is trained.")
     st.stop()
+
+from src.features import build_features  # noqa: E402
+from src.predict import score  # noqa: E402
+
+# score() reuses the model get_model() already loaded (predict.py caches it per process).
+risk = score(build_features(study))
 
 fig = go.Figure(go.Indicator(
     mode="gauge+number", value=risk * 100, number={"suffix": "%"},
@@ -87,3 +98,4 @@ fig = go.Figure(go.Indicator(
                      {"range": [35, 100], "color": "#f5a3a3"}]},
 ))
 st.plotly_chart(fig, width="stretch")
+st.caption("Relative risk score for comparing trials, not a calibrated probability of termination.")
