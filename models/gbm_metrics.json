@@ -1,0 +1,306 @@
+{
+  "model": "gbm",
+  "model_file": "models/gbm.joblib",
+  "trained_on": "2026-11-03",
+  "sklearn_version": "1.9.1",
+  "python_version": "3.13.18",
+  "label": {
+    "TERMINATED": 1,
+    "COMPLETED": 0
+  },
+  "split": {
+    "rule": "by start_date, never random",
+    "train": {
+      "start_from": "2008-01-01",
+      "start_to": "2016-12-31",
+      "observed_first_start": "2008-01-01",
+      "observed_last_start": "2016-12-31",
+      "n_trials": 114600,
+      "n_terminated": 12759,
+      "terminated_rate": 0.11133507853403142
+    },
+    "test": {
+      "start_from": "2017-01-01",
+      "start_to": "2019-12-31",
+      "observed_first_start": "2017-01-01",
+      "observed_last_start": "2019-12-31",
+      "n_trials": 47857,
+      "n_terminated": 5591,
+      "terminated_rate": 0.11682721440959526
+    }
+  },
+  "features": {
+    "all": [
+      "phase",
+      "allocation",
+      "intervention_model",
+      "primary_purpose",
+      "masking",
+      "sponsor_class",
+      "sex",
+      "has_collaborators",
+      "has_dmc",
+      "healthy_volunteers",
+      "has_max_age",
+      "intervention_drug",
+      "intervention_device",
+      "intervention_biological",
+      "intervention_procedure",
+      "intervention_radiation",
+      "intervention_behavioral",
+      "intervention_genetic",
+      "intervention_dietary_supplement",
+      "intervention_combination_product",
+      "intervention_diagnostic_test",
+      "intervention_other",
+      "n_arms",
+      "min_age_years",
+      "max_age_years",
+      "eligibility_text_len",
+      "n_primary_outcomes",
+      "n_secondary_outcomes",
+      "n_conditions"
+    ],
+    "categorical": [
+      "phase",
+      "allocation",
+      "intervention_model",
+      "primary_purpose",
+      "masking",
+      "sponsor_class",
+      "sex"
+    ],
+    "binary": [
+      "has_collaborators",
+      "has_dmc",
+      "healthy_volunteers",
+      "has_max_age",
+      "intervention_drug",
+      "intervention_device",
+      "intervention_biological",
+      "intervention_procedure",
+      "intervention_radiation",
+      "intervention_behavioral",
+      "intervention_genetic",
+      "intervention_dietary_supplement",
+      "intervention_combination_product",
+      "intervention_diagnostic_test",
+      "intervention_other"
+    ],
+    "numeric": [
+      "n_arms",
+      "min_age_years",
+      "max_age_years",
+      "eligibility_text_len",
+      "n_primary_outcomes",
+      "n_secondary_outcomes",
+      "n_conditions"
+    ]
+  },
+  "estimator": "HistGradientBoostingClassifier",
+  "class_weight": "balanced",
+  "n_iter": 68,
+  "cv": {
+    "scheme": "StratifiedKFold(n_splits=5, shuffle=True, random_state=42) on the train split only",
+    "refit_metric": "pr_auc",
+    "best_params": {
+      "l2_regularization": 1.0,
+      "learning_rate": 0.1,
+      "max_leaf_nodes": 63
+    },
+    "best_roc_auc_mean": 0.7098936891065786,
+    "best_roc_auc_std": 0.0038020625441110636,
+    "best_pr_auc_mean": 0.22187278687135642,
+    "best_pr_auc_std": 0.00354269345910573,
+    "grid": [
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.709429155349929,
+        "cv_pr_auc": 0.21945126609404197
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7107955655805618,
+        "cv_pr_auc": 0.2214805885664315
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7107681730396649,
+        "cv_pr_auc": 0.22139542578668975
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.709104863128094,
+        "cv_pr_auc": 0.21940283296564123
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7098607964160483,
+        "cv_pr_auc": 0.22048312558317446
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7091283611171673,
+        "cv_pr_auc": 0.2203054987867552
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.7099780830831544,
+        "cv_pr_auc": 0.21971353369267077
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7111034083998191,
+        "cv_pr_auc": 0.22124708476143323
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7108547699604923,
+        "cv_pr_auc": 0.22141063284037496
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.7100270028715225,
+        "cv_pr_auc": 0.21944146189055647
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.710681450335627,
+        "cv_pr_auc": 0.22129459755796757
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7098936891065786,
+        "cv_pr_auc": 0.22187278687135642
+      }
+    ]
+  },
+  "threshold": {
+    "value": 0.5870397661451976,
+    "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
+    "oof_f1": 0.30218180943446155,
+    "oof_roc_auc": 0.7097887792473072,
+    "oof_pr_auc": 0.2210676705770563
+  },
+  "test": {
+    "roc_auc": 0.7093728036985576,
+    "pr_auc": 0.2332768512883468,
+    "brier": 0.1861830293321034,
+    "mean_predicted": 0.39080181396559865,
+    "at_threshold": {
+      "threshold": 0.5870397661451976,
+      "precision": 0.24663031176046918,
+      "recall": 0.4287247361831515,
+      "f1": 0.3131286740692358,
+      "flagged_share": 0.20308418831100988,
+      "confusion_matrix": {
+        "tn": 34944,
+        "fp": 7322,
+        "fn": 3194,
+        "tp": 2397
+      }
+    },
+    "calibration_bins": [
+      {
+        "mean_predicted": 0.10157777900316779,
+        "observed_rate": 0.030505641454241537
+      },
+      {
+        "mean_predicted": 0.168112691518482,
+        "observed_rate": 0.040952778938570834
+      },
+      {
+        "mean_predicted": 0.22358701146364318,
+        "observed_rate": 0.05663531870428422
+      },
+      {
+        "mean_predicted": 0.28054501856951325,
+        "observed_rate": 0.058712912661930634
+      },
+      {
+        "mean_predicted": 0.3446716470048104,
+        "observed_rate": 0.08253238612620142
+      },
+      {
+        "mean_predicted": 0.41443745971453666,
+        "observed_rate": 0.10491118077324973
+      },
+      {
+        "mean_predicted": 0.48499084448357815,
+        "observed_rate": 0.1287087338069369
+      },
+      {
+        "mean_predicted": 0.5547767847894611,
+        "observed_rate": 0.1709508881922675
+      },
+      {
+        "mean_predicted": 0.6239654918215803,
+        "observed_rate": 0.21124111993313832
+      },
+      {
+        "mean_predicted": 0.7113576728446894,
+        "observed_rate": 0.28311742582532384
+      }
+    ]
+  },
+  "majority_baseline": {
+    "roc_auc": 0.5,
+    "pr_auc": 0.11682721440959526,
+    "terminated_rate": 0.11682721440959526,
+    "accuracy": 0.8831727855904048,
+    "confusion_matrix": {
+      "tn": 42266,
+      "fp": 0,
+      "fn": 5591,
+      "tp": 0
+    }
+  }
+}
