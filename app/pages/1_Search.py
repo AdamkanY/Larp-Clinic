@@ -3,11 +3,12 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
+from risk_gauge import gauge_caption, risk_gauge  # noqa: E402
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 
 
@@ -90,14 +91,9 @@ from src.predict import score  # noqa: E402
 # score() reuses the model get_model() already loaded (predict.py caches it per process).
 risk = score(build_features(study))
 
-fig = go.Figure(go.Indicator(
-    mode="gauge+number", value=risk * 100, number={"suffix": "%"},
-    gauge={"axis": {"range": [0, 100]}, "bar": {"color": "#333"},
-           "steps": [{"range": [0, 15], "color": "#9be7a1"},
-                     {"range": [15, 35], "color": "#ffe08a"},
-                     {"range": [35, 100], "color": "#f5a3a3"}]},
-))
-st.plotly_chart(fig, width="stretch")
+st.plotly_chart(risk_gauge(risk), width="stretch")
+
+st.caption(gauge_caption())
 
 try:
     from src.predict import percentile

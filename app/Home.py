@@ -8,11 +8,13 @@ st.write(
     "Trial-Radar estimates how likely a clinical trial is to be terminated early, "
     "using only information known when the trial was designed. "
     "Search ongoing trials from ClinicalTrials.gov and see their predicted risk. "
-    "Explore the historical data and test your own intuition in the game."
+    "Or describe your own trial design and see how its risk changes."
 )
 
 st.subheader("Where to go")
 st.page_link("pages/1_Search.py", label="Search trials", icon="🔎")
+st.page_link("pages/5_Check_Your_Trial.py", label="Check your own trial", icon="🧪")
+st.page_link("pages/2_Explain.py", label="How the model works", icon="🧠")
 
 st.info(
     "This is a student project (HSG Computer Science) and not medical advice. "

@@ -3,11 +3,12 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
+from risk_gauge import gauge_caption, risk_gauge  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
 
 UNSET = "Not specified"
@@ -28,10 +29,10 @@ NAMES = {
     "primary_purpose": "Primary purpose", "masking": "Masking", "sponsor_class": "Sponsor type",
     "sex": "Sex eligible",
 }
-# A typical randomized phase 2 drug trial, so the page opens with a realistic example instead of blanks.
+# A typical randomized phase 2 industry drug trial, so the page opens with a realistic example instead of blanks.
 DEFAULTS = {
     "phase": "PHASE2", "allocation": "RANDOMIZED", "intervention_model": "PARALLEL",
-    "primary_purpose": "TREATMENT", "masking": "DOUBLE", "sponsor_class": "OTHER", "sex": "ALL",
+    "primary_purpose": "TREATMENT", "masking": "DOUBLE", "sponsor_class": "INDUSTRY", "sex": "ALL",
 }
 # 0/1 design flags the what-if table may toggle.
 FLAGS = {"has_collaborators": "Has collaborators", "has_dmc": "Has data monitoring committee"}
@@ -113,17 +114,6 @@ def lowering_changes(row, score, top=5):
     return [(text, risk, risk - base) for text, risk in best[:top] if risk < base]
 
 
-def gauge(risk):
-    """Plotly gauge with the same colour bands as the search page."""
-    return go.Figure(go.Indicator(
-        mode="gauge+number", value=risk * 100, number={"suffix": "%"},
-        gauge={"axis": {"range": [0, 100]}, "bar": {"color": "#333"},
-               "steps": [{"range": [0, 15], "color": "#9be7a1"},
-                         {"range": [15, 35], "color": "#ffe08a"},
-                         {"range": [35, 100], "color": "#f5a3a3"}]},
-    ))
-
-
 st.set_page_config(page_title="Check your trial - Trial-Radar", page_icon="🧪", layout="wide")
 st.title("🧪 Check your own trial")
 st.write(
@@ -152,7 +142,8 @@ st.session_state["previous_risk"] = risk
 left, right = st.columns([1, 1])
 with left:
     st.subheader("Estimated termination risk")
-    st.plotly_chart(gauge(risk), width="stretch")
+    st.plotly_chart(risk_gauge(risk), width="stretch")
+    st.caption(gauge_caption())
 with right:
     st.metric("Risk", f"{risk:.1%}", delta=None if previous is None else f"{risk - previous:+.1%}",
               delta_color="inverse", help="Change compared with your previous input.")
