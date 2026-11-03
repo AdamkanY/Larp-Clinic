@@ -1,4 +1,4 @@
-"""Search ongoing trials, view details and (when a model exists) the termination risk."""
+"""Find a recruiting trial, open it and see its predicted termination risk."""
 import sys
 from pathlib import Path
 
@@ -7,9 +7,19 @@ import streamlit as st
 
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge and ui
 from risk_gauge import bar_caption, estimate_caption, risk_bar  # noqa: E402
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
+from ui import page_header  # noqa: E402
+
+PAGE = 10
+EXAMPLES = ["breast cancer", "diabetes", "asthma", "depression", "COVID-19"]
+PHASE_NAMES = {"EARLY_PHASE1": "Early phase 1", "PHASE1": "Phase 1", "PHASE2": "Phase 2", "PHASE3": "Phase 3",
+               "PHASE4": "Phase 4", "NA": "Not applicable", "N/A": "Not applicable"}
+STATUS_NAMES = {"RECRUITING": "Recruiting", "NOT_YET_RECRUITING": "Not yet recruiting",
+                "ACTIVE_NOT_RECRUITING": "Active, not recruiting", "ENROLLING_BY_INVITATION": "By invitation"}
+SPONSOR_NAMES = {"INDUSTRY": "Industry", "NIH": "NIH", "FED": "Other US federal", "OTHER_GOV": "Other government",
+                 "INDIV": "Individual", "NETWORK": "Research network", "OTHER": "Academic / other"}
 
 
 @st.cache_resource(show_spinner=False)
@@ -22,87 +32,139 @@ def get_model():
         return None
 
 
-st.set_page_config(page_title="Search - Trial-Radar", page_icon="🔎", layout="wide")
-st.title("🔎 Search trials")
+def pretty_phase(raw):
+    """'PHASE1, PHASE2' -> 'Phase 1 / Phase 2'; 'N/A' -> 'Not applicable'."""
+    return " / ".join(PHASE_NAMES.get(p.strip(), p.strip()) for p in raw.split(",") if p.strip()) or "Not applicable"
 
-with st.form("search"):
-    c1, c2 = st.columns(2)
-    query = c1.text_input("Search term", placeholder="e.g. diabetes, semaglutide")
-    condition = c2.text_input("Condition keyword", placeholder="e.g. breast cancer")
-    c3, c4 = st.columns(2)
-    phase = c3.selectbox("Phase", [""] + PHASES, format_func=lambda x: x or "Any")
-    sponsor = c4.selectbox("Sponsor type", [""] + SPONSOR_CLASSES, format_func=lambda x: x or "Any")
-    submitted = st.form_submit_button("Search")
 
-if submitted or "results" not in st.session_state:
-    with st.spinner("Searching ClinicalTrials.gov..."):
-        st.session_state["results"] = search_trials(
-            query=query, condition=condition, phase=phase or None, sponsor_class=sponsor or None
-        )
+def pretty(value):
+    """'NON_RANDOMIZED' -> 'Non randomized'; missing values become 'Not stated'."""
+    return value.replace("_", " ").capitalize() if value else "Not stated"
 
-result = st.session_state["results"]
+
+def new_search():
+    """Any change of the query or a filter starts again at the first page."""
+    st.session_state["shown"] = PAGE
+
+
+def reset_filters():
+    """Back to the empty search with no filters."""
+    st.session_state.update(q="", phase_filter="", sponsor_filter="", shown=PAGE)
+
+
+def pick_example():
+    """Turn a clicked example pill into the search text."""
+    if st.session_state.get("example"):
+        st.session_state.update(q=st.session_state["example"], example=None, shown=PAGE)
+
+
+def show_more():
+    """Load the next page of results."""
+    st.session_state["shown"] += PAGE
+
+
+st.set_page_config(page_title="Find a trial - Trial-Radar", page_icon="🔎", layout="wide")
+for key, default in {"q": "", "phase_filter": "", "sponsor_filter": "", "shown": PAGE}.items():
+    st.session_state.setdefault(key, default)
+
+page_header("🔎 Find a trial", "Search recruiting trials on ClinicalTrials.gov and see how likely each one is to end early.")
+
+st.text_input("Search", key="q", on_change=new_search, label_visibility="collapsed",
+              placeholder="Condition, drug or keyword, for example breast cancer")
+c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment="bottom")
+c1.selectbox("Phase", [""] + PHASES, key="phase_filter", on_change=new_search,
+             format_func=lambda x: PHASE_NAMES.get(x, "Any phase"))
+c2.selectbox("Sponsor", [""] + SPONSOR_CLASSES, key="sponsor_filter", on_change=new_search,
+             format_func=lambda x: SPONSOR_NAMES.get(x, "Any sponsor"))
+c3.button("Clear all", on_click=reset_filters, width="stretch",
+          disabled=not (st.session_state.q or st.session_state.phase_filter or st.session_state.sponsor_filter))
+if not st.session_state.q:
+    st.pills("Examples", EXAMPLES, key="example", on_change=pick_example, label_visibility="collapsed")
+
+with st.spinner("Searching ClinicalTrials.gov..."):
+    result = search_trials(query=st.session_state.q.strip(), phase=st.session_state.phase_filter or None,
+                           sponsor_class=st.session_state.sponsor_filter or None, page_size=st.session_state.shown)
+
 if result["error"]:
-    st.error(result["error"])
+    st.error(f"{result['error']} Check your connection, then try again.")
+    st.button("Try again")
     st.stop()
 if not result["studies"]:
-    st.warning("No ongoing trials found. Try a different search term or fewer filters.")
+    st.info("No recruiting trials match this search. Try a broader keyword or remove a filter.")
+    st.button("Clear filters", on_click=reset_filters)
     st.stop()
 
 rows = [summarize(s) for s in result["studies"]]
-st.caption(f"Showing {len(rows)} of {result['total']} matching trials")
-table = st.dataframe(
-    pd.DataFrame(rows), hide_index=True, width="stretch",
-    on_select="rerun", selection_mode="single-row",
+total = result["total"]
+searching = st.session_state.q.strip() or st.session_state.phase_filter or st.session_state.sponsor_filter
+st.markdown(f"**{total:,}** trials match" if searching else f"**{total:,}** trials. Search or filter to narrow them down.")
+table = pd.DataFrame({
+    "Trial": [r["Title"] for r in rows],
+    "Phase": [pretty_phase(r["Phase"]) for r in rows],
+    "Status": [STATUS_NAMES.get(r["Status"], pretty(r["Status"])) for r in rows],
+})
+selection = st.dataframe(
+    table, hide_index=True, width="stretch", height="content", on_select="rerun", selection_mode="single-row",
+    column_config={"Trial": st.column_config.TextColumn(width=380), "Phase": st.column_config.TextColumn(width=120),
+                   "Status": st.column_config.TextColumn(width=170)},
 )
+if total > len(rows):
+    st.button(f"Show {min(PAGE, total - len(rows))} more", on_click=show_more)
 
-selected = table.selection.rows
+selected = selection.selection.rows
 if not selected:
+    st.caption("Select a trial in the list to see its risk and design.")
     st.stop()
 
-nct_id = rows[selected[0]]["NCT ID"]
+row = rows[selected[0]]
+nct_id = row["NCT ID"]
 study = get_trial(nct_id)
 if study is None:
-    st.error("Could not load this trial.")
+    st.error("Could not load this trial. Please try again.")
     st.stop()
 
 p = study.get("protocolSection", {})
 design = p.get("designModule", {})
-st.divider()
-st.subheader(f"{p.get('identificationModule', {}).get('briefTitle', nct_id)}")
-st.caption(nct_id)
-d1, d2, d3 = st.columns(3)
-d1.metric("Phase", ", ".join(design.get("phases", [])) or "N/A")
-d2.metric("Study type", design.get("studyType", "N/A"))
-d3.metric("Planned enrollment", design.get("enrollmentInfo", {}).get("count", "N/A"))
-st.write("**Allocation:**", design.get("designInfo", {}).get("allocation", "N/A"))
-st.write("**Masking:**", design.get("designInfo", {}).get("maskingInfo", {}).get("masking", "N/A"))
-st.write("**Interventions:**", ", ".join(
-    i.get("name", "") for i in p.get("armsInterventionsModule", {}).get("interventions", [])) or "N/A")
-st.write("**Summary:**", p.get("descriptionModule", {}).get("briefSummary", "N/A"))
+with st.container(border=True):
+    st.subheader(p.get("identificationModule", {}).get("briefTitle", row["Title"]))
+    st.caption(f"[{nct_id}](https://clinicaltrials.gov/study/{nct_id}) · "
+               f"{STATUS_NAMES.get(row['Status'], pretty(row['Status']))} · {row['Sponsor']}")
+    left, right = st.columns([3, 2])
+    with left:
+        st.markdown("##### Termination risk")
+        if get_model() is None:
+            st.info("Model coming soon. The risk appears here once the model is trained.")
+        else:
+            from src.features import build_features  # noqa: E402
+            from src.predict import score  # noqa: E402
 
-st.subheader("Termination risk")
-if get_model() is None:
-    st.info("Model coming soon. The risk gauge appears here once the model is trained.")
-    st.stop()
+            # score() reuses the model get_model() already loaded (predict.py caches it per process).
+            risk = score(build_features(study))
+            st.metric("Estimated risk", f"{risk:.1%}", label_visibility="collapsed")
+            try:
+                from src.predict import percentile
 
-from src.features import build_features  # noqa: E402
-from src.predict import score  # noqa: E402
-
-# score() reuses the model get_model() already loaded (predict.py caches it per process).
-risk = score(build_features(study))
-
-st.metric("Estimated termination risk", f"{risk:.1%}")
-try:
-    from src.predict import percentile
-
-    rank = percentile(risk)
-except (ImportError, FileNotFoundError):
-    # Older predict.py or no models/score_reference.npy yet: show the probability alone.
-    rank = None
-if rank is not None:
-    st.write(f"Riskier than **{rank:.0f}%** of historical trials (started 2008-2016).")
-bar = risk_bar(risk)
-if bar is not None:
-    st.plotly_chart(bar, width="stretch")
-    st.caption(bar_caption())
-st.caption(estimate_caption(risk, ongoing=True))
+                st.write(f"Riskier than **{percentile(risk):.0f}%** of historical trials (started 2008-2016).")
+            except (ImportError, FileNotFoundError):
+                pass  # no score_reference.npy yet: show the probability alone
+            bar = risk_bar(risk)
+            if bar is not None:
+                st.plotly_chart(bar, width="stretch")
+            st.caption("Rough estimate for comparing trials, not an exact chance. Not medical advice.")
+            with st.expander("How to read this"):
+                st.write(bar_caption())
+                st.write(estimate_caption(risk, ongoing=True))
+    with right:
+        st.markdown("##### At a glance")
+        interventions = ", ".join(i.get("name", "") for i in p.get("armsInterventionsModule", {}).get("interventions", []))
+        facts = {
+            "Phase": pretty_phase(row["Phase"]),
+            "Planned enrollment": design.get("enrollmentInfo", {}).get("count", "Not stated"),
+            "Allocation": pretty(design.get("designInfo", {}).get("allocation")),
+            "Masking": pretty(design.get("designInfo", {}).get("maskingInfo", {}).get("masking")),
+            "Interventions": interventions or "Not stated",
+        }
+        for label, value in facts.items():
+            st.markdown(f"**{label}**  \n{value}")
+    with st.expander("Summary"):
+        st.write(p.get("descriptionModule", {}).get("briefSummary", "No summary available."))
