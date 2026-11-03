@@ -1,0 +1,12 @@
+# One light theme for every page: a single blue accent for actions, dark text for contrast.
+[theme]
+base = "light"
+primaryColor = "#1d4ed8"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f6fb"
+textColor = "#111827"
+baseRadius = "large"
+
+[client]
+# Hides the "Deploy" button; viewers only need the page.
+toolbarMode = "minimal"

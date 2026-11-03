@@ -26,6 +26,7 @@ deployed on Streamlit Community Cloud.
 | `data/processed/` | `trials.parquet` produced by `src/build_dataset.py`. | You load model-ready data or add a processing output. |
 | `src/` | Reusable Python: fetching, features, dataset build, training, API client. | You change data handling, features, the model or the API client. |
 | `app/` | Streamlit app: entry point `Home.py` plus `pages/`. | You change anything the user sees. |
+| `.streamlit/` | Streamlit settings: `config.toml` holds the one light theme (single blue accent, dark text) and hides the Deploy button. | You change colours, corner radius or toolbar. |
 | `models/` | Saved models (`.joblib`) and their metrics. | You save or load a trained model. |
 | `tests/` | Offline tests on synthetic records (no network). | You change `src/features.py`. |
 | `notebooks/` | Exploration only. Nothing in `src/` or `app/` imports from here. | You explore data or prototype. |
