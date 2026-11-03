@@ -8,7 +8,7 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import gauge_caption, risk_gauge  # noqa: E402
+from risk_gauge import estimate_caption, gauge_caption, risk_gauge  # noqa: E402
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 
 
@@ -104,7 +104,4 @@ except (ImportError, FileNotFoundError):
     rank = None
 if rank is not None:
     st.write(f"Riskier than **{rank:.0f}%** of historical trials (started 2008-2016).")
-st.caption(
-    f"Calibrated estimate: of past trials scored around {risk:.0%}, about {risk:.0%} were terminated early. "
-    "Based only on design information; not medical advice."
-)
+st.caption(estimate_caption(risk, ongoing=True))
