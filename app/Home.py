@@ -14,6 +14,7 @@ st.write(
 st.subheader("Where to go")
 st.page_link("pages/1_Search.py", label="Search trials", icon="🔎")
 st.page_link("pages/5_Check_Your_Trial.py", label="Check your own trial", icon="🧪")
+st.page_link("pages/2_Explain.py", label="How the model works", icon="🧠")
 
 st.info(
     "This is a student project (HSG Computer Science) and not medical advice. "
