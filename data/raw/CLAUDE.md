@@ -35,15 +35,15 @@ Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
 |---|---|---|
 | `identificationModule.nctId` | `nct_id` | META |
 | `statusModule.overallStatus` | `overall_status`, `label` | META / TARGET |
-| `statusModule.startDateStruct.date` | `start_date`, `start_year` (only date allowed) | META + SAFE |
+| `statusModule.startDateStruct.date` | `start_date` (only date allowed; `split` is derived from it, not a feature) | META + SAFE |
 | `designModule.phases` | `phase` | SAFE |
 | `designModule.designInfo.{allocation,interventionModel,primaryPurpose,maskingInfo.masking}` | same-named columns | SAFE |
-| `armsInterventionsModule.armGroups` | `n_arms` | SAFE |
+| `armsInterventionsModule.armGroups` | `n_arms` (absent = 0) | SAFE |
 | `armsInterventionsModule.interventions[].type` | `intervention_<type>` multi-hot | SAFE |
 | `sponsorCollaboratorsModule.leadSponsor.class` / `.collaborators` | `sponsor_class` / `has_collaborators` | SAFE |
-| `oversightModule.{oversightHasDmc,isFdaRegulatedDrug,isFdaRegulatedDevice}` | `has_dmc`, `fda_regulated_*` | SAFE |
-| `eligibilityModule.{healthyVolunteers,sex,minimumAge,maximumAge,eligibilityCriteria}` | `healthy_volunteers`, `sex`, `min/max_age_years`, `eligibility_text_len` | SAFE |
-| `outcomesModule.{primaryOutcomes,secondaryOutcomes}` / `conditionsModule.conditions` | counts | SAFE |
+| `oversightModule.{oversightHasDmc}` | `has_dmc` (`isFdaRegulated*` dropped from features) | SAFE |
+| `eligibilityModule.{healthyVolunteers,sex,minimumAge,maximumAge,eligibilityCriteria}` | `healthy_volunteers`, `sex`, `min_age_years`, `max_age_years` (missing = 120), `has_max_age`, `eligibility_text_len` | SAFE |
+| `outcomesModule.{primaryOutcomes,secondaryOutcomes}` / `conditionsModule.conditions` | counts (absent = 0) | SAFE |
 | `designModule.enrollmentInfo` | - | LEAKAGE (excluded permanently) |
 | `contactsLocationsModule` | - | excluded from v1 |
 | `statusModule.whyStopped`, `completionDateStruct`, `primaryCompletionDateStruct`, `lastUpdate*`, `resultsFirst*` | - | LEAKAGE |

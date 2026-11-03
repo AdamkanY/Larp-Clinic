@@ -66,7 +66,7 @@ def build_dataset(rows: list) -> pd.DataFrame:
     for col in BINARY_FEATURES:
         df[col] = df[col].astype("Int8")
     for col in ["n_arms", "n_primary_outcomes", "n_secondary_outcomes",
-                "n_conditions", "eligibility_text_len", "start_year"]:
+                "n_conditions", "eligibility_text_len"]:
         df[col] = df[col].astype("Int32")
     return df.reset_index(drop=True)
 

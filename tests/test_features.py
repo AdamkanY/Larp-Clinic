@@ -54,11 +54,11 @@ def test_values():
     row = build_features(STUDY)
     assert set(row) == set(META_COLUMNS + FEATURE_COLUMNS)
     assert row["label"] == 1 and row["start_date"] == "2012-03-01"
-    assert row["start_year"] == 2012 and row["phase"] == "PHASE2/PHASE3"
+    assert "start_year" not in row and row["phase"] == "PHASE2/PHASE3"
     assert row["n_arms"] == 2 and row["n_secondary_outcomes"] == 3
     assert row["intervention_drug"] == 1 and row["intervention_device"] == 1
     assert row["intervention_radiation"] == 0
-    assert row["min_age_years"] == 0.5 and row["max_age_years"] == 65
+    assert row["min_age_years"] == 0.5 and row["max_age_years"] == 65 and row["has_max_age"] == 1
     assert row["has_collaborators"] == 1 and row["healthy_volunteers"] == 0
     assert row["eligibility_text_len"] == 100 and row["masking"] == "DOUBLE"
 
@@ -79,7 +79,9 @@ def test_leaky_fields_ignored():
 def test_missing_and_ongoing():
     """Empty records give None values; ongoing statuses get no label."""
     row = build_features({})
-    assert row["label"] is None and row["start_date"] is None and row["n_arms"] is None
+    assert row["label"] is None and row["start_date"] is None and row["n_arms"] == 0
+    assert row["n_conditions"] == 0 and row["n_primary_outcomes"] == 0
+    assert row["has_max_age"] == 0 and row["max_age_years"] == 120
     ongoing = copy.deepcopy(STUDY)
     ongoing["protocolSection"]["statusModule"]["overallStatus"] = "RECRUITING"
     assert build_features(ongoing)["label"] is None

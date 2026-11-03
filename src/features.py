@@ -28,14 +28,16 @@ CATEGORICAL_FEATURES = [
     "sponsor_class", "sex",
 ]
 BINARY_FEATURES = [
-    "has_collaborators", "has_dmc", "fda_regulated_drug",
-    "fda_regulated_device", "healthy_volunteers",
+    "has_collaborators", "has_dmc", "healthy_volunteers", "has_max_age",
 ] + [f"intervention_{t.lower()}" for t in INTERVENTION_TYPES]
 NUMERIC_FEATURES = [
     "n_arms", "min_age_years", "max_age_years", "eligibility_text_len",
-    "n_primary_outcomes", "n_secondary_outcomes", "n_conditions", "start_year",
+    "n_primary_outcomes", "n_secondary_outcomes", "n_conditions",
 ]
 FEATURE_COLUMNS = CATEGORICAL_FEATURES + BINARY_FEATURES + NUMERIC_FEATURES
+
+# Stand-in for a missing maximum age (no upper limit).
+MAX_AGE_FILL = 120.0
 
 LABELS = {"TERMINATED": 1, "COMPLETED": 0}
 
@@ -58,8 +60,8 @@ def _get(obj, *path):
 
 
 def _count(items):
-    """Length of a list, or None when the field is absent (not the same as 0)."""
-    return len(items) if isinstance(items, list) else None
+    """Length of a list; an absent list counts as 0 (nothing was registered)."""
+    return len(items) if isinstance(items, list) else 0
 
 
 def _flag(value):
@@ -107,7 +109,7 @@ def build_features(study_json: dict) -> dict:
 
     Returns:
         Flat dict with META_COLUMNS and FEATURE_COLUMNS keys. Missing source
-        fields become None. ``label`` is 1/0 for TERMINATED/COMPLETED and None
+        fields become None, except counts (0) and max age (120 + flag). ``label`` is 1/0 for TERMINATED/COMPLETED and None
         for any other status (e.g. ongoing trials that are only scored).
     """
     proto = _get(study_json, "protocolSection") or {}
@@ -121,6 +123,8 @@ def build_features(study_json: dict) -> dict:
     collaborators = _get(proto, "sponsorCollaboratorsModule", "collaborators")
     sponsor_module = _get(proto, "sponsorCollaboratorsModule")
     criteria = _get(proto, "eligibilityModule", "eligibilityCriteria")
+
+    max_age = parse_age_years(_get(proto, "eligibilityModule", "maximumAge"))
 
     row = {
         "nct_id": _get(proto, "identificationModule", "nctId"),
@@ -138,17 +142,17 @@ def build_features(study_json: dict) -> dict:
         # No collaborators is a real value (0), but only if the module exists.
         "has_collaborators": (int(bool(collaborators)) if sponsor_module else None),
         "has_dmc": _flag(_get(proto, "oversightModule", "oversightHasDmc")),
-        "fda_regulated_drug": _flag(_get(proto, "oversightModule", "isFdaRegulatedDrug")),
-        "fda_regulated_device": _flag(_get(proto, "oversightModule", "isFdaRegulatedDevice")),
         "healthy_volunteers": _flag(_get(proto, "eligibilityModule", "healthyVolunteers")),
         "sex": _get(proto, "eligibilityModule", "sex"),
         "min_age_years": parse_age_years(_get(proto, "eligibilityModule", "minimumAge")),
-        "max_age_years": parse_age_years(_get(proto, "eligibilityModule", "maximumAge")),
+        # Missing max age means "no upper limit": flag it and use 120 as a
+        # stand-in so the column has no gaps.
+        "has_max_age": int(max_age is not None),
+        "max_age_years": max_age if max_age is not None else MAX_AGE_FILL,
         "eligibility_text_len": len(criteria) if isinstance(criteria, str) else None,
         "n_primary_outcomes": _count(_get(proto, "outcomesModule", "primaryOutcomes")),
         "n_secondary_outcomes": _count(_get(proto, "outcomesModule", "secondaryOutcomes")),
         "n_conditions": _count(_get(proto, "conditionsModule", "conditions")),
-        "start_year": start.year if start else None,
     }
 
     present = {i.get("type") for i in interventions or [] if isinstance(i, dict)}
