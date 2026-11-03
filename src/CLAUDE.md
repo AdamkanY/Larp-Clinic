@@ -5,13 +5,15 @@ Not for: Streamlit code (`app/`), exploration (`notebooks/`), data files or save
 Must not import from `app/` or `notebooks/`. Rules in the root `CLAUDE.md` (label, leakage, date split) apply to
 everything here.
 
-Pipeline: `python src/fetch_data.py` then `python src/build_dataset.py`.
+Pipeline: `python src/fetch_data.py`, then `python src/build_dataset.py`, then `python src/train.py`
+(tunes, fits, saves and evaluates both models; `python src/evaluate.py` re-runs only the test evaluation).
 
 | File | Contains / does | Produced by | Used by |
 |---|---|---|---|
 | `fetch_data.py` | Downloads all INTERVENTIONAL COMPLETED/TERMINATED studies from the API v2 into `data/raw/pages/` (resumable, retry/backoff, progress; projection also fetches `BriefTitle`, `LeadSponsorName` for display) | Simon | `build_dataset.py` |
 | `features.py` | `build_features(study_json) -> dict`: the single feature function (design-time fields only) plus column lists. Absent lists count as 0; missing max age = 120 with `has_max_age` flag; no `start_year`/`fda_regulated_*` features. `DISPLAY_COLS` = app-only columns (title, conditions, sponsor name, phase label), never model inputs | Simon / Adam | `build_dataset.py`, `train.py`, `app/` |
 | `build_dataset.py` | Runs `build_features` over raw pages, applies label and 2008-2019 window, adds `split`, writes `data/processed/trials.parquet`, prints counts | Simon | `train.py`, app visuals |
-| `train.py` (expected) | Date-based split, model fit, ROC-AUC / PR-AUC, save to `models/` | Adam | CLI, `evaluate.py` |
-| `evaluate.py` (expected) | Metrics, calibration, SHAP / permutation importance | Dominic | `train.py`, `app/` |
+| `train.py` | Loads `trials.parquet` and checks label / window / split rules, builds the LR and GBM Pipelines, tunes each by 5-fold stratified CV on train (refit on PR-AUC), wraps the tuned GBM in `CalibratedClassifierCV(method='isotonic', cv=5)` fitted on train, picks each model's F1-max threshold on out-of-fold train predictions, saves `models/<name>.joblib` + `<name>_metrics.json` and `score_reference.npy` (OOF calibrated scores), then calls `evaluate.evaluate_saved`. `build_gbm_pipeline(drop=...)` serves the ablations | Adam | CLI, `evaluate.py` |
+| `evaluate.py` | The only code that scores the test split: test ROC-AUC / PR-AUC / Brier, confusion matrix at the stored threshold, majority baseline, calibration before/after (JSON + plot), permutation importance CSV, LR coefficients, and the GBM feature ablations (refit on train without post-registration-editable features, scored once on test). Matplotlib is imported lazily, only for the plot | Adam / Dominic | `train.py`, CLI, `app/` |
+| `predict.py` | `load_model(path='models/gbm.joblib')`, `score(features: dict) -> float` (**calibrated** P(TERMINATED)), `percentile(prob) -> float` (0-100: share of training trials with a lower out-of-fold score) and `to_model_frame`, the single dict/DataFrame -> model-input conversion used by training and the app. No sklearn-training or plotting imports | Adam | `app/`, `train.py`, `evaluate.py` |
 | `api_client.py` | Live ClinicalTrials.gov API v2 client for the app: `search_trials(query, status, page_size, phase, condition, sponsor_class)` and `get_trial(nct_id)` (both `st.cache_data`, 1 h; never raise, errors come back as values), `summarize(study)` for the results table. Imports streamlit only for caching. Full records from `get_trial` go to `build_features` | Matteo | `app/pages/1_Search.py` |
