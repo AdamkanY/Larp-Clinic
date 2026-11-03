@@ -1,0 +1,233 @@
+{
+  "model": "baseline_lr",
+  "model_file": "models/baseline_lr.joblib",
+  "trained_on": "2026-11-03",
+  "sklearn_version": "1.9.1",
+  "python_version": "3.13.18",
+  "label": {
+    "TERMINATED": 1,
+    "COMPLETED": 0
+  },
+  "split": {
+    "rule": "by start_date, never random",
+    "train": {
+      "start_from": "2008-01-01",
+      "start_to": "2016-12-31",
+      "observed_first_start": "2008-01-01",
+      "observed_last_start": "2016-12-31",
+      "n_trials": 114600,
+      "n_terminated": 12759,
+      "terminated_rate": 0.11133507853403142
+    },
+    "test": {
+      "start_from": "2017-01-01",
+      "start_to": "2019-12-31",
+      "observed_first_start": "2017-01-01",
+      "observed_last_start": "2019-12-31",
+      "n_trials": 47857,
+      "n_terminated": 5591,
+      "terminated_rate": 0.11682721440959526
+    }
+  },
+  "features": {
+    "all": [
+      "phase",
+      "allocation",
+      "intervention_model",
+      "primary_purpose",
+      "masking",
+      "sponsor_class",
+      "sex",
+      "has_collaborators",
+      "has_dmc",
+      "healthy_volunteers",
+      "has_max_age",
+      "intervention_drug",
+      "intervention_device",
+      "intervention_biological",
+      "intervention_procedure",
+      "intervention_radiation",
+      "intervention_behavioral",
+      "intervention_genetic",
+      "intervention_dietary_supplement",
+      "intervention_combination_product",
+      "intervention_diagnostic_test",
+      "intervention_other",
+      "n_arms",
+      "min_age_years",
+      "max_age_years",
+      "eligibility_text_len",
+      "n_primary_outcomes",
+      "n_secondary_outcomes",
+      "n_conditions"
+    ],
+    "categorical": [
+      "phase",
+      "allocation",
+      "intervention_model",
+      "primary_purpose",
+      "masking",
+      "sponsor_class",
+      "sex"
+    ],
+    "binary": [
+      "has_collaborators",
+      "has_dmc",
+      "healthy_volunteers",
+      "has_max_age",
+      "intervention_drug",
+      "intervention_device",
+      "intervention_biological",
+      "intervention_procedure",
+      "intervention_radiation",
+      "intervention_behavioral",
+      "intervention_genetic",
+      "intervention_dietary_supplement",
+      "intervention_combination_product",
+      "intervention_diagnostic_test",
+      "intervention_other"
+    ],
+    "numeric": [
+      "n_arms",
+      "min_age_years",
+      "max_age_years",
+      "eligibility_text_len",
+      "n_primary_outcomes",
+      "n_secondary_outcomes",
+      "n_conditions"
+    ]
+  },
+  "estimator": "LogisticRegression",
+  "class_weight": "balanced",
+  "n_model_columns": 64,
+  "cv": {
+    "scheme": "StratifiedKFold(n_splits=5, shuffle=True, random_state=42) on the train split only",
+    "refit_metric": "pr_auc",
+    "best_params": {
+      "C": 10.0
+    },
+    "best_roc_auc_mean": 0.6852460624058695,
+    "best_roc_auc_std": 0.0027191912889891778,
+    "best_pr_auc_mean": 0.1973421594744766,
+    "best_pr_auc_std": 0.0031278018962415306,
+    "grid": [
+      {
+        "params": {
+          "C": 0.001
+        },
+        "cv_roc_auc": 0.6836340636985219,
+        "cv_pr_auc": 0.19505743937603254
+      },
+      {
+        "params": {
+          "C": 0.01
+        },
+        "cv_roc_auc": 0.6853274850179754,
+        "cv_pr_auc": 0.19687303452437033
+      },
+      {
+        "params": {
+          "C": 0.1
+        },
+        "cv_roc_auc": 0.6852890903705182,
+        "cv_pr_auc": 0.19723715938211495
+      },
+      {
+        "params": {
+          "C": 1.0
+        },
+        "cv_roc_auc": 0.6852554110630937,
+        "cv_pr_auc": 0.1972885522086604
+      },
+      {
+        "params": {
+          "C": 10.0
+        },
+        "cv_roc_auc": 0.6852460624058695,
+        "cv_pr_auc": 0.1973421594744766
+      }
+    ]
+  },
+  "threshold": {
+    "value": 0.5705891646954451,
+    "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
+    "oof_f1": 0.2793327556325823,
+    "oof_roc_auc": 0.6852366938688066,
+    "oof_pr_auc": 0.1968845186514449,
+    "oof_brier": 0.22612968742417858
+  },
+  "test": {
+    "roc_auc": 0.6885953207426037,
+    "pr_auc": 0.21762557096924318,
+    "brier": 0.20527207076633638,
+    "mean_predicted": 0.4258934783452412,
+    "at_threshold": {
+      "threshold": 0.5705891646954451,
+      "precision": 0.2210563756002134,
+      "recall": 0.4446431765337149,
+      "f1": 0.2953020134228188,
+      "flagged_share": 0.23499174624401864,
+      "confusion_matrix": {
+        "tn": 33506,
+        "fp": 8760,
+        "fn": 3105,
+        "tp": 2486
+      }
+    },
+    "calibration_bins": [
+      {
+        "mean_predicted": 0.14588730250776813,
+        "observed_rate": 0.041370664437944
+      },
+      {
+        "mean_predicted": 0.22550606437335632,
+        "observed_rate": 0.05014625992478061
+      },
+      {
+        "mean_predicted": 0.284641198531459,
+        "observed_rate": 0.05078369905956113
+      },
+      {
+        "mean_predicted": 0.338962265547915,
+        "observed_rate": 0.06122022565816966
+      },
+      {
+        "mean_predicted": 0.39616719478996043,
+        "observed_rate": 0.08984538236523193
+      },
+      {
+        "mean_predicted": 0.456692146358114,
+        "observed_rate": 0.11327063740856844
+      },
+      {
+        "mean_predicted": 0.5128995855426874,
+        "observed_rate": 0.1391558712912662
+      },
+      {
+        "mean_predicted": 0.5635619441839376,
+        "observed_rate": 0.16405433646812956
+      },
+      {
+        "mean_predicted": 0.6156448395383617,
+        "observed_rate": 0.1966151274550773
+      },
+      {
+        "mean_predicted": 0.7189779284252859,
+        "observed_rate": 0.2618052653572921
+      }
+    ]
+  },
+  "majority_baseline": {
+    "roc_auc": 0.5,
+    "pr_auc": 0.11682721440959526,
+    "brier_constant_rate": 0.10317861638288972,
+    "terminated_rate": 0.11682721440959526,
+    "accuracy": 0.8831727855904048,
+    "confusion_matrix": {
+      "tn": 42266,
+      "fp": 0,
+      "fn": 5591,
+      "tp": 0
+    }
+  }
+}
