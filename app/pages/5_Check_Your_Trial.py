@@ -8,7 +8,7 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import bar_caption, estimate_caption, risk_bar  # noqa: E402
+from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
 from ui import page_header  # noqa: E402
 
@@ -126,7 +126,7 @@ if get_model() is None:
     st.info("Model coming soon. The estimate appears here once the model is trained.")
     st.stop()
 
-from src.predict import percentile, score  # noqa: E402
+from src.predict import score  # noqa: E402
 
 try:
     risk = score(row)
@@ -139,12 +139,7 @@ st.session_state["previous_risk"] = risk
 
 st.subheader("Estimated termination risk")
 changed = previous is not None and abs(risk - previous) >= 0.0005  # hide a meaningless "+0.0%"
-st.metric("Risk", f"{risk:.1%}", delta=f"{risk - previous:+.1%}" if changed else None,
-          delta_color="inverse", help="Change compared with your previous input.")
-try:
-    st.write(f"Riskier than **{percentile(risk):.0f}%** of historical trials (started 2008-2016).")
-except (ImportError, FileNotFoundError):
-    pass  # models/score_reference.npy not there yet: show the probability alone.
+st.markdown(risk_card(risk, delta=risk - previous if changed else None), unsafe_allow_html=True)
 bar = risk_bar(risk)
 if bar is not None:
     st.plotly_chart(bar, width="stretch")
