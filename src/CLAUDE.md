@@ -14,4 +14,4 @@ Pipeline: `python src/fetch_data.py` then `python src/build_dataset.py`.
 | `build_dataset.py` | Runs `build_features` over raw pages, applies label and 2008-2019 window, adds `split`, writes `data/processed/trials.parquet`, prints counts | Simon | `train.py`, app visuals |
 | `train.py` (expected) | Date-based split, model fit, ROC-AUC / PR-AUC, save to `models/` | Adam | CLI, `evaluate.py` |
 | `evaluate.py` (expected) | Metrics, calibration, SHAP / permutation importance | Dominic | `train.py`, `app/` |
-| `api_client.py` (expected) | Live ClinicalTrials.gov search for the app; feeds records to `build_features` | Matteo / Simon | `app/` |
+| `api_client.py` | Live ClinicalTrials.gov API v2 client for the app: `search_trials(query, status, page_size, phase, condition, sponsor_class)` and `get_trial(nct_id)` (both `st.cache_data`, 1 h; never raise, errors come back as values), `summarize(study)` for the results table. Imports streamlit only for caching. Full records from `get_trial` go to `build_features` | Matteo | `app/pages/1_Search.py` |
