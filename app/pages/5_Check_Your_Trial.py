@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
 from risk_gauge import bar_caption, estimate_caption, risk_bar  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
+from ui import page_header  # noqa: E402
 
 UNSET = "Not specified"
 
@@ -115,11 +116,8 @@ def lowering_changes(row, score, top=5):
 
 
 st.set_page_config(page_title="Check your trial - Trial-Radar", page_icon="🧪", layout="wide")
-st.title("🧪 Check your own trial")
-st.write(
-    "Describe a clinical trial design below and see how likely it is to be terminated early. "
-    "Change any value and the estimate updates straight away."
-)
+page_header("🧪 Check your own trial",
+            "Describe a trial design and see how likely it is to be stopped early. Change any value and the estimate updates straight away.")
 
 row = feature_row()
 st.divider()
@@ -150,8 +148,10 @@ except (ImportError, FileNotFoundError):
 bar = risk_bar(risk)
 if bar is not None:
     st.plotly_chart(bar, width="stretch")
-    st.caption(bar_caption())
-st.caption(estimate_caption(risk))
+st.caption("Rough estimate for comparing trials, not an exact chance. Not medical advice.")
+with st.expander("How to read this"):
+    st.write(bar_caption())
+    st.write(estimate_caption(risk))
 
 st.subheader("What would lower the risk?")
 changes = lowering_changes(row, score)
