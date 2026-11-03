@@ -153,7 +153,8 @@
     "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
     "oof_f1": 0.2793327556325823,
     "oof_roc_auc": 0.6852366938688066,
-    "oof_pr_auc": 0.1968845186514449
+    "oof_pr_auc": 0.1968845186514449,
+    "oof_brier": 0.22612968742417858
   },
   "test": {
     "roc_auc": 0.6885953207426037,
@@ -219,6 +220,7 @@
   "majority_baseline": {
     "roc_auc": 0.5,
     "pr_auc": 0.11682721440959526,
+    "brier_constant_rate": 0.10317861638288972,
     "terminated_rate": 0.11682721440959526,
     "accuracy": 0.8831727855904048,
     "confusion_matrix": {
