@@ -66,15 +66,16 @@ def risk_bar(risk):
     for start, end, colour, name in [(0, 50, GREEN, "Less risky than half"), (50, 90, YELLOW, "Higher"),
                                      (90, 100, RED, "Top 10%")]:
         fig.add_trace(go.Bar(x=[end - start], y=[""], base=[start], orientation="h", marker_color=colour,
-                             text=name, textposition="inside", insidetextanchor="middle", hoverinfo="skip"))
-    fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.5, y1=0.5, line={"color": "#222", "width": 5})
-    fig.add_annotation(x=pct, y=0.5, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=False, yshift=14,
-                       bgcolor="white", bordercolor="#222", borderpad=3)
+                             width=0.7, text=name, textposition="inside", insidetextanchor="middle",
+                             textfont={"size": 13, "color": "#111827"}, hoverinfo="skip"))
+    # An arrow above the bar instead of a line through it, so it never covers the segment labels.
+    fig.add_annotation(x=pct, y=0.4, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=True, arrowhead=2,
+                       arrowwidth=3, arrowcolor="#222", ax=0, ay=-38, bgcolor="white", bordercolor="#222", borderpad=3)
     fig.update_layout(
-        barmode="overlay", showlegend=False, height=150, margin={"l": 10, "r": 10, "t": 40, "b": 45},
+        barmode="overlay", showlegend=False, height=170, margin={"l": 10, "r": 10, "t": 55, "b": 50},
         xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
                "title": "Share of past trials that were less risky than this one"},
-        yaxis={"visible": False},
+        yaxis={"visible": False, "range": [-0.5, 0.5]},  # fixed, so the arrow does not stretch the axis
     )
     return fig
 
