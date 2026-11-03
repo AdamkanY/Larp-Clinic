@@ -38,6 +38,8 @@ FIELDS = [
     "HealthyVolunteers", "Sex", "MinimumAge", "MaximumAge",
     "EligibilityCriteria", "PrimaryOutcomeMeasure", "SecondaryOutcomeMeasure",
     "Condition",
+    # Display-only (never features): shown in the app's trial cards and tables.
+    "BriefTitle", "LeadSponsorName",
 ]
 
 

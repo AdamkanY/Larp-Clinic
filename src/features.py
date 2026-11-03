@@ -23,6 +23,18 @@ INTERVENTION_TYPES = [
 # Columns that identify or describe a row but are NEVER fed to the model.
 META_COLUMNS = ["nct_id", "overall_status", "label", "start_date"]
 
+# Human-readable columns for the app (cards, tables, game). NEVER model inputs:
+# free text / identifiers would let a model memorise trials. Overlaps META
+# (nct_id, start_date, overall_status) on purpose; the app reads them from here.
+DISPLAY_COLS = [
+    "nct_id", "brief_title", "conditions", "lead_sponsor_name", "phase_label",
+    "start_date", "overall_status",
+]
+# Display columns that are not already META columns (extra parquet columns).
+EXTRA_DISPLAY_COLS = [c for c in DISPLAY_COLS if c not in META_COLUMNS]
+# Everything in the parquet that must be excluded when training.
+NON_FEATURE_COLUMNS = META_COLUMNS + EXTRA_DISPLAY_COLS + ["split"]
+
 CATEGORICAL_FEATURES = [
     "phase", "allocation", "intervention_model", "primary_purpose", "masking",
     "sponsor_class", "sex",
@@ -40,6 +52,11 @@ FEATURE_COLUMNS = CATEGORICAL_FEATURES + BINARY_FEATURES + NUMERIC_FEATURES
 MAX_AGE_FILL = 120.0
 
 LABELS = {"TERMINATED": 1, "COMPLETED": 0}
+
+_PHASE_NAMES = {
+    "EARLY_PHASE1": "Early Phase 1", "PHASE1": "Phase 1", "PHASE2": "Phase 2",
+    "PHASE3": "Phase 3", "PHASE4": "Phase 4", "NA": "Not Applicable",
+}
 
 # Hours/minutes only occur for very young infants; kept for completeness.
 _AGE_UNIT_YEARS = {
@@ -71,6 +88,13 @@ def _flag(value):
     if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
         return int(value.strip().lower() == "true")
     return None
+
+
+def phase_label(phases):
+    """Readable phase, e.g. ['PHASE2','PHASE3'] -> 'Phase 2/Phase 3'; absent -> None."""
+    if not phases:
+        return None
+    return "/".join(_PHASE_NAMES.get(p, p) for p in sorted(phases))
 
 
 def parse_age_years(text):
@@ -108,7 +132,7 @@ def build_features(study_json: dict) -> dict:
         study_json: one element of the API's ``studies`` list.
 
     Returns:
-        Flat dict with META_COLUMNS and FEATURE_COLUMNS keys. Missing source
+        Flat dict with META_COLUMNS, DISPLAY_COLS and FEATURE_COLUMNS keys. Missing source
         fields become None, except counts (0) and max age (120 + flag). ``label`` is 1/0 for TERMINATED/COMPLETED and None
         for any other status (e.g. ongoing trials that are only scored).
     """
@@ -153,6 +177,14 @@ def build_features(study_json: dict) -> dict:
         "n_primary_outcomes": _count(_get(proto, "outcomesModule", "primaryOutcomes")),
         "n_secondary_outcomes": _count(_get(proto, "outcomesModule", "secondaryOutcomes")),
         "n_conditions": _count(_get(proto, "conditionsModule", "conditions")),
+
+        # Display-only (see DISPLAY_COLS); not in FEATURE_COLUMNS.
+        "brief_title": _get(proto, "identificationModule", "briefTitle"),
+        "conditions": "; ".join(
+            c for c in _get(proto, "conditionsModule", "conditions") or []
+            if isinstance(c, str)) or None,
+        "lead_sponsor_name": _get(sponsor_module, "leadSponsor", "name"),
+        "phase_label": phase_label(phases),
     }
 
     present = {i.get("type") for i in interventions or [] if isinstance(i, dict)}

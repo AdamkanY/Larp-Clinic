@@ -34,6 +34,7 @@ Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
 | Path | Used as | Tag |
 |---|---|---|
 | `identificationModule.nctId` | `nct_id` | META |
+| `identificationModule.briefTitle` / `sponsorCollaboratorsModule.leadSponsor.name` / `conditionsModule.conditions` (joined) | `brief_title` / `lead_sponsor_name` / `conditions` | DISPLAY (never a feature) |
 | `statusModule.overallStatus` | `overall_status`, `label` | META / TARGET |
 | `statusModule.startDateStruct.date` | `start_date` (only date allowed; `split` is derived from it, not a feature) | META + SAFE |
 | `designModule.phases` | `phase` | SAFE |

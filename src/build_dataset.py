@@ -15,8 +15,8 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import (BINARY_FEATURES, FEATURE_COLUMNS, META_COLUMNS,  # noqa: E402
-                      build_features)
+from features import (BINARY_FEATURES, EXTRA_DISPLAY_COLS, FEATURE_COLUMNS,  # noqa: E402
+                      META_COLUMNS, build_features)
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGES_DIR = ROOT / "data" / "raw" / "pages"
@@ -42,7 +42,7 @@ def load_rows() -> list:
 
 def build_dataset(rows: list) -> pd.DataFrame:
     """Dedupe, apply label/date filters and add the train/test split column."""
-    df = pd.DataFrame(rows, columns=META_COLUMNS + FEATURE_COLUMNS)
+    df = pd.DataFrame(rows, columns=META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS)
     n_dupes = df.duplicated("nct_id").sum()
     df = df.drop_duplicates("nct_id")
     print(f"Dropped {n_dupes} duplicate NCT ids.")
