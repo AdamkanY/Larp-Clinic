@@ -1,10 +1,14 @@
 """Explain the model: how well it works on unseen trials and which design factors matter most."""
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
+from ui import page_header  # noqa: E402
 
 MODELS = Path(__file__).resolve().parents[2] / "models"
 TOP_FEATURES = 12
@@ -56,11 +60,8 @@ def load_importance():
 
 
 st.set_page_config(page_title="Why this prediction - Trial-Radar", page_icon="🧠", layout="wide")
-st.title("🧠 How the model works")
-st.write(
-    "Trial-Radar looks only at facts known when a trial is registered (design, sponsor, who may join) "
-    "and compares them with about 160,000 finished trials from ClinicalTrials.gov."
-)
+page_header("🧠 How the model works",
+            "Trial-Radar looks only at facts known when a trial is registered and compares them with about 160,000 finished trials from ClinicalTrials.gov.")
 st.page_link("pages/5_Check_Your_Trial.py", label="Try it yourself: check your own trial", icon="🧪")
 
 metrics = load_metrics()
