@@ -1,50 +1,58 @@
 # data/raw/
 
-Original ClinicalTrials.gov exports. **Never edited, never overwritten.** Cleaned versions go to `data/processed/`.
-Not for: intermediate files, samples, or anything produced by code.
+Raw ClinicalTrials.gov API v2 pages, written by `src/fetch_data.py`. **Not committed** (git-ignored, except this
+file): regenerate with `python src/fetch_data.py`. Never edit by hand; cleaned data goes to `data/processed/`.
+Not for: intermediate files, samples, or anything produced by `build_dataset.py`.
 
-## Files
+## Files (all generated, git-ignored)
 
 | File | Contains | Produced by | Used by |
 |---|---|---|---|
-| `ctg-studies.csv` | 95,574 interventional trials (21 columns, ~140 MB, Git LFS). Statuses: COMPLETED 76,027 / TERMINATED 13,949 / WITHDRAWN 5,598. Start dates 2008 to 2026 (a few placeholder future dates). | Manual export from clinicaltrials.gov | `src/data.py` (expected) |
+| `pages/page_NNNNN.json` | One API response per file (up to 1000 studies, plus `nextPageToken`, first page has `totalCount`) | `src/fetch_data.py` | `src/build_dataset.py` |
+| `manifest.json` | Query parameters of the download; a rerun with different parameters is refused (use `--restart`) | `src/fetch_data.py` | `src/fetch_data.py` (resume check) |
 
-Expected later: an export (or API pull) that includes ongoing trials and an enrollment-type field.
+## Query
 
-## Data dictionary (`ctg-studies.csv`)
+`GET https://clinicaltrials.gov/api/v2/studies` with `filter.overallStatus=COMPLETED,TERMINATED`,
+`filter.advanced=AREA[StudyType]INTERVENTIONAL`, `pageSize=1000`, paginated by `nextPageToken`. By default a
+`fields` projection limits the download to the design-time fields below (so enrollment, results and
+completion dates are never stored); `--full` downloads whole records. Resumable: rerun to continue after an
+interruption. Retries 429/5xx with exponential backoff.
 
-Tags: **SAFE** feature, **LEAKAGE** (never use), **ID** metadata, **TARGET**.
+## Decisions
 
-| Column | Meaning | Type | % missing | Tag |
-|---|---|---|---|---|
-| NCT Number | Trial registry ID (unique) | str | 0 | ID |
-| Study Title | Free-text title | str | 0 | ID (text features optional, design-time) |
-| Study URL | Link to the registry page | str | 0 | ID |
-| Study Status | Overall status | str | 0 | TARGET (COMPLETED=0, TERMINATED=1, drop WITHDRAWN) |
-| Conditions | Conditions studied, `\|`-separated | str | 0 | SAFE |
-| Interventions | `TYPE: name` entries, `\|`-separated | str | 0 | SAFE |
-| Sponsor | Lead sponsor | str | 0 | SAFE |
-| Collaborators | Other sponsors, `\|`-separated | str | 69.4 | SAFE (missing = none) |
-| Sex | ALL / MALE / FEMALE | str | 0.03 | SAFE |
-| Age | Age groups, e.g. `ADULT, OLDER_ADULT` | str | 0 | SAFE |
-| Phases | PHASE1, PHASE2, PHASE3, `PHASE1\|PHASE2`, `PHASE2\|PHASE3` | str | 0 | SAFE |
-| Enrollment | Participant count; **actual** for finished trials, no type column | float | 0.06 | LEAKAGE in this CSV (see root CLAUDE.md) |
-| Funder Type | INDUSTRY, OTHER, NIH, OTHER_GOV, NETWORK, FED, INDIV, UNKNOWN | str | 0 | SAFE |
-| Study Type | Always INTERVENTIONAL in this export | str | 0 | SAFE but constant (drop) |
-| Study Design | `Allocation \| Intervention Model \| Masking \| Primary Purpose` string | str | 0.03 | SAFE (parse into 4 fields) |
-| Start Date | `YYYY-MM` or `YYYY-MM-DD` | str | 0 | SAFE (design-time) and the split key |
-| Primary Completion Date | End of primary data collection | str | 0.26 | LEAKAGE |
-| Completion Date | End of the trial | str | 1.55 | LEAKAGE |
-| First Posted | Date first registered publicly | str | 0 | SAFE (known at registration) |
-| Last Update Posted | Last registry edit | str | 0 | LEAKAGE |
-| Locations | Sites, full address strings | str | 5.97 | SAFE (count/countries only; sites can be added after start, so use with care) |
+- **Enrollment is permanently excluded** as a feature (finished trials report actual counts, which leak).
+- **Locations / number of sites excluded from v1** (sites are added after start).
+- **Date window:** start date 2008-01-01 to 2019-12-31. Train = start 2008-2016, test = start 2017-2019.
+  Start dates >= 2020 and unparseable ones are dropped.
+- **Label:** TERMINATED = 1, COMPLETED = 0; every other status is dropped for training.
 
-Not in the export (do not expect them): why-stopped, results-posted, enrollment type.
+## API fields used (JSON path under `protocolSection`) and tags
 
-## Quirks to handle in `src/`
+Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
 
-- All three remaining statuses are finished; there are **no ongoing trials** in this file.
-- `Enrollment` is 0 for 99% of WITHDRAWN trials (dropped anyway).
-- Start dates in 2027 to 2099 (about 22 rows) are data-entry errors or placeholders.
-- Terminated share by start year rises from 13% (2013) to 21% (2021), then falls for recent years because
-  recent trials have not had time to terminate. Mind this in the date split.
+| Path | Used as | Tag |
+|---|---|---|
+| `identificationModule.nctId` | `nct_id` | META |
+| `statusModule.overallStatus` | `overall_status`, `label` | META / TARGET |
+| `statusModule.startDateStruct.date` | `start_date` (only date allowed; `split` is derived from it, not a feature) | META + SAFE |
+| `designModule.phases` | `phase` | SAFE |
+| `designModule.designInfo.{allocation,interventionModel,primaryPurpose,maskingInfo.masking}` | same-named columns | SAFE |
+| `armsInterventionsModule.armGroups` | `n_arms` (absent = 0) | SAFE |
+| `armsInterventionsModule.interventions[].type` | `intervention_<type>` multi-hot | SAFE |
+| `sponsorCollaboratorsModule.leadSponsor.class` / `.collaborators` | `sponsor_class` / `has_collaborators` | SAFE |
+| `oversightModule.{oversightHasDmc}` | `has_dmc` (`isFdaRegulated*` dropped from features) | SAFE |
+| `eligibilityModule.{healthyVolunteers,sex,minimumAge,maximumAge,eligibilityCriteria}` | `healthy_volunteers`, `sex`, `min_age_years`, `max_age_years` (missing = 120), `has_max_age`, `eligibility_text_len` | SAFE |
+| `outcomesModule.{primaryOutcomes,secondaryOutcomes}` / `conditionsModule.conditions` | counts (absent = 0) | SAFE |
+| `designModule.enrollmentInfo` | - | LEAKAGE (excluded permanently) |
+| `contactsLocationsModule` | - | excluded from v1 |
+| `statusModule.whyStopped`, `completionDateStruct`, `primaryCompletionDateStruct`, `lastUpdate*`, `resultsFirst*` | - | LEAKAGE |
+| `resultsSection`, `hasResults` | - | LEAKAGE |
+
+## Quirks
+
+- Missing source fields become missing values, not 0 (older registrations lack arms, DMC and FDA flags).
+  `minimumAge` / `maximumAge` of `N/A` also become missing.
+- Start dates are month precision (`YYYY-MM`); stored as the 1st of the month.
+- Terminated share rises for recent start years partly because recent trials have had less time to terminate;
+  the 2017-2019 test window may therefore differ in base rate from train.
