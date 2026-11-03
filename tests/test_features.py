@@ -9,11 +9,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from features import FEATURE_COLUMNS, META_COLUMNS, build_features  # noqa: E402
+from features import (DISPLAY_COLS, FEATURE_COLUMNS, META_COLUMNS,  # noqa: E402
+                      build_features)
 
 STUDY = {
     "protocolSection": {
-        "identificationModule": {"nctId": "NCT00000001"},
+        "identificationModule": {"nctId": "NCT00000001", "briefTitle": "A test trial"},
         "statusModule": {
             "overallStatus": "TERMINATED",
             "whyStopped": "slow accrual",
@@ -52,7 +53,7 @@ STUDY = {
 def test_values():
     """Spot-check parsed values and the column set."""
     row = build_features(STUDY)
-    assert set(row) == set(META_COLUMNS + FEATURE_COLUMNS)
+    assert set(row) == set(META_COLUMNS + DISPLAY_COLS + FEATURE_COLUMNS)
     assert row["label"] == 1 and row["start_date"] == "2012-03-01"
     assert "start_year" not in row and row["phase"] == "PHASE2/PHASE3"
     assert row["n_arms"] == 2 and row["n_secondary_outcomes"] == 3
@@ -90,8 +91,20 @@ def test_missing_and_ongoing():
     assert build_features(bad)["start_date"] is None
 
 
+def test_display_cols():
+    """Display columns are filled and never overlap the model features."""
+    row = build_features(STUDY)
+    assert row["brief_title"] == "A test trial"
+    assert row["conditions"] == "a; b"
+    assert row["lead_sponsor_name"] == "X"
+    assert row["phase_label"] == "Phase 2/Phase 3"
+    assert all(c in row for c in DISPLAY_COLS)
+    assert not set(DISPLAY_COLS) & set(FEATURE_COLUMNS)
+
+
 if __name__ == "__main__":
     test_values()
     test_leaky_fields_ignored()
     test_missing_and_ongoing()
+    test_display_cols()
     print("all ok")
