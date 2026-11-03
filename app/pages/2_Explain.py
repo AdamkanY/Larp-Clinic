@@ -93,7 +93,8 @@ else:
     st.warning(
         "Honest summary: the model is clearly better than guessing, but it is not a crystal ball. "
         "Whether a trial gets terminated also depends on things nobody knows at registration, "
-        "such as funding, recruitment problems or safety findings."
+        "such as funding, recruitment problems or safety findings. It is also less sharp between trials of the "
+        "same phase than between different kinds of trials, so it ranks trials better than it predicts single outcomes."
     )
 
 importance = load_importance()
@@ -117,12 +118,18 @@ else:
     )
 
 st.subheader("Can you trust the percentages?")
-st.write(
-    "Yes, roughly. The raw model overestimates risk (it predicted about "
-    f"{metrics['calibration']['test_before']['mean_predicted']:.0%} on average when the true rate was "
-    f"{metrics['split']['test']['terminated_rate']:.0%}), so it was recalibrated. After that, a score of 20% means "
-    "about 20% of such trials were terminated."
-    if metrics else "Calibration details appear here once the metrics file is available."
-)
+if metrics:
+    before = metrics["calibration"]["test_before"]["mean_predicted"]
+    after = metrics["calibration"]["test_after"]["mean_predicted"]
+    real = metrics["split"]["test"]["terminated_rate"]
+    st.write(
+        f"Only partly. The raw model overestimated risk (average prediction {before:.0%} when the real rate was "
+        f"{real:.0%}), so it was recalibrated. That fixed most of the problem but not all of it: on the newer test "
+        f"trials the average prediction is {after:.1%}, while {real:.1%} were really terminated, about "
+        f"{real / after - 1:.0%} more. Read the percentages as a lower-end figure and use them mainly to compare "
+        "trials with each other."
+    )
+else:
+    st.write("Calibration details appear here once the metrics file is available.")
 if (MODELS / "calibration_before_after.png").exists():
     st.image(str(MODELS / "calibration_before_after.png"), caption="Calibration on the test trials, before and after recalibration.")

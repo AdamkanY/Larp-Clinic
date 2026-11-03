@@ -8,7 +8,7 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import gauge_caption, risk_gauge  # noqa: E402
+from risk_gauge import estimate_caption, gauge_caption, risk_gauge  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
 
 UNSET = "Not specified"
@@ -151,10 +151,7 @@ with right:
         st.write(f"Riskier than **{percentile(risk):.0f}%** of historical trials (started 2008-2016).")
     except (ImportError, FileNotFoundError):
         pass  # models/score_reference.npy not there yet: show the probability alone.
-    st.caption(
-        f"Calibrated estimate: of past trials scored around {risk:.0%}, about {risk:.0%} were terminated early. "
-        "Based only on design information known at registration; a student project, not medical advice."
-    )
+    st.caption(estimate_caption(risk))
 
 st.subheader("What would lower the risk?")
 changes = lowering_changes(row, score)
@@ -163,6 +160,9 @@ if changes:
         [(text, f"{new:.1%}", f"{delta:+.1%}") for text, new, delta in changes],
         columns=["Single change", "New risk", "Change"],
     ).set_index("Single change"))
-    st.caption("Patterns in past trials, not proof of cause: changing a design does not guarantee this effect.")
+    st.caption(
+        "Patterns in past trials, not proof of cause: changing a design does not guarantee this effect. "
+        "Rare options (for example sponsor type \"Individual\") rest on few trials and are less reliable."
+    )
 else:
     st.write("No single change in these settings lowers the estimate.")
