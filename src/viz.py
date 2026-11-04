@@ -18,9 +18,18 @@ import labels  # noqa: E402
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "trials.parquet"
 STUDY_URL = "https://clinicaltrials.gov/study/"
 
-# One hue for every "share stopped early" bar, so the charts read as one family.
-BLUE = "#2a78d6"
-GRID = "rgba(128,128,128,0.2)"
+# One deep green (the app's "ink" family) for every "share stopped early" bar, so the charts read as one family.
+BAR = "#17463A"
+INK = "#0A1F1A"
+MUTED = "#4B5A53"
+GRID = "rgba(10,31,26,0.12)"
+FONT = {"family": "IBM Plex Sans, sans-serif", "size": 13, "color": INK}
+# Shared look of every chart: transparent so the page's paper shows through, hairline grid, ink tooltips.
+CHART_LAYOUT = {
+    "font": FONT, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)",
+    "hoverlabel": {"bgcolor": INK, "font": {"family": FONT["family"], "color": "#EDEFE6", "size": 13}, "align": "left"},
+    "colorway": [BAR, "#B8452E", "#6B7A72"],
+}
 
 NOT_STATED = labels.NOT_STATED
 
@@ -36,6 +45,14 @@ ELIGIBILITY_LABELS = ["Up to 500", "501-1,000", "1,001-2,000", "2,001-4,000", "O
 
 # Groups smaller than this give noisy rates; they are faded rather than hidden.
 MIN_GROUP_N = 30
+
+
+def finish(fig) -> go.Figure:
+    """Give both axes readable muted text (the page theme would otherwise pick a pale grey); returns the figure."""
+    muted = {"family": FONT["family"], "color": MUTED, "size": 12}
+    fig.update_xaxes(tickfont=muted, title_font=muted)
+    fig.update_yaxes(tickfont=muted, title_font=muted)
+    return fig
 
 
 def load_trials(path=DATA_PATH) -> pd.DataFrame:
@@ -110,10 +127,10 @@ def top_conditions(df, k=15) -> pd.DataFrame:
 
 def _style(fig, y_title="Share stopped early") -> go.Figure:
     """Shared layout: recessive grid, percent axis, compact margins, no legend for one series."""
-    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), showlegend=False,
-                      hoverlabel=dict(align="left"), bargap=0.35)
-    fig.update_yaxes(title=y_title, tickformat=".0%", rangemode="tozero", gridcolor=GRID)
-    return fig
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), showlegend=False, bargap=0.35, **CHART_LAYOUT)
+    fig.update_yaxes(title=y_title, tickformat=".0%", rangemode="tozero", gridcolor=GRID, zeroline=False)
+    fig.update_xaxes(linecolor=INK, showgrid=False)
+    return finish(fig)
 
 
 def _average_line(fig, average) -> None:
@@ -122,7 +139,7 @@ def _average_line(fig, average) -> None:
     No text on the line: it would sit on top of the bars, and the page says what the line means.
     """
     if average is not None:
-        fig.add_hline(y=average, line_dash="dash", line_color="#475569")
+        fig.add_hline(y=average, line_dash="dash", line_color=MUTED)
 
 
 def rate_bar(stats, column, x_title, average=None) -> go.Figure:
@@ -132,7 +149,7 @@ def rate_bar(stats, column, x_title, average=None) -> go.Figure:
     labels_on_bars = [("" if small else f"{rate:.0%}") for rate, small in zip(stats["rate"], stats["small"])]
     fig = px.bar(stats, x=column, y="rate", custom_data=["n", "terminated"], text=labels_on_bars)
     fig.update_traces(
-        marker_color=BLUE,
+        marker_color=BAR,
         marker_opacity=[0.35 if s else 1.0 for s in stats["small"]],
         textposition="outside", cliponaxis=False, textfont_size=13,
         hovertemplate="<b>%{x}</b><br>Stopped early: %{y:.1%}<br>"
@@ -149,7 +166,7 @@ def rate_over_time(df, average=None) -> go.Figure:
     stats = rate_by(df, "start_year").sort_values("start_year")
     fig = px.line(stats, x="start_year", y="rate", markers=True, custom_data=["n", "terminated"])
     fig.update_traces(
-        line=dict(color=BLUE, width=2), marker=dict(size=8),
+        line=dict(color=BAR, width=2), marker=dict(size=8),
         hovertemplate="<b>%{x}</b><br>Stopped early: %{y:.1%}<br>"
                       "%{customdata[1]:,} of %{customdata[0]:,} trials<extra></extra>",
     )
@@ -171,16 +188,16 @@ def conditions_bar(df, k=15, name_width=34) -> go.Figure:
                  custom_data=["condition", "n", "terminated"],
                  text=[f"{r:.0%} of {n:,}" for r, n in zip(stats["rate"], stats["n"])])
     fig.update_traces(
-        marker_color=BLUE, textposition="outside", cliponaxis=False,
+        marker_color=BAR, textposition="outside", cliponaxis=False,
         hovertemplate="<b>%{customdata[0]}</b><br>Stopped early: %{x:.1%}<br>"
                       "%{customdata[2]:,} of %{customdata[1]:,} trials<extra></extra>",
     )
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
-                      height=max(320, 30 * len(stats) + 70), bargap=0.3)
+                      height=max(320, 30 * len(stats) + 70), bargap=0.3, **CHART_LAYOUT)
     fig.update_xaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero", gridcolor=GRID,
-                     range=[0, stats["rate"].max() * 2.1])  # room for the label right of the longest bar
-    fig.update_yaxes(title=None, automargin=True)
-    return fig
+                     range=[0, stats["rate"].max() * 2.1], zeroline=False)  # room for the label right of the longest bar
+    fig.update_yaxes(title=None, automargin=True, linecolor=INK)
+    return finish(fig)
 
 
 def eligibility_stats(df) -> pd.DataFrame:
