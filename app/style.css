@@ -1,0 +1,294 @@
+/* Trial-Radar look. One idea: the app is a measuring instrument, so every screen is a reading on a tick scale.
+   Rules in short: ink and paper bands alternate; the pink accent marks only "this trial" and the one main action;
+   depth comes from band contrast, never from shadows; one corner scale (pill, 28, 14, 8); one spacing scale. */
+
+:root {
+  --ink: #0A1F1A; --ink-2: #123029; --paper: #EDEFE6; --paper-2: #F6F7F1; --line: #C8CCBE;
+  --ink-line: rgba(237, 239, 230, 0.18);
+  --field-line: #78857D; /* 3:1 against the paper, so input borders are visible */
+  --muted: #4B5A53; --muted-on-ink: #A9B8B0;
+  --accent: #FF3D8B; --accent-deep: #C80F5A; --accent-text: #9E0A4A;
+  --low: #1F6B52; --mid: #8A5A0B; --high: #A3282A;
+  --low-tint: #DCEBE2; --mid-tint: #F3E6C6; --high-tint: #F2D9D5;
+  --low-on-ink: #6FCBA5; --mid-on-ink: #E8B94A; --high-on-ink: #FF8A75;
+  --display: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+  --body: "IBM Plex Sans", sans-serif;
+  --r-pill: 999px; --r-card: 28px; --r-field: 14px; --r-sm: 8px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px; --s9: 112px;
+  --nav-h: 3.5rem;
+  --gutter: clamp(1.25rem, 5vw, 4rem);
+  --focus: var(--accent-deep);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* ---------- Page frame ---------- */
+html, body, .stApp { background: var(--paper); color: var(--ink); font-family: var(--body); }
+.stApp { overflow-x: clip; }
+[data-testid="stMain"] { overflow-x: clip; }
+[data-testid="stMainBlockContainer"] {
+  max-width: 1180px; padding: 0 var(--gutter) var(--s9) var(--gutter);
+}
+[data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] { gap: var(--s4); }
+p, li, label, [data-testid="stMarkdownContainer"] { font-family: var(--body); }
+p, li { line-height: 1.6; }
+a { color: var(--accent-text); text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+::selection { background: var(--accent); color: var(--ink); }
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { opacity: 1; color: var(--muted); font-size: 0.875rem; line-height: 1.5; }
+
+/* ---------- Frosted top navigation ---------- */
+[data-testid="stHeader"] {
+  height: var(--nav-h); background: rgba(10, 31, 26, 0.74);
+  backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
+  border-bottom: 1px solid var(--ink-line);
+}
+[data-testid="stToolbar"] { height: var(--nav-h); padding: 0 var(--gutter); color: var(--paper); }
+[data-testid="stToolbar"] > div:first-child > div:first-child:empty::before {
+  content: "Trial-Radar"; font-family: var(--display); font-weight: 700; font-size: 1.125rem; letter-spacing: -0.03em;
+  color: var(--paper); margin-right: var(--s6); white-space: nowrap;
+}
+[data-testid="stTopNavLink"] {
+  color: var(--muted-on-ink); font-size: 0.875rem; font-weight: 500; border-radius: var(--r-pill);
+  padding: 0.4rem 0.9rem; text-decoration: none;
+}
+[data-testid="stTopNavLink"] p, [data-testid="stTopNavLink"] span { color: inherit; font-size: inherit; }
+[data-testid="stTopNavLink"]:hover { color: var(--paper); background: rgba(237, 239, 230, 0.08); }
+[data-testid="stTopNavLink"][aria-current="page"] { color: var(--ink); background: var(--paper); }
+[data-testid="stToolbar"] button, [data-testid="stToolbar"] svg { color: var(--paper); }
+
+/* On a phone Streamlit folds the top navigation into a sidebar: same ink, same pills. */
+.stApp [data-testid="stExpandSidebarButton"], .stApp [data-testid="stExpandSidebarButton"] span,
+.stApp [data-testid="stSidebarCollapseButton"] button, .stApp [data-testid="stSidebarCollapseButton"] span { color: var(--paper) !important; }
+[data-testid="stToolbar"]:has([data-testid="stExpandSidebarButton"])::after {
+  content: "Trial-Radar"; position: absolute; left: 4.5rem; top: 50%; transform: translateY(-50%);
+  font-family: var(--display); font-weight: 700; font-size: 1.0625rem; letter-spacing: -0.03em; color: var(--paper);
+}
+[data-testid="stSidebar"] { background: var(--ink); border-right: 1px solid var(--ink-line); }
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"] { border-radius: var(--r-pill); color: var(--muted-on-ink); }
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"] span, [data-testid="stSidebar"] [data-testid="stSidebarNavLink"] p { color: inherit; font-weight: 500; }
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"][aria-current="page"] { background: var(--paper); color: var(--ink); }
+
+/* ---------- Ink surfaces: grain, faint radar rings, a soft green glow, a ruler along the lower edge ---------- */
+.st-key-band_hero, [class*="st-key-band_ink"], .page-head {
+  position: relative; background-color: var(--ink); color: var(--paper);
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"),
+    repeating-radial-gradient(circle at 92% -12%, transparent 0 71px, rgba(237, 239, 230, 0.055) 71px 72px),
+    radial-gradient(60% 100% at 92% -10%, rgba(34, 104, 82, 0.5), transparent 70%);
+}
+.st-key-band_hero::after, [class*="st-key-band_ink"]::after, .page-head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px; pointer-events: none; opacity: 0.4;
+  background-image:
+    repeating-linear-gradient(90deg, var(--paper) 0 1px, transparent 1px 60px),
+    repeating-linear-gradient(90deg, var(--paper) 0 1px, transparent 1px 12px);
+  background-size: 100% 14px, 100% 7px; background-repeat: no-repeat; background-position: left bottom;
+}
+.st-key-band_hero p, [class*="st-key-band_ink"] p, .page-head p { color: inherit; }
+
+/* ---------- Full-width bands (they escape the content column) ---------- */
+.stApp .st-key-band_hero, .stApp [class*="st-key-band_ink"], .stApp [class*="st-key-band_paper"] {
+  margin-inline: calc(50% - 50vw); padding-inline: calc(50vw - 50%);
+  width: 100vw; max-width: none; box-sizing: border-box; gap: var(--s5);
+}
+.st-key-band_hero > div, [class*="st-key-band_ink"] > div, [class*="st-key-band_paper"] > div { max-width: 1180px; }
+.st-key-band_hero { padding-top: calc(var(--nav-h) + var(--s7)); padding-bottom: var(--s9); }
+[class*="st-key-band_ink"], [class*="st-key-band_paper"] { padding-block: clamp(var(--s8), 11vw, 9rem); }
+[class*="st-key-band_paper"] { background: var(--paper); }
+[data-testid="stLayoutWrapper"]:has(> .st-key-band_hero, > [class*="st-key-band_"]) { width: 100%; }
+[data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"]:has([class*="st-key-band_"]) { gap: 0; }
+
+/* ---------- Hero ---------- */
+.stApp .hero-title {
+  font-family: var(--display); font-weight: 300; font-size: clamp(2rem, 4.6vw, 4rem); line-height: 1.02;
+  letter-spacing: -0.04em; max-width: 17ch; margin: 0; padding: 0; color: var(--paper);
+}
+.stApp .hero-sub { font-size: 1.0625rem; color: var(--muted-on-ink) !important; margin: var(--s4) 0 0; }
+.stApp .hero-number {
+  font-family: var(--display); font-weight: 200; font-size: clamp(6rem, 22vw, 19rem); line-height: 0.82;
+  letter-spacing: -0.035em; word-spacing: 0; font-variant-numeric: tabular-nums; margin: var(--s6) 0 0 -0.04em; color: var(--paper);
+  font-variation-settings: "wdth" 100;
+}
+.stApp .hero-lead { font-size: clamp(1.125rem, 2vw, 1.5rem); max-width: 30ch; line-height: 1.4; margin: var(--s4) 0 var(--s5); }
+.stApp .ticks { display: grid; grid-template-columns: repeat(100, 1fr); align-items: end; height: 4.5rem; margin-top: var(--s4); }
+.stApp .ticks i { justify-self: center; width: 2px; height: 34%; background: rgba(237, 239, 230, 0.55); transform-origin: bottom; }
+.stApp .ticks i:nth-child(10n + 1) { height: 56%; background: rgba(237, 239, 230, 0.8); }
+.stApp .ticks i.on { height: 100%; background: var(--accent); }
+.stApp .ticks-caption { font-size: 0.875rem; color: var(--muted-on-ink) !important; margin: var(--s3) 0 0; }
+
+.stApp .st-key-band_hero [data-testid="stPageLink"] { margin-top: var(--s5); }
+
+/* ---------- Landing bands ---------- */
+.stApp .band-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--s7); }
+.stApp .band-title {
+  font-family: var(--display); font-weight: 200; font-size: clamp(2.75rem, 7.4vw, 6.75rem); line-height: 0.96;
+  letter-spacing: -0.045em; max-width: 12ch; margin: 0; padding: 0; border: 0; color: inherit;
+}
+.stApp .band-title.small { font-size: clamp(1.75rem, 3.4vw, 2.75rem); font-weight: 300; letter-spacing: -0.03em; max-width: none; }
+.stApp .band-sentence { font-size: clamp(1.0625rem, 1.5vw, 1.3125rem); max-width: 34ch; line-height: 1.5; margin: var(--s5) 0 0; }
+.stApp .band-figure { text-align: right; }
+.stApp .band-number {
+  font-family: var(--display); font-weight: 200; font-size: clamp(4.5rem, 12vw, 11rem); line-height: 0.85;
+  letter-spacing: -0.065em; font-variant-numeric: tabular-nums; margin: 0;
+}
+.stApp .band-number-label { font-size: 0.875rem; max-width: 20ch; margin: var(--s3) 0 0 auto; color: var(--muted); }
+[class*="st-key-band_ink"] .band-number-label { color: var(--muted-on-ink); }
+.stApp .legend { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.stApp .note { max-width: 46rem; font-size: 1.0625rem; line-height: 1.6; color: var(--muted); }
+
+/* ---------- Page header band (every page except Home) ---------- */
+.stApp .page-head {
+  margin-inline: calc(50% - 50vw); width: 100vw; box-sizing: border-box; padding: calc(var(--nav-h) + var(--s8)) calc(50vw - 50%) var(--s8);
+  margin-bottom: var(--s8);
+}
+.stApp .page-head h1 {
+  font-family: var(--display); font-weight: 200; font-size: clamp(2.75rem, 7.4vw, 6.5rem); line-height: 0.95;
+  letter-spacing: -0.05em; margin: 0; padding: 0; color: var(--paper); max-width: 13ch;
+}
+.stApp .page-sub { font-size: clamp(1.0625rem, 1.6vw, 1.3125rem); max-width: 44ch; line-height: 1.5; margin: var(--s5) 0 0; color: var(--muted-on-ink) !important; }
+[data-testid="stElementContainer"]:has(> [data-testid="stMarkdown"] .page-head) { width: 100%; }
+
+/* ---------- Section headings inside pages ---------- */
+.stApp h2, .stApp h3 {
+  font-family: var(--display); font-weight: 300; font-size: clamp(1.875rem, 3.8vw, 3.25rem); line-height: 1.02;
+  letter-spacing: -0.04em; color: var(--ink); border: 0; padding: 0; margin: var(--s8) 0 var(--s3);
+}
+.stApp h4, .stApp h5, .stApp h6 {
+  font-family: var(--display); font-weight: 600; font-size: 1.25rem; letter-spacing: -0.02em; color: var(--ink);
+  text-transform: none; margin: 0 0 var(--s3);
+}
+.stApp .band-title, .stApp .page-head h1, .stApp .hero-title { margin: 0; }
+
+/* ---------- Buttons and links: pills ---------- */
+.stApp [data-testid="stBaseButton-secondary"], .stApp [data-testid="stBaseButton-primary"],
+.stApp [data-testid="stPageLink-NavLink"], .stApp [data-testid="stBaseButton-pills"] {
+  border-radius: var(--r-pill); min-height: 3rem; padding: 0 1.75rem; font-family: var(--body); font-weight: 600;
+  font-size: 0.9375rem; letter-spacing: 0; box-shadow: none; text-decoration: none;
+}
+.stApp [data-testid="stBaseButton-secondary"] { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+.stApp [data-testid="stBaseButton-secondary"]:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.stApp [data-testid="stBaseButton-primary"] { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
+.stApp [data-testid="stBaseButton-primary"]:hover { background: var(--ink-2); border-color: var(--ink-2); }
+.stApp [data-testid="stBaseButton-secondary"] p, .stApp [data-testid="stBaseButton-primary"] p { color: inherit; font-weight: inherit; }
+.stApp [data-testid="stBaseButton-secondary"]:disabled { opacity: 0.4; }
+/* Other page links are outlined pills. */
+.stApp [data-testid="stMain"] [data-testid="stPageLink-NavLink"] { background: transparent; border: 1px solid var(--ink); color: var(--ink); }
+/* Landing actions: ink pill on paper, paper pill on ink, and the single pink pill in the hero. */
+.stApp [class*="st-key-band_paper"] [data-testid="stPageLink-NavLink"] { background: var(--ink); color: var(--paper); }
+.stApp [class*="st-key-band_ink"] [data-testid="stPageLink-NavLink"] { background: var(--paper); color: var(--ink); --focus: var(--accent); }
+.stApp .st-key-band_hero [data-testid="stPageLink-NavLink"] { background: var(--accent); color: var(--ink); --focus: var(--accent); }
+.stApp [data-testid="stPageLink-NavLink"] p, .stApp [data-testid="stPageLink-NavLink"] span { color: inherit; font-weight: 600; }
+.stApp [data-testid="stPageLink-NavLink"] { width: fit-content; }
+.stApp [data-testid="stPageLink-NavLink"]:hover { filter: brightness(1.08); }
+
+/* ---------- Inputs ---------- */
+.stApp [data-baseweb="input"], .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="textarea"] {
+  background: var(--paper-2); border: 1px solid var(--field-line); border-radius: var(--r-field); box-shadow: none;
+}
+.stApp input::placeholder, .stApp textarea::placeholder { color: var(--muted); opacity: 1; }
+.stApp [data-baseweb="base-input"], .stApp [data-baseweb="input"] input { background: transparent; font-family: var(--body); color: var(--ink); }
+.stApp [data-baseweb="input"]:focus-within, .stApp [data-baseweb="select"] > div:focus-within { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.stApp [data-testid="stWidgetLabel"] p, .stApp label p { font-size: 0.875rem; font-weight: 500; color: var(--ink); }
+.stApp [data-baseweb="tag"] { border-radius: var(--r-pill); background: var(--ink); }
+.stApp [data-baseweb="tag"] span { color: var(--paper); }
+.stApp [data-testid="stNumberInput"] button { border-radius: 0; background: transparent; }
+.stApp [data-testid="stCheckbox"] label span[data-baseweb="checkbox"] > div:first-child { border-radius: var(--r-sm); }
+.stApp [data-testid="stSlider"] [role="slider"] { background: var(--ink); }
+.stApp [data-testid="stSliderThumbValue"] { background: transparent; color: var(--ink); font-weight: 600; }
+
+/* ---------- Chips ---------- */
+.stApp .chip {
+  display: inline-block; padding: 0.2rem 0.75rem; border-radius: var(--r-pill); font-size: 0.8125rem; font-weight: 500;
+  line-height: 1.4; margin: 0 var(--s2) var(--s2) 0; color: var(--muted); border: 1px solid var(--line); background: transparent;
+}
+.stApp .chip.green { color: var(--low); border-color: var(--low); background: var(--low-tint); }
+.stApp .chip.yellow { color: var(--mid); border-color: var(--mid); background: var(--mid-tint); }
+.stApp .chip.red { color: var(--high); border-color: var(--high); background: var(--high-tint); }
+
+/* ---------- Cards and panels ---------- */
+[class*="st-key-card"] {
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s6); box-shadow: none;
+}
+/* Form panels are not boxes: a hairline and a large light title, so the page does not turn into a stack of cards. */
+[class*="st-key-panel"] { background: transparent; border: 0; border-top: 1px solid var(--ink); border-radius: 0; padding: var(--s5) 0 var(--s6); }
+[class*="st-key-card_home"]:hover { border-color: var(--ink); }
+/* Search results are a ruled list, not a stack of boxes. */
+[class*="st-key-card_result"] { background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: var(--s5) 0 var(--s4); }
+[class*="st-key-card_result"] .card-title { font-size: clamp(1.375rem, 2.4vw, 1.875rem); }
+.stApp [data-testid="stTextInput"] input { min-height: 3rem; font-size: 1.0625rem; }
+/* The "In short" box on the model page: a pink rule on the left, no box. */
+.stApp .st-key-short_box { border: 0; border-left: 3px solid var(--accent-deep); border-radius: 0; background: transparent; padding: var(--s2) 0 var(--s2) var(--s5); }
+.stApp .st-key-short_box ul { max-width: 62ch; }
+.stApp .card-title { font-family: var(--display); font-weight: 500; font-size: 1.5rem; line-height: 1.15; letter-spacing: -0.025em; margin-bottom: var(--s2); }
+.stApp .card-sub { color: var(--muted); font-size: 0.9375rem; margin: var(--s2) 0 var(--s3); line-height: 1.5; }
+[class*="st-key-panel"] [data-testid="stColumn"] { min-width: 13.5rem; }
+.stApp [class*="st-key-panel"] h5 { font-weight: 300; font-size: 2rem; letter-spacing: -0.035em; margin-bottom: var(--s5); }
+[data-testid="stExpander"] details { border: 1px solid var(--line); border-radius: var(--r-field); background: transparent; }
+[data-testid="stExpander"] summary { font-weight: 600; }
+
+/* ---------- Metric tiles: no box, a light numeral under a hairline ---------- */
+[data-testid="stMetric"] { background: transparent; border: 0; border-top: 1px solid var(--ink); border-radius: 0; padding: var(--s4) 0 0; }
+[data-testid="stMetricValue"] {
+  font-family: var(--display); font-weight: 200; font-size: clamp(3rem, 6.4vw, 5.5rem); line-height: 1;
+  letter-spacing: -0.05em; font-variant-numeric: tabular-nums;
+}
+[data-testid="stMetricLabel"] p { font-size: 0.9375rem; font-weight: 500; color: var(--muted); white-space: normal; }
+[data-testid="stMetricDelta"] { font-size: 0.875rem; font-weight: 500; }
+
+/* ---------- Tabs, tables, alerts, charts ---------- */
+button[data-baseweb="tab"] { font-family: var(--display); font-weight: 400; font-size: 1.25rem; letter-spacing: -0.02em; padding: var(--s3) var(--s4) var(--s3) 0; margin-right: var(--s5); }
+button[data-baseweb="tab"] p { font-family: var(--display); font-weight: 400; font-size: 1.25rem; letter-spacing: -0.02em; }
+button[data-baseweb="tab"][aria-selected="true"] p { font-weight: 700; }
+[data-baseweb="tab-highlight"] { background: var(--ink); height: 2px; }
+[data-baseweb="tab-border"] { background: var(--line); }
+[data-testid="stTable"] table { border-collapse: collapse; width: 100%; }
+[data-testid="stTable"] thead th { font-weight: 600; font-size: 0.875rem; color: var(--muted); text-align: left; border-bottom: 1px solid var(--ink); }
+[data-testid="stTable"] tbody th, [data-testid="stTable"] td { border-bottom: 1px solid var(--line); font-weight: 400; text-align: left; font-variant-numeric: tabular-nums; }
+[data-testid="stAlert"] { border-radius: var(--r-field); border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); }
+[data-testid="stPlotlyChart"] { margin-top: var(--s3); }
+
+/* ---------- Risk display ---------- */
+.stApp .risk-card { background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s6) var(--s7); margin: var(--s3) 0 var(--s5); }
+.stApp .risk-card .num {
+  white-space: nowrap; font-family: var(--display); font-weight: 200; font-size: clamp(4rem, 10vw, 8.5rem); line-height: 0.9;
+  letter-spacing: -0.055em; font-variant-numeric: tabular-nums;
+}
+.stApp .risk-card .lab { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s4); font-weight: 600; font-size: 1rem; }
+.stApp .risk-card .lab::before { content: ""; width: 0.75rem; height: 0.75rem; border-radius: 3px; background: currentColor; flex: none; }
+.stApp .risk-card .sub { margin-top: var(--s1); font-size: 0.9375rem; color: var(--muted); }
+.stApp .risk-card.green .lab { color: var(--low); } .risk-card.yellow .lab { color: var(--mid); } .risk-card.red .lab { color: var(--high); }
+.stApp .risk-card.gray .lab { color: var(--muted); }
+/* Compact strip: an ink pill that stays under the navigation while the form below is edited. */
+.stApp .risk-card.compact {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s6); padding: var(--s3) var(--s6);
+  margin: 0 0 var(--s4); background: var(--ink); color: var(--paper); border-color: var(--ink); border-radius: var(--r-card);
+}
+.stApp .risk-card.compact .num { font-size: clamp(2.25rem, 5vw, 3rem); font-weight: 300; }
+.stApp .risk-card.compact .lab, .risk-card.compact .sub { margin: 0; }
+.stApp .risk-card.compact .sub { color: var(--muted-on-ink); }
+.stApp .risk-card.compact.green .lab { color: var(--low-on-ink); } .risk-card.compact.yellow .lab { color: var(--mid-on-ink); }
+.stApp .risk-card.compact.red .lab { color: var(--high-on-ink); } .risk-card.compact.gray .lab { color: var(--muted-on-ink); }
+[data-testid="stLayoutWrapper"]:has(> [class*="st-key-sticky"]) { position: sticky; top: var(--nav-h); z-index: 50; padding: var(--s3) 0 var(--s2); background: linear-gradient(var(--paper) 75%, transparent); }
+.stApp .risk-card .meter { display: grid; grid-template-columns: repeat(100, 1fr); align-items: end; height: 1.75rem; flex: 1 1 12rem; min-width: 12rem; }
+.stApp .risk-card .meter i { justify-self: center; width: 1.5px; height: 40%; background: rgba(237, 239, 230, 0.4); }
+.stApp .risk-card .meter i.me { width: 4px; height: 100%; background: var(--accent); border-radius: 2px; }
+
+/* ---------- Motion: one page-load reveal, off for people who asked for less ---------- */
+@keyframes rise { from { opacity: 0; transform: translateY(1.25rem); } }
+@keyframes tick-in { from { transform: scaleY(0); } }
+.reveal { animation: rise 0.9s var(--ease) both; animation-delay: calc(var(--d, 0) * 120ms); }
+.stApp .ticks i { animation: tick-in 0.5s var(--ease) both; animation-delay: calc(0.5s + var(--i) * 9ms); }
+@media (prefers-reduced-motion: reduce) { .reveal, .ticks i { animation: none; } }
+
+/* ---------- Phones ---------- */
+@media (max-width: 640px) {
+  button[data-baseweb="tab"] p { font-size: 1.0625rem; }
+  button[data-baseweb="tab"] { margin-right: var(--s3); }
+  .stApp .band-copy { grid-template-columns: minmax(0, 1fr); gap: var(--s6); }
+  .stApp .band-figure { text-align: left; }
+  .stApp .band-number-label { margin-left: 0; }
+  .stApp .ticks { height: 3.5rem; }
+  .stApp .ticks i { width: 1.5px; }
+  .stApp .risk-card { padding: var(--s5); }
+  .stApp .risk-card.compact { padding: var(--s3) var(--s5); }
+  [data-testid="stToolbar"] > div:first-child > div:first-child:empty::before { margin-right: var(--s3); font-size: 1rem; }
+}
