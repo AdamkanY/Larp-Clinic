@@ -3,7 +3,7 @@ import requests
 import streamlit as st
 
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
-ONGOING = ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING"]
+ONGOING = ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING", "ENROLLING_BY_INVITATION"]
 PHASES = ["EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4", "NA"]
 SPONSOR_CLASSES = ["INDUSTRY", "NIH", "FED", "OTHER_GOV", "INDIV", "NETWORK", "OTHER"]
 TIMEOUT = 20
@@ -18,7 +18,7 @@ def _get_json(url, params=None):
 
 
 def search_trials(query="", status=None, page_size=20, phase=None, condition="", sponsor_class=None):
-    """Search ongoing trials; returns {"studies": [...], "total": int, "error": str | None}.
+    """Search ongoing interventional trials; returns {"studies": [...], "total": int, "error": str | None}.
 
     Never raises: network problems and empty results come back as a value so the page can show a message.
     Successful responses are cached for an hour, failures are not.
@@ -33,14 +33,14 @@ def search_trials(query="", status=None, page_size=20, phase=None, condition="",
         params["query.term"] = query
     if condition:
         params["query.cond"] = condition
-    # Phase and sponsor class have no plain filter parameter, so they go into the advanced expression.
-    advanced = []
+    # Only interventional studies: the model learned from those, and its score means nothing for observational ones.
+    # Phase and sponsor class have no plain filter parameter either, so they join the advanced expression.
+    advanced = ["AREA[StudyType]INTERVENTIONAL"]
     if phase:
         advanced.append(f"AREA[Phase]{phase}")
     if sponsor_class:
         advanced.append(f"AREA[LeadSponsorClass]{sponsor_class}")
-    if advanced:
-        params["filter.advanced"] = " AND ".join(advanced)
+    params["filter.advanced"] = " AND ".join(advanced)
     try:
         data = _get_json(BASE_URL, params)
     except (requests.RequestException, ValueError) as exc:
@@ -63,8 +63,8 @@ def summarize(study):
     return {
         "NCT ID": ident.get("nctId", ""),
         "Title": ident.get("briefTitle", ""),
-        # The API uses "NA" for "not applicable"; show one spelling for both that and a missing phase.
-        "Phase": ", ".join(p.get("designModule", {}).get("phases", [])).replace("NA", "N/A") or "N/A",
+        # Raw API codes joined by commas (for example "PHASE1, PHASE2"); a missing phase is "NA", like the API's own.
+        "Phase": ", ".join(p.get("designModule", {}).get("phases", [])) or "NA",
         "Status": p.get("statusModule", {}).get("overallStatus", ""),
         "Sponsor": p.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("name", ""),
         "Sponsor type": p.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("class", ""),
