@@ -6,9 +6,12 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.viz import CHART_LAYOUT, INK, finish
+
 REFERENCE = Path(__file__).resolve().parents[1] / "models" / "score_reference.npy"
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
-GREEN, YELLOW, RED = "#9be7a1", "#ffe08a", "#f5a3a3"
+GREEN, YELLOW, RED = "#C5DDD0", "#EBDDAE", "#E3B7B0"  # pale bands; ink text and the pink marker stay readable on them
+MARKER = "#C80F5A"
 
 
 @st.cache_data(show_spinner=False)
@@ -85,8 +88,12 @@ def risk_card(risk, delta=None, compact=False):
     sub = f"Riskier than {pct:.0f}% of historical trials (started 2008-2016)" if pct is not None else ""
     change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>' if delta is not None else ""
     size = " compact" if compact else ""
+    meter = ""
+    if compact and pct is not None:  # the strip carries a small instrument scale: one pink tick = this trial
+        ticks = "".join(f'<i class="{"me" if i == min(int(pct), 99) else ""}"></i>' for i in range(100))
+        meter = f'<div class="meter" aria-hidden="true">{ticks}</div>'
     return (f'<div class="risk-card {tone}{size}"><div class="num">{risk:.1%}</div><div class="lab">{label}</div>'
-            f'<div class="sub">{sub}</div>{change}</div>')
+            f'<div class="sub">{sub}</div>{change}{meter}</div>')
 
 
 def risk_bar(risk):
@@ -102,17 +109,20 @@ def risk_bar(risk):
                                      (90, 100, RED, "")]:  # too narrow for a label
         fig.add_trace(go.Bar(x=[end - start], y=[""], base=[start], orientation="h", marker_color=colour,
                              width=0.7, text=name, textposition="inside", insidetextanchor="middle",
-                             textfont={"size": 13, "color": "#111827"}, hoverinfo="skip"))
-    # An arrow above the bar instead of a line through it, so it never covers the segment labels.
-    fig.add_annotation(x=pct, y=0.4, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=True, arrowhead=2,
-                       arrowwidth=3, arrowcolor="#222", ax=-60 if pct > 80 else (60 if pct < 20 else 0), ay=-38, bgcolor="white", bordercolor="#222", borderpad=3)
+                             textfont={"size": 13, "color": INK}, hoverinfo="skip"))
+    # One pink line through the bar marks this trial; its label sits above the bar so it never covers a segment label.
+    fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.45, y1=0.45, line={"color": MARKER, "width": 4})
+    anchor = "right" if pct > 80 else ("left" if pct < 20 else "center")
+    fig.add_annotation(x=pct, y=0.45, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=False, yanchor="bottom",
+                       xanchor=anchor, yshift=6, bgcolor=INK, font={"color": "#EDEFE6", "size": 13}, borderpad=5)
     fig.update_layout(
-        barmode="overlay", showlegend=False, height=170, margin={"l": 10, "r": 10, "t": 55, "b": 50},
+        barmode="overlay", showlegend=False, height=190, margin={"l": 10, "r": 10, "t": 55, "b": 60},
         xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
-               "title": "Past trials that were less risky"},
-        yaxis={"visible": False, "range": [-0.5, 0.5]},  # fixed, so the arrow does not stretch the axis
+               "title": "Past trials that were less risky", "showgrid": False, "linecolor": INK},
+        yaxis={"visible": False, "range": [-0.5, 0.5]},  # fixed, so the label does not stretch the axis
+        **CHART_LAYOUT,
     )
-    return fig
+    return finish(fig)
 
 
 def bar_caption():
