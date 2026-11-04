@@ -101,7 +101,7 @@ def detail_view(nct_id):
     row = summarize(study)
     p = study.get("protocolSection", {})
     design = p.get("designModule", {})
-    st.markdown(f'<div class="card-title" style="font-size:1.5rem">{esc(row["Title"])}</div>'
+    st.markdown(f'<div class="card-title" style="font-size:clamp(1.75rem,3.2vw,2.75rem);font-weight:300;letter-spacing:-0.035em">{esc(row["Title"])}</div>'
                 f'{chips_for(row)}<div class="card-sub">{esc(row["Sponsor"])} · '
                 f'<a href="https://clinicaltrials.gov/study/{esc(nct_id)}" target="_blank">{esc(nct_id)} on ClinicalTrials.gov</a></div>',
                 unsafe_allow_html=True)
