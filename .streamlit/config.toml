@@ -1,11 +1,41 @@
-# One light theme for every page: a single blue accent for actions, dark text for contrast.
+# One light theme for every page: cool bone paper, deep green-black ink, rounded pills.
+# The pink accent is not a theme colour: app/style.css uses it only for "this trial" and the main action.
+[server]
+# Serves app/static/ (the font files) at /app/static/..., next to the entry script app/Home.py.
+enableStaticServing = true
+
+# Fonts are self-hosted (OFL licence): no request goes to a third party.
+[[theme.fontFaces]]
+family = "Bricolage Grotesque"
+url = "app/static/fonts/BricolageGrotesque-Variable.woff2"
+weight = "200 800"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-Variable.woff2"
+weight = "100 700"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-Italic.woff2"
+weight = 400
+style = "italic"
+
 [theme]
 base = "light"
-primaryColor = "#1d4ed8"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f3f6fb"
-textColor = "#111827"
+primaryColor = "#0A1F1A"
+backgroundColor = "#EDEFE6"
+secondaryBackgroundColor = "#F6F7F1"
+textColor = "#0A1F1A"
+borderColor = "#C8CCBE"
+linkColor = "#9E0A4A"
+font = "IBM Plex Sans"
+headingFont = "Bricolage Grotesque"
 baseRadius = "large"
+buttonRadius = "full"
+showWidgetBorder = true
 
 [client]
 # Hides the "Deploy" button; viewers only need the page.
