@@ -28,7 +28,7 @@ deployed on Streamlit Community Cloud.
 | `app/` | Streamlit app: entry point `Home.py` plus `pages/`. | You change anything the user sees. |
 | `.streamlit/` | Streamlit settings: `config.toml` holds the one light theme (single blue accent, dark text) and hides the Deploy button. | You change colours, corner radius or toolbar. |
 | `models/` | Saved models (`.joblib`) and their metrics. | You save or load a trained model. |
-| `tests/` | Offline tests on synthetic records (no network). | You change `src/features.py`. |
+| `tests/` | Offline tests: features (synthetic records), app helpers and page smoke tests (no network). | You change `src/` or `app/`. |
 | `notebooks/` | Exploration only. Nothing in `src/` or `app/` imports from here. | You explore data or prototype. |
 
 Every folder has its own `CLAUDE.md` with a file table. Read it before editing in that folder.
@@ -45,7 +45,7 @@ Every folder has its own `CLAUDE.md` with a file table. Read it before editing i
    - `build_features` reads only an explicit list of API fields (see `data/raw/CLAUDE.md`); keep it that way.
 3. **Split by start date**: keep trials starting 2008-01-01 to 2019-12-31. Train = start 2008-2016, test =
    start 2017-2019. Drop start dates >= 2020 and invalid ones. Never a random split.
-4. **Metrics:** report ROC-AUC and PR-AUC, not accuracy. Classes are imbalanced (~15% terminated).
+4. **Metrics:** report ROC-AUC and PR-AUC, not accuracy. Classes are imbalanced (~11% terminated).
 5. **One feature function:** the app and the training code must use the same feature-building function
    (`build_features` in `src/features.py`), which takes one API study record.
 6. **Raw data is not committed.** `data/raw/` is git-ignored; regenerate it with `python src/fetch_data.py`,
@@ -55,11 +55,11 @@ Every folder has its own `CLAUDE.md` with a file table. Read it before editing i
 
 | Date | Milestone | Status |
 |---|---|---|
-| Nov 3 | Repo + data | Done (repo set up; API data pipeline in PR `data/api-pipeline`) |
-| Nov 10 | EDA + app search | Not started |
-| Nov 17 | Baseline model | Not started |
-| Nov 24 | End-to-end app | Not started |
-| Dec 1 | Game, what-if sliders, dashboard, deployed | Not started |
+| Nov 3 | Repo + data | Done |
+| Nov 10 | EDA + app search | Done (Explore dashboard, Find a trial) |
+| Nov 17 | Baseline model | Done (logistic regression baseline and calibrated GBM in `models/`) |
+| Nov 24 | End-to-end app | Done (search with risk, own-trial checker, model explanation) |
+| Dec 1 | Game, what-if sliders, dashboard, deployed | In progress: what-if table and dashboard done; game not started; Cloud deployment tested once by hand |
 | Dec 6 | Feature freeze | Not started |
 | Dec 11 | Final + video | Not started |
 
