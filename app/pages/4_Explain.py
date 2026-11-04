@@ -13,7 +13,8 @@ from ui import page_header  # noqa: E402
 MODELS = Path(__file__).resolve().parents[2] / "models"
 TOP_FEATURES = 12
 
-# Plain-English names for the model's input columns; anything missing falls back to a cleaned-up column name.
+# Plain-English names for every model input column (src.features.FEATURE_COLUMNS); anything missing falls back
+# to a cleaned-up column name.
 FRIENDLY = {
     "healthy_volunteers": "Accepts healthy volunteers",
     "eligibility_text_len": "Length of eligibility criteria",
@@ -35,6 +36,25 @@ FRIENDLY = {
     "has_max_age": "Has a maximum age",
     "has_collaborators": "Has collaborators",
     "n_arms": "Number of arms",
+    "sex": "Sex eligible",
+    "intervention_biological": "Tests a biological (e.g. vaccine)",
+    "intervention_procedure": "Tests a procedure",
+    "intervention_radiation": "Tests radiation",
+    "intervention_genetic": "Tests a genetic intervention",
+    "intervention_dietary_supplement": "Tests a dietary supplement",
+    "intervention_combination_product": "Tests a combination product",
+    "intervention_diagnostic_test": "Tests a diagnostic test",
+    "intervention_other": "Other intervention type",
+    "n_intervention_types": "Number of intervention types",
+    "cond_oncology": "Condition: cancer",
+    "cond_cardio": "Condition: heart and blood vessels",
+    "cond_neuro": "Condition: brain and nerves",
+    "cond_infectious": "Condition: infection",
+    "cond_metabolic": "Condition: diabetes and metabolism",
+    "cond_psych": "Condition: mental health",
+    "cond_respiratory": "Condition: lungs and breathing",
+    "cond_healthy": "Condition: healthy volunteers",
+    "n_condition_categories": "Number of condition areas",
 }
 
 

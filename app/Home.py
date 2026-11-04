@@ -13,7 +13,7 @@ hero("📡 Trial-Radar", "How likely is a clinical trial to be stopped early? Es
 CARDS = [
     ("🔎", "Find a trial", "Search recruiting trials on ClinicalTrials.gov and see each one's risk.", "pages/1_Search.py", "Search trials"),
     ("🧪", "Check your own trial", "Describe a design and watch the risk change as you adjust it.", "pages/5_Check_Your_Trial.py", "Open the checker"),
-    ("🧠", "How the model works", "How accurate it is, what matters most and where it falls short.", "pages/2_Explain.py", "Read the details"),
+    ("🧠", "How the model works", "How accurate it is, what matters most and where it falls short.", "pages/4_Explain.py", "Read the details"),
     ("📊", "Explore the data", "Charts of the 160,000 finished trials the model learned from.", "pages/2_Explore.py", "Open the charts"),
 ]
 for start in (0, 2):

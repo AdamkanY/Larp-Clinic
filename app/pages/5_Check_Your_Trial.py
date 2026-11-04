@@ -9,10 +9,19 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
 from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card  # noqa: E402
-from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
-from ui import page_header  # noqa: E402
+from src.features import (CONDITION_CATEGORIES, CONDITION_FLAGS,  # noqa: E402
+                          FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL,
+                          condition_features)
+from ui import chip, page_header  # noqa: E402
 
 UNSET = "Not specified"
+DEFAULT_CONDITIONS = "Type 2 Diabetes"
+# Plain names for the condition areas that src.features.condition_features recognises.
+AREA_NAMES = {
+    "oncology": "Cancer", "cardio": "Heart and blood vessels", "neuro": "Brain and nerves",
+    "infectious": "Infection", "metabolic": "Diabetes and metabolism", "psych": "Mental health",
+    "respiratory": "Lungs and breathing", "healthy": "Healthy volunteers",
+}
 
 # Allowed values per categorical feature, as the ClinicalTrials.gov API spells them.
 CHOICES = {
@@ -56,12 +65,43 @@ def pick(label, key, help_text=None):
     return None if choice == UNSET else choice
 
 
+def parse_conditions(text):
+    """Split the conditions box on semicolons; commas stay, since names like 'Carcinoma, Hepatocellular' use them."""
+    return [part.strip() for part in (text or "").split(";") if part.strip()]
+
+
+def conditions_input(row):
+    """Conditions box: fills n_conditions and the condition-area features (via condition_features) and shows the areas."""
+    text = st.text_input(
+        "Conditions studied", DEFAULT_CONDITIONS, key="conditions",
+        help="Separate several conditions with semicolons, for example 'Breast Cancer; Depression'. "
+             "They are grouped into broad areas such as cancer or mental health, as for registered trials.")
+    conditions = parse_conditions(text)
+    row["n_conditions"] = len(conditions)
+    # The same keyword rules build_features applies to a registered trial's condition list.
+    row.update(condition_features(conditions))
+    areas = [AREA_NAMES[name] for name in CONDITION_CATEGORIES if row[f"cond_{name}"]]
+    if not conditions:
+        chips = chip("No condition entered", "gray")
+    else:
+        chips = "".join(chip(area) for area in areas) or chip("No specific area recognised", "gray")
+    st.markdown(f"Recognised areas: {chips}", unsafe_allow_html=True)
+    model = get_model()
+    if model is not None:
+        from src.predict import model_columns
+        # The app model is v1, which only counts the conditions; the note goes away for a model that uses the areas.
+        if not set(CONDITION_FLAGS) & set(model_columns(model)):
+            st.caption("For information only: the current model uses how many conditions you enter, not their areas.")
+
+
 def feature_row():
     """Render the form and return the feature dict in the exact shape src.features.build_features produces."""
+    row = {}
+    conditions_input(row)
     c1, c2, c3 = st.columns(3)
     with c1:
         st.subheader("Design")
-        row = {"phase": pick("Phase", "phase")}
+        row["phase"] = pick("Phase", "phase")
         row["allocation"] = pick("Allocation", "allocation")
         row["intervention_model"] = pick("Intervention model", "intervention_model")
         row["primary_purpose"] = pick("Primary purpose", "primary_purpose")
@@ -75,7 +115,6 @@ def feature_row():
         st.subheader("Outcomes")
         row["n_primary_outcomes"] = st.number_input("Primary outcomes", 0, 20, 1)
         row["n_secondary_outcomes"] = st.number_input("Secondary outcomes", 0, 50, 3)
-        row["n_conditions"] = st.number_input("Conditions studied", 0, 20, 1)
     with c3:
         st.subheader("Participants")
         row["sex"] = pick("Sex eligible", "sex")
@@ -93,6 +132,7 @@ def feature_row():
         types = st.multiselect("Intervention types", INTERVENTION_TYPES, default=["DRUG"])
     for kind in INTERVENTION_TYPES:
         row[f"intervention_{kind.lower()}"] = int(kind in types)
+    row["n_intervention_types"] = len(types)
     missing = [c for c in FEATURE_COLUMNS if c not in row]
     assert not missing, f"form does not fill: {missing}"
     return row
@@ -118,6 +158,7 @@ def lowering_changes(row, score, top=5):
 st.set_page_config(page_title="Check your trial - Trial-Radar", page_icon="🧪", layout="wide")
 page_header("🧪 Check your own trial",
             "Describe a trial design and see how likely it is to be stopped early. Change any value and the estimate updates straight away.")
+st.subheader("What does the trial study?")
 
 row = feature_row()
 st.divider()
