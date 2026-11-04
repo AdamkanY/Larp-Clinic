@@ -37,7 +37,7 @@ maximises F1 on them, and the calibrated model's OOF scores are saved as
 model is saved.
 
 Usage:
-    python src/train.py        # about 20-25 minutes on 4 cores
+    python src/train.py        # about 12 minutes on 4 cores
 """
 
 import json
