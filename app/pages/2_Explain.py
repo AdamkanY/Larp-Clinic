@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))  # repo root, for src/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
 from src.labels import PHASE_ORDER, label  # noqa: E402
+from src.viz import CHART_LAYOUT, INK, MUTED, finish  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
 require_router("pages/2_Explain.py")
@@ -21,7 +22,7 @@ MODELS = ROOT / "models"
 TOP_FEATURES = 12
 MIN_GROUP = 1000  # smaller groups give ROC-AUC values too noisy to read
 MIN_DIRECTION = 0.03  # rank correlations weaker than this count as "no clear direction"
-ORANGE, BLUE, GREY = "#eb6834", "#2a78d6", "#64748b"  # each at least 3:1 against white
+ORANGE, BLUE, GREY = "#B8452E", "#17463A", "#6B7A72"  # each at least 3:1 against the paper background
 
 # Plain-English names for the model's input columns; anything missing falls back to a cleaned-up column name.
 FRIENDLY = {
@@ -156,19 +157,21 @@ def risk_group_chart(bins, average):
     fig = go.Figure([
         # Pale with a dark outline, so predicted and real bars differ in lightness and not only in hue.
         go.Bar(x=groups, y=[b["mean_predicted"] for b in bins], name="Model predicted",
-               marker={"color": "#cbd5e1", "line": {"color": GREY, "width": 2}}),
+               marker={"color": "#D3DAD3", "line": {"color": GREY, "width": 2}}),
         go.Bar(x=groups, y=[b["observed_rate"] for b in bins], name="Really stopped early", marker_color=BLUE),
     ])
-    fig.add_hline(y=average, line_dash="dash", line_color="#475569",
+    fig.add_hline(y=average, line_dash="dash", line_color=MUTED,
                   annotation_text=f"Average of all test trials: {average:.1%}", annotation_position="top left")
     fig.update_layout(
         barmode="group", height=380, margin={"l": 0, "r": 0, "t": 30, "b": 0},
         xaxis_title="Risk group: 10% of the test trials each, from lowest (1) to highest (10) predicted risk",
         xaxis_type="category",  # otherwise Plotly reads "1".."10" as numbers and labels only every second group
         yaxis={"tickformat": ".0%", "title": None},
-        legend={"orientation": "h", "y": 1.12, "x": 0},
+        legend={"orientation": "h", "y": 1.12, "x": 0}, **CHART_LAYOUT,
     )
-    return fig
+    fig.update_yaxes(gridcolor="rgba(10,31,26,0.12)", zeroline=False)
+    fig.update_xaxes(linecolor=INK)
+    return finish(fig)
 
 
 def importance_chart(importance):
@@ -184,9 +187,10 @@ def importance_chart(importance):
     )
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(yaxis_title=None, margin={"l": 0, "r": 0, "t": 10, "b": 0}, height=540,
-                      legend={"orientation": "h", "y": -0.18, "x": 0})
-    fig.update_xaxes(range=[0, importance["roc_auc_drop_mean"].max() * 2.6])
-    return fig
+                      legend={"orientation": "h", "y": -0.18, "x": 0}, **CHART_LAYOUT)
+    fig.update_xaxes(range=[0, importance["roc_auc_drop_mean"].max() * 2.6], gridcolor="rgba(10,31,26,0.12)", zeroline=False)
+    fig.update_yaxes(linecolor=INK)
+    return finish(fig)
 
 
 def tab_predicted(metrics):
@@ -347,7 +351,7 @@ if metrics:
 else:
     intro = "Trial-Radar looks only at facts known when a trial is registered and compares them with past trials that had ended."
 page_header("🧠 How the model works", intro)
-st.page_link("pages/5_Check_Your_Trial.py", label="Try it yourself: check your own trial", icon="🧪")
+st.page_link("pages/5_Check_Your_Trial.py", label="Try it yourself: check your own trial")
 
 scores = load_test_scores() if metrics else None
 phases = phase_table(scores) if scores is not None else None
@@ -365,7 +369,7 @@ if metrics:
             f"{weaker} of {len(phases)} phases are lower, the weakest is {phases.loc[aucs.idxmin(), 'Phase']} "
             f"with {aucs.min():.2f} (see \"How good is it?\").\n"
         )
-    with st.container(border=True):
+    with st.container(border=True, key="short_box"):
         st.markdown(
             "**In short**\n\n"
             f"- **The ranking works.** The 10% of trials rated riskiest were stopped "
