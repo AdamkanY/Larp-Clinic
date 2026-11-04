@@ -1,60 +1,24 @@
-"""Shared look of the Trial-Radar pages: one stylesheet, a hero banner and a page header, so every page feels the same."""
+"""Shared look of the Trial-Radar pages: one stylesheet (style.css), full-width bands, the tick scale and the page header."""
+import functools
 import html
+import re
+from pathlib import Path
 
 import streamlit as st
 
-CSS = """
-.block-container { max-width: 1100px; padding-top: 2rem; padding-bottom: 4rem; }
-[data-testid="stSidebar"] { background: #f8fafc; border-right: 1px solid #e2e8f0; }
-[data-testid="stSidebarNavLink"] { border-radius: 10px; }
-[data-testid="stCaptionContainer"] { color: #475569; }
-.page-head h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; margin: 0; padding: 0; }
-.page-head p { color: #475569; margin: 0.35rem 0 1.4rem 0; font-size: 1.02rem; }
-.page-head { margin-bottom: 0.6rem; }
-.hero { background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 60%, #2563eb 100%); color: #fff;
-        padding: 2.4rem 2.2rem; border-radius: 22px; margin-bottom: 1.6rem; }
-.hero h1 { color: #fff; font-size: 2.6rem; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 0.5rem 0; padding: 0; }
-.hero p { color: #f0f9ff; margin: 0; font-size: 1.08rem; max-width: 38rem; }
-[class*="st-key-card"] { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 1.1rem 1.3rem;
-                          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); transition: box-shadow 0.15s, border-color 0.15s; }
-[class*="st-key-card_home"] { min-height: 13rem; }
-[class*="st-key-card"]:hover { box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12); border-color: #93c5fd; }
-.card-title { font-weight: 700; font-size: 1.05rem; color: #0f172a; line-height: 1.35; margin-bottom: 0.45rem; }
-.card-sub { color: #475569; font-size: 0.9rem; margin-top: 0.4rem; margin-bottom: 0.5rem; }
-.big-icon { font-size: 2rem; line-height: 1; margin-bottom: 0.4rem; }
-.chip { display: inline-block; padding: 0.15rem 0.7rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
-        margin-right: 0.4rem; background: #eff6ff; color: #1e40af; }
-.chip.gray { background: #f1f5f9; color: #334155; }
-.chip.green { background: #dcfce7; color: #14532d; }
-.chip.yellow { background: #fef9c3; color: #713f12; }
-.chip.red { background: #fee2e2; color: #7f1d1d; }
-[data-testid="stMetricValue"] { font-size: clamp(1.4rem, 2.6vw, 2rem); }
-[data-testid="stMetricLabel"] p { white-space: normal; }
-[data-testid="stMetric"] { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem 1rem; }
-[class*="st-key-panel"] { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 0.9rem 1.1rem; }
-.note { background: #f1f5f9; border-radius: 12px; padding: 0.8rem 1rem; color: #334155; font-size: 0.92rem; }
-/* Columns inside a panel wrap onto their own line instead of squeezing a dropdown into 100 pixels. */
-[class*="st-key-panel"] [data-testid="stColumn"] { min-width: 13.5rem; }
-/* The live result stays in view while the form below it is edited. */
-[data-testid="stLayoutWrapper"]:has(> [class*="st-key-sticky"]) { position: sticky; top: 3.75rem; z-index: 50; }
-@media (max-width: 640px) {
-  .hero { padding: 1.6rem 1.2rem; }
-  .hero h1 { font-size: 2rem; }
-  .page-head h1 { font-size: 1.8rem; }
-}
-.risk-card { border-radius: 18px; padding: 1.2rem 1.4rem; margin: 0.3rem 0 1rem 0; }
-.risk-card .num { white-space: nowrap; font-size: clamp(2.4rem, 4.5vw, 3.2rem); font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
-.risk-card .lab { margin-top: 0.5rem; font-weight: 700; font-size: 1.05rem; }
-.risk-card .sub { margin-top: 0.15rem; font-size: 0.92rem; opacity: 0.9; }
-.risk-card.compact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 1.1rem; padding: 0.7rem 1.1rem;
-                     margin: 0 0 0.8rem 0; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15); }
-.risk-card.compact .num { font-size: 2rem; }
-.risk-card.compact .lab, .risk-card.compact .sub { margin: 0; }
-.risk-card.green { background: #dcfce7; color: #14532d; }
-.risk-card.yellow { background: #fef9c3; color: #713f12; }
-.risk-card.red { background: #fee2e2; color: #7f1d1d; }
-.risk-card.gray { background: #f1f5f9; color: #1e293b; }
-"""
+STYLE = Path(__file__).resolve().parent / "style.css"
+TICKS = 100  # one tick = 1% of the past trials
+
+
+@functools.lru_cache(maxsize=1)
+def stylesheet():
+    """Text of style.css, read once per server."""
+    return STYLE.read_text(encoding="utf-8")
+
+
+def plain(title):
+    """Drop a leading emoji or symbol from a page title; the look is plain type, no pictograms."""
+    return re.sub(r"^[^\w]+", "", str(title))
 
 
 def esc(text):
@@ -62,15 +26,15 @@ def esc(text):
     return html.escape(str(text), quote=True).replace("$", "&#36;")
 
 
-def chip(text, tone="blue"):
-    """A small rounded label, for example a phase or a status."""
+def chip(text, tone="gray"):
+    """A small pill label, for example a phase or a status. Tones: gray, green, yellow, red."""
     return f'<span class="chip {tone}">{esc(text)}</span>'
 
 
 def require_router(page):
     """Send a page that was opened directly (browser refresh, bookmark) through Home.py first.
 
-    Opened on its own, a page would miss the sidebar navigation and the wide layout that Home.py sets up. Home.py
+    Opened on its own, a page would miss the top navigation and the wide layout that Home.py sets up. Home.py
     sets `via_router` and, if a target was stored here, switches straight back to that page.
     """
     if not st.session_state.get("via_router"):
@@ -80,17 +44,46 @@ def require_router(page):
 
 def inject_css():
     """Apply the shared stylesheet to the current page."""
-    st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{stylesheet()}</style>", unsafe_allow_html=True)
 
 
-def hero(title, subtitle):
-    """Large gradient banner for the landing page."""
+def tick_scale(marked, label=""):
+    """The signature scale: 100 hairlines, the first `marked` of them tall and in the accent colour.
+
+    Decorative (hidden from screen readers); `label` is the visible sentence that says what the ticks mean.
+    """
+    ticks = "".join(f'<i class="{"on" if i < marked else ""}" style="--i:{i}"></i>' for i in range(TICKS))
+    caption = f'<p class="ticks-caption">{esc(label)}</p>' if label else ""
+    return f'<div class="ticks" aria-hidden="true">{ticks}</div>{caption}'
+
+
+def hero(title, subtitle, number=None, lead=None, scale=None):
+    """The landing page's first band. `number` is the giant figure (text), `lead` the sentence under it.
+
+    `scale` is the HTML of a tick scale. Without a number the title is simply set very large.
+    """
     inject_css()
-    st.markdown(f'<div class="hero"><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div>', unsafe_allow_html=True)
+    figure = f'<p class="hero-number reveal" style="--d:1">{esc(number)}</p>' if number else ""
+    lead_html = f'<p class="hero-lead reveal" style="--d:2">{esc(lead)}</p>' if lead else ""
+    st.markdown(
+        f'<div class="hero-copy"><h1 class="hero-title reveal" style="--d:0">{esc(plain(title))}</h1>'
+        f'<p class="hero-sub reveal" style="--d:0">{esc(subtitle)}</p>{figure}{lead_html}'
+        f'<div class="reveal" style="--d:3">{scale or ""}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def band_copy(headline, text, number=None, number_label=None):
+    """Headline, one sentence and an optional big number for one landing-page band (the action is a widget below)."""
+    figure = (f'<div class="band-figure"><p class="band-number">{esc(number)}</p>'
+              f'<p class="band-number-label">{esc(number_label)}</p></div>') if number else ""
+    return (f'<div class="band-copy"><div class="band-text"><h2 class="band-title">{esc(headline)}</h2>'
+            f'<p class="band-sentence">{esc(text)}</p></div>{figure}</div>')
 
 
 def page_header(title, subtitle=None):
-    """Page title with an optional one-line description, styled the same on every page."""
+    """Dark band that opens a page: the title set very large, an optional one-sentence description, a ruler edge."""
     inject_css()
-    sub = f"<p>{esc(subtitle)}</p>" if subtitle else ""
-    st.markdown(f'<div class="page-head"><h1>{esc(title)}</h1>{sub}</div>', unsafe_allow_html=True)
+    sub = f'<p class="page-sub reveal" style="--d:1">{esc(subtitle)}</p>' if subtitle else ""
+    st.markdown(f'<div class="page-head"><h1 class="reveal" style="--d:0">{esc(plain(title))}</h1>{sub}</div>',
+                unsafe_allow_html=True)
