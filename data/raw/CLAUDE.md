@@ -40,7 +40,8 @@ Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
 | `designModule.phases` | `phase` | SAFE |
 | `designModule.designInfo.{allocation,interventionModel,primaryPurpose,maskingInfo.masking}` | same-named columns | SAFE |
 | `armsInterventionsModule.armGroups` | `n_arms` (absent = 0) | SAFE |
-| `armsInterventionsModule.interventions[].type` | `intervention_<type>` multi-hot | SAFE |
+| `armsInterventionsModule.interventions[].type` | `intervention_<type>` multi-hot, `n_intervention_types` (distinct enum types, absent = 0) | SAFE |
+| `conditionsModule.conditions` (free text) | `cond_<category>` multi-hot via keyword rules (`condition_features`: oncology, cardio, neuro, infectious, metabolic, psych, respiratory, healthy) and `n_condition_categories` | SAFE (registered at design; v2) |
 | `sponsorCollaboratorsModule.leadSponsor.class` / `.collaborators` | `sponsor_class` / `has_collaborators` | SAFE |
 | `oversightModule.{oversightHasDmc}` | `has_dmc` (`isFdaRegulated*` dropped from features) | SAFE |
 | `eligibilityModule.{healthyVolunteers,sex,minimumAge,maximumAge,eligibilityCriteria}` | `healthy_volunteers`, `sex`, `min_age_years`, `max_age_years` (missing = 120), `has_max_age`, `eligibility_text_len` | SAFE |
