@@ -1,8 +1,12 @@
-pandas
-pyarrow
-requests
+# Tested with Python 3.12. Each lower bound is the version the app was tested with; the upper bound keeps a new
+# major release from breaking it. scikit-learn is pinned exactly: models/gbm.joblib only loads with that version.
+streamlit>=1.66,<2
+pandas>=3.1,<4
+numpy>=2.5,<3
+pyarrow>=26,<27
+requests>=2.34,<3
+plotly>=7.1,<8
+joblib>=1.6,<2
 scikit-learn==1.9.1
-streamlit
-joblib
+# Only for the calibration plot of src/evaluate.py; the app itself does not need it.
 matplotlib
-plotly
