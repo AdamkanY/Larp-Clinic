@@ -30,7 +30,7 @@ def percentile_of(risk):
 
 @st.cache_data(show_spinner=False)
 def underestimate():
-    """How much higher the real termination rate on the newer test trials was than the model's average prediction.
+    """How much higher the real share stopped early on the newer test trials was than the model's average prediction.
 
     0.18 means 18% higher. None if the metrics file is missing or incomplete.
     """
@@ -46,7 +46,7 @@ def estimate_caption(risk, ongoing=False):
     text = f"Rough estimate from design information only: read {risk:.0%} as a lower-end figure and mainly use it to compare trials. "
     gap = underestimate()
     if gap is not None and gap > 0:
-        text += (f"On newer trials (the test set) the real termination rate was about {gap:.0%} higher "
+        text += (f"On newer trials (the test set) the real share stopped early was about {gap:.0%} higher "
                  "than the model's average prediction. ")
     if ongoing:
         text += ("The model learned from finished trials of 2008-2019; ongoing trials can look different "
@@ -54,20 +54,38 @@ def estimate_caption(risk, ongoing=False):
     return text + "Not medical advice."
 
 
-def risk_card(risk, delta=None):
-    """HTML for a large coloured card: the risk number, how it ranks among past trials, and an optional change.
+def risk_tone(risk):
+    """Colour and words for a risk, chosen by its rank among past trials: (tone, label, percent rank).
 
-    Colour follows the rank: green below the median trial, yellow up to the riskiest 10%, red above.
+    Green below the median trial, yellow up to the riskiest 10%, red above. Without the reference file the
+    tone is "gray" and the rank is None.
     """
     pct = percentile_of(risk)
     if pct is None:
-        tone, label, sub = "gray", "Estimated termination risk", ""
-    else:
-        tone, label = ("green", "Lower than most past trials") if pct < 50 else (
-            ("yellow", "Higher than most past trials") if pct < 90 else ("red", "Among the riskiest 10% of past trials"))
-        sub = f"Riskier than {pct:.0f}% of historical trials (started 2008-2016)"
+        return "gray", "Estimated risk of stopping early", None
+    if pct < 50:
+        return "green", "Lower than most past trials", pct
+    if pct < 90:
+        return "yellow", "Higher than most past trials", pct
+    return "red", "Among the riskiest 10% of past trials", pct
+
+
+def risk_chip(risk):
+    """HTML for a small coloured label with the risk and its rank wording, for result lists."""
+    tone, label, _ = risk_tone(risk)
+    return f'<span class="chip {tone}">{risk:.1%} risk · {label.lower()}</span>'
+
+
+def risk_card(risk, delta=None, compact=False):
+    """HTML for a coloured card: the risk number, how it ranks among past trials, and an optional change.
+
+    compact=True gives a one-line strip, for keeping the result in view while a form is edited.
+    """
+    tone, label, pct = risk_tone(risk)
+    sub = f"Riskier than {pct:.0f}% of historical trials (started 2008-2016)" if pct is not None else ""
     change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>' if delta is not None else ""
-    return (f'<div class="risk-card {tone}"><div class="num">{risk:.1%}</div><div class="lab">{label}</div>'
+    size = " compact" if compact else ""
+    return (f'<div class="risk-card {tone}{size}"><div class="num">{risk:.1%}</div><div class="lab">{label}</div>'
             f'<div class="sub">{sub}</div>{change}</div>')
 
 
@@ -91,7 +109,7 @@ def risk_bar(risk):
     fig.update_layout(
         barmode="overlay", showlegend=False, height=170, margin={"l": 10, "r": 10, "t": 55, "b": 50},
         xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
-               "title": "Share of past trials that were less risky than this one"},
+               "title": "Past trials that were less risky"},
         yaxis={"visible": False, "range": [-0.5, 0.5]},  # fixed, so the arrow does not stretch the axis
     )
     return fig
