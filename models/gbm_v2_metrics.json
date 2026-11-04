@@ -1,0 +1,357 @@
+{
+  "model": "gbm_v2",
+  "model_file": "models/gbm_v2.joblib",
+  "trained_on": "2026-11-04",
+  "sklearn_version": "1.9.1",
+  "python_version": "3.13.18",
+  "label": {
+    "TERMINATED": 1,
+    "COMPLETED": 0
+  },
+  "split": {
+    "rule": "by start_date, never random",
+    "train": {
+      "start_from": "2008-01-01",
+      "start_to": "2016-12-31",
+      "observed_first_start": "2008-01-01",
+      "observed_last_start": "2016-12-31",
+      "n_trials": 114600,
+      "n_terminated": 12759,
+      "terminated_rate": 0.11133507853403142
+    },
+    "test": {
+      "start_from": "2017-01-01",
+      "start_to": "2019-12-31",
+      "observed_first_start": "2017-01-01",
+      "observed_last_start": "2019-12-31",
+      "n_trials": 47857,
+      "n_terminated": 5591,
+      "terminated_rate": 0.11682721440959526
+    }
+  },
+  "features": {
+    "version": "v2",
+    "all": [
+      "phase",
+      "allocation",
+      "intervention_model",
+      "primary_purpose",
+      "masking",
+      "sponsor_class",
+      "sex",
+      "has_collaborators",
+      "has_dmc",
+      "healthy_volunteers",
+      "has_max_age",
+      "intervention_drug",
+      "intervention_device",
+      "intervention_biological",
+      "intervention_procedure",
+      "intervention_radiation",
+      "intervention_behavioral",
+      "intervention_genetic",
+      "intervention_dietary_supplement",
+      "intervention_combination_product",
+      "intervention_diagnostic_test",
+      "intervention_other",
+      "cond_oncology",
+      "cond_cardio",
+      "cond_neuro",
+      "cond_infectious",
+      "cond_metabolic",
+      "cond_psych",
+      "cond_respiratory",
+      "cond_healthy",
+      "n_arms",
+      "min_age_years",
+      "max_age_years",
+      "eligibility_text_len",
+      "n_primary_outcomes",
+      "n_secondary_outcomes",
+      "n_conditions",
+      "n_condition_categories",
+      "n_intervention_types"
+    ],
+    "categorical": [
+      "phase",
+      "allocation",
+      "intervention_model",
+      "primary_purpose",
+      "masking",
+      "sponsor_class",
+      "sex"
+    ],
+    "binary": [
+      "has_collaborators",
+      "has_dmc",
+      "healthy_volunteers",
+      "has_max_age",
+      "intervention_drug",
+      "intervention_device",
+      "intervention_biological",
+      "intervention_procedure",
+      "intervention_radiation",
+      "intervention_behavioral",
+      "intervention_genetic",
+      "intervention_dietary_supplement",
+      "intervention_combination_product",
+      "intervention_diagnostic_test",
+      "intervention_other",
+      "cond_oncology",
+      "cond_cardio",
+      "cond_neuro",
+      "cond_infectious",
+      "cond_metabolic",
+      "cond_psych",
+      "cond_respiratory",
+      "cond_healthy"
+    ],
+    "numeric": [
+      "n_arms",
+      "min_age_years",
+      "max_age_years",
+      "eligibility_text_len",
+      "n_primary_outcomes",
+      "n_secondary_outcomes",
+      "n_conditions",
+      "n_condition_categories",
+      "n_intervention_types"
+    ]
+  },
+  "estimator": "CalibratedClassifierCV(HistGradientBoostingClassifier)",
+  "class_weight": "balanced (inside each fold's pipeline)",
+  "calibration_method": "isotonic",
+  "n_calibration_folds": 5,
+  "n_iter_per_fold": [
+    119,
+    115,
+    138,
+    117,
+    116
+  ],
+  "cv": {
+    "scheme": "StratifiedKFold(n_splits=5, shuffle=True, random_state=42) on the train split only",
+    "refit_metric": "pr_auc",
+    "best_params": {
+      "l2_regularization": 0.0,
+      "learning_rate": 0.05,
+      "max_leaf_nodes": 63
+    },
+    "best_roc_auc_mean": 0.7143990431102342,
+    "best_roc_auc_std": 0.004015586135641769,
+    "best_pr_auc_mean": 0.22866243097202515,
+    "best_pr_auc_std": 0.005003387589308736,
+    "best_roc_auc_folds": [
+      0.7144076154032964,
+      0.7114687997122537,
+      0.7101140927005789,
+      0.7142801392466391,
+      0.7217245684884028
+    ],
+    "best_pr_auc_folds": [
+      0.2284733582846546,
+      0.23596926900717696,
+      0.22637381230391068,
+      0.22101117442350504,
+      0.23148454084087838
+    ],
+    "grid": [
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.7127269523920747,
+        "cv_pr_auc": 0.22393453728450735
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7140521312267927,
+        "cv_pr_auc": 0.22597994975870242
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7143990431102342,
+        "cv_pr_auc": 0.22866243097202515
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.7126386690995018,
+        "cv_pr_auc": 0.22313181088857248
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7148469172447806,
+        "cv_pr_auc": 0.22767143161553394
+      },
+      {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7129297154995394,
+        "cv_pr_auc": 0.22646634361423104
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.7134777882646164,
+        "cv_pr_auc": 0.2243279701667233
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7149235792795882,
+        "cv_pr_auc": 0.22706780377018373
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7157998912074848,
+        "cv_pr_auc": 0.22858245226591042
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 15
+        },
+        "cv_roc_auc": 0.7135338368730663,
+        "cv_pr_auc": 0.224865357196458
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7144173535306739,
+        "cv_pr_auc": 0.22626652250233326
+      },
+      {
+        "params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7133858443741183,
+        "cv_pr_auc": 0.22680265246486142
+      }
+    ],
+    "note": "hyperparameters tuned on the uncalibrated pipeline with the same grid and folds as gbm; calibration adds no tuned parameters"
+  },
+  "threshold": {
+    "value": 0.15047655900060306,
+    "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
+    "oof_f1": 0.30904574150466074,
+    "oof_roc_auc": 0.7167540065796093,
+    "oof_pr_auc": 0.22783833698190792,
+    "oof_brier": 0.09292820591012955
+  },
+  "calibration": {
+    "method": "isotonic",
+    "cv": "CalibratedClassifierCV(cv=5) on the train split"
+  },
+  "compared_with": "gbm",
+  "test": {
+    "roc_auc": 0.7150792233629696,
+    "pr_auc": 0.2408881603723558,
+    "brier": 0.09692963024711242,
+    "mean_predicted": 0.09828312070619628,
+    "at_threshold": {
+      "threshold": 0.15047655900060306,
+      "precision": 0.24755576649264358,
+      "recall": 0.4664639599356108,
+      "f1": 0.3234528091281161,
+      "flagged_share": 0.2201349854775686,
+      "confusion_matrix": {
+        "tn": 34339,
+        "fp": 7927,
+        "fn": 2983,
+        "tp": 2608
+      }
+    },
+    "calibration_bins": [
+      {
+        "mean_predicted": 0.017352570613824614,
+        "observed_rate": 0.029411764705882353
+      },
+      {
+        "mean_predicted": 0.031699987300254355,
+        "observed_rate": 0.03976559229803265
+      },
+      {
+        "mean_predicted": 0.04268255795334608,
+        "observed_rate": 0.056844305120167186
+      },
+      {
+        "mean_predicted": 0.053761848500000015,
+        "observed_rate": 0.061638111157542835
+      },
+      {
+        "mean_predicted": 0.06897998240434212,
+        "observed_rate": 0.0739657333890514
+      },
+      {
+        "mean_predicted": 0.0873421858905504,
+        "observed_rate": 0.10482355397786594
+      },
+      {
+        "mean_predicted": 0.10981871548824645,
+        "observed_rate": 0.12693433709744878
+      },
+      {
+        "mean_predicted": 0.14038438575817502,
+        "observed_rate": 0.1639958376690947
+      },
+      {
+        "mean_predicted": 0.17918860583893334,
+        "observed_rate": 0.21506504406210658
+      },
+      {
+        "mean_predicted": 0.25182018545490487,
+        "observed_rate": 0.2960718763058922
+      }
+    ]
+  },
+  "majority_baseline": {
+    "roc_auc": 0.5,
+    "pr_auc": 0.11682721440959526,
+    "brier_constant_rate": 0.10317861638288972,
+    "terminated_rate": 0.11682721440959526,
+    "accuracy": 0.8831727855904048,
+    "confusion_matrix": {
+      "tn": 42266,
+      "fp": 0,
+      "fn": 5591,
+      "tp": 0
+    }
+  }
+}

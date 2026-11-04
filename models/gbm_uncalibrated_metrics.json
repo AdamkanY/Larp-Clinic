@@ -1,7 +1,7 @@
 {
   "model": "gbm_uncalibrated",
   "model_file": "models/gbm_uncalibrated.joblib",
-  "trained_on": "2026-11-03",
+  "trained_on": "2026-11-04",
   "sklearn_version": "1.9.1",
   "python_version": "3.13.18",
   "label": {
@@ -30,6 +30,7 @@
     }
   },
   "features": {
+    "version": "v1",
     "all": [
       "phase",
       "allocation",
@@ -112,6 +113,20 @@
     "best_roc_auc_std": 0.0038020625441110636,
     "best_pr_auc_mean": 0.22187278687135642,
     "best_pr_auc_std": 0.00354269345910573,
+    "best_roc_auc_folds": [
+      0.7109815380167697,
+      0.7063050932589569,
+      0.7070586840843218,
+      0.7083221910421905,
+      0.7168009391306542
+    ],
+    "best_pr_auc_folds": [
+      0.21925755182897597,
+      0.22679413810802448,
+      0.22200620878229826,
+      0.21686482841517096,
+      0.2244412072223124
+    ],
     "grid": [
       {
         "params": {

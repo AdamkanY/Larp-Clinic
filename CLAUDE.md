@@ -57,7 +57,7 @@ Every folder has its own `CLAUDE.md` with a file table. Read it before editing i
 |---|---|---|
 | Nov 3 | Repo + data | Done (repo set up; API data pipeline in PR `data/api-pipeline`) |
 | Nov 10 | EDA + app search | Not started |
-| Nov 17 | Baseline model | Not started |
+| Nov 17 | Baseline model | Done (calibrated GBM v1, test ROC-AUC 0.710; v2 with condition features tested, app keeps v1, see `models/CLAUDE.md`) |
 | Nov 24 | End-to-end app | Not started |
 | Dec 1 | Game, what-if sliders, dashboard, deployed | Not started |
 | Dec 6 | Feature freeze | Not started |

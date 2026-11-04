@@ -4,17 +4,24 @@ Everything that scores the test split (start 2017-2019) lives here, so there is
 one code path for it. ``train.py`` calls ``evaluate_saved`` once after saving the
 models; running this file re-evaluates the saved models without retraining them.
 
-For each saved model (``baseline_lr``, ``gbm_uncalibrated``, ``gbm``) this:
+For each saved model (``baseline_lr``, ``gbm_uncalibrated``, ``gbm`` and the
+challengers of ``train.CHALLENGERS``, i.e. ``gbm_v2``) this:
   * computes test ROC-AUC, PR-AUC and Brier score, plus precision / recall / F1
     and the confusion matrix at the threshold stored in its metrics JSON (chosen
     on train CV, never on test), and the majority-class baseline;
   * writes those numbers into ``models/<name>_metrics.json`` under ``test``;
+  * compares each challenger with the app model (CV, out-of-fold and test
+    metrics, per-fold CV gains, a paired bootstrap of the test ROC-AUC gain) and
+    checks the decision rule -> ``gbm_metrics.json`` under ``version_comparison``;
   * adds the before/after calibration comparison to ``gbm_metrics.json`` and
     draws ``models/calibration_before_after.png``;
   * computes permutation importance on test -> ``models/feature_importance.csv``;
   * runs the feature ablations (GBM refitted on train without features that can
     be edited after registration) -> ``gbm_metrics.json`` under ``ablations``;
-  * prints the metrics, ablation and logistic regression coefficient tables.
+  * prints the metrics, comparison, ablation and logistic regression tables.
+
+Every model is scored on exactly the columns it was trained on
+(``predict.model_columns``).
 
 Usage:
     python src/evaluate.py
@@ -34,17 +41,18 @@ from sklearn.metrics import (average_precision_score, brier_score_loss,
 from sklearn.model_selection import cross_validate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import FEATURE_COLUMNS, NUMERIC_FEATURES  # noqa: E402
-from predict import load_model  # noqa: E402
+from predict import load_model, model_columns  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
 CALIBRATION_PATH = MODELS_DIR / "calibration_before_after.png"
 IMPORTANCE_PATH = MODELS_DIR / "feature_importance.csv"
 
-MODEL_NAMES = ["baseline_lr", "gbm_uncalibrated", "gbm"]
+# The app model and its baselines; train.CHALLENGERS (gbm_v2) are added at run
+# time, because importing train here would be circular.
+BASE_MODEL_NAMES = ["baseline_lr", "gbm_uncalibrated", "gbm"]
 # gbm_uncalibrated ranks trials almost exactly like gbm, so importance is only
-# computed for the two models people will look at.
+# computed for the models people will look at (plus the challengers).
 IMPORTANCE_MODELS = ["baseline_lr", "gbm"]
 CALIBRATION_PLOT_MODELS = ["gbm_uncalibrated", "gbm"]
 DISPLAY_NAMES = {
@@ -52,6 +60,11 @@ DISPLAY_NAMES = {
     "gbm_uncalibrated": "Before: GBM, class_weight='balanced'",
     "gbm": "After: + isotonic calibration (cv=5)",
 }
+# Decision rule, fixed before v2 was trained: a challenger replaces the app
+# model only if its ROC-AUC is at least this much higher on test AND in 5-fold
+# CV on train (best grid cell, same folds).
+MIN_ROC_AUC_GAIN = 0.005
+N_BOOTSTRAP = 1000
 SHORT_NAMES = {"gbm_uncalibrated": "Before", "gbm": "After"}
 
 # Features a sponsor can amend after the trial has started (protocol
@@ -237,15 +250,17 @@ def permutation_importance_table(models: dict, X, y) -> pd.DataFrame:
 
     The whole model is scored, so each categorical counts as one feature
     (not one per one-hot column) and the models are directly comparable.
+    Each model is permuted over its own input columns only.
     """
     frames = []
     for name, model in models.items():
+        X_model = X[model_columns(model)]
         result = permutation_importance(
-            model, X, y, scoring=["roc_auc", "average_precision"],
+            model, X_model, y, scoring=["roc_auc", "average_precision"],
             n_repeats=N_PERMUTATION_REPEATS, random_state=RANDOM_STATE, n_jobs=-1)
         frame = pd.DataFrame({
             "model": name,
-            "feature": X.columns,
+            "feature": X_model.columns,
             "roc_auc_drop_mean": result["roc_auc"].importances_mean,
             "roc_auc_drop_std": result["roc_auc"].importances_std,
             "pr_auc_drop_mean": result["average_precision"].importances_mean,
@@ -276,9 +291,9 @@ def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dic
         The ``ablations`` section for ``gbm_metrics.json``.
     """
     # Imported here, not at the top, because train.py imports this module.
-    from train import build_gbm_pipeline, make_cv
+    from train import APP_FEATURES, build_gbm_pipeline, make_cv
 
-    runs = [{"name": "all_features", "dropped": [], "n_features": len(FEATURE_COLUMNS),
+    runs = [{"name": "all_features", "dropped": [], "n_features": len(APP_FEATURES),
              **reference, "delta_test_roc_auc": 0.0, "delta_test_pr_auc": 0.0}]
     for name, dropped in ABLATIONS.items():
         model = build_gbm_pipeline(drop=dropped).set_params(
@@ -289,7 +304,7 @@ def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dic
         test_roc = float(roc_auc_score(y_test, proba))
         test_pr = float(average_precision_score(y_test, proba))
         runs.append({
-            "name": name, "dropped": dropped, "n_features": len(FEATURE_COLUMNS) - len(dropped),
+            "name": name, "dropped": dropped, "n_features": len(APP_FEATURES) - len(dropped),
             "cv_roc_auc": float(cv["test_roc_auc"].mean()),
             "cv_pr_auc": float(cv["test_average_precision"].mean()),
             "test_roc_auc": test_roc, "test_pr_auc": test_pr,
@@ -305,6 +320,81 @@ def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dic
     }
 
 
+def paired_bootstrap_gain(y_true, proba_a, proba_b, n: int = N_BOOTSTRAP) -> dict:
+    """Bootstrap of ROC-AUC(b) - ROC-AUC(a) on the same resampled trials.
+
+    Both models are scored on each resample, so the interval reflects only
+    how much the gain depends on which test trials happened to be drawn.
+    """
+    rng = np.random.default_rng(RANDOM_STATE)
+    y_true = np.asarray(y_true)
+    gains = []
+    for _ in range(n):
+        idx = rng.integers(0, len(y_true), len(y_true))
+        gains.append(roc_auc_score(y_true[idx], proba_b[idx]) - roc_auc_score(y_true[idx], proba_a[idx]))
+    return {"n_resamples": n, "mean": float(np.mean(gains)),
+            "ci95": [float(np.percentile(gains, 2.5)), float(np.percentile(gains, 97.5))],
+            "share_at_least_min_gain": float(np.mean(np.asarray(gains) >= MIN_ROC_AUC_GAIN))}
+
+
+def compare_versions(app: dict, challenger: dict, y_test, proba_app, proba_challenger) -> dict:
+    """Challenger vs app model, and whether the challenger passes the decision rule.
+
+    Args:
+        app, challenger: full metrics dicts (with ``cv``, ``threshold`` and
+            ``test``) of the two calibrated models.
+        y_test, proba_app, proba_challenger: test labels and probabilities.
+
+    Returns:
+        The ``version_comparison`` entry for ``gbm_metrics.json``.
+    """
+    def summary(rep):
+        cv, oof, test = rep["cv"], rep["threshold"], rep["test"]
+        return {"model": rep["model"], "feature_version": rep["features"].get("version"),
+                "n_features": len(rep["features"]["all"]),
+                "best_params": cv["best_params"],
+                "cv_roc_auc": cv["best_roc_auc_mean"], "cv_roc_auc_std": cv["best_roc_auc_std"],
+                "cv_pr_auc": cv["best_pr_auc_mean"], "cv_pr_auc_std": cv["best_pr_auc_std"],
+                "oof_roc_auc": oof["oof_roc_auc"], "oof_pr_auc": oof["oof_pr_auc"],
+                "oof_brier": oof["oof_brier"],
+                "test_roc_auc": test["roc_auc"], "test_pr_auc": test["pr_auc"],
+                "test_brier": test["brier"]}
+
+    a, b = summary(app), summary(challenger)
+    gain = {key: b[key] - a[key] for key in a if key.startswith(("cv_", "oof_", "test_"))
+            and not key.endswith("_std")}
+    passes = (gain["test_roc_auc"] >= MIN_ROC_AUC_GAIN and gain["cv_roc_auc"] >= MIN_ROC_AUC_GAIN)
+    return {
+        "rule": f"the challenger replaces the app model only if its ROC-AUC beats the app "
+                f"model's by >= {MIN_ROC_AUC_GAIN} on test AND in 5-fold CV on train "
+                f"(best grid cell, same folds); fixed before the challenger was trained",
+        "app_model": a,
+        "challenger": b,
+        "gain": gain,
+        "cv_fold_roc_auc_gains": [c - p for p, c in zip(app["cv"]["best_roc_auc_folds"],
+                                                       challenger["cv"]["best_roc_auc_folds"])],
+        "test_roc_auc_gain_bootstrap": paired_bootstrap_gain(y_test, proba_app, proba_challenger),
+        "passes_rule": bool(passes),
+        "decision": (f"{b['model']} passes the rule and should replace {a['model']}" if passes
+                     else f"{a['model']} stays the app model; {b['model']} is kept for the report"),
+    }
+
+
+def print_comparison(comparison: dict) -> None:
+    """Print a challenger-vs-app table and the decision."""
+    a, b, gain = comparison["app_model"], comparison["challenger"], comparison["gain"]
+    rows = [{"metric": key, a["model"]: a[key], b["model"]: b[key], "gain": gain[key]}
+            for key in gain]
+    print(pd.DataFrame(rows).set_index("metric").round(4).to_string())
+    boot = comparison["test_roc_auc_gain_bootstrap"]
+    folds = ", ".join(f"{g:+.4f}" for g in comparison["cv_fold_roc_auc_gains"])
+    print(f"CV ROC-AUC gain per fold: {folds}")
+    print(f"Test ROC-AUC gain, paired bootstrap 95% CI: [{boot['ci95'][0]:+.4f}, "
+          f"{boot['ci95'][1]:+.4f}]; resamples with gain >= {MIN_ROC_AUC_GAIN}: "
+          f"{boot['share_at_least_min_gain']:.0%}")
+    print(f"Decision: {comparison['decision']}")
+
+
 def lr_coefficients(pipeline) -> pd.DataFrame:
     """Logistic regression coefficients by transformed column, largest |coef| first.
 
@@ -315,7 +405,9 @@ def lr_coefficients(pipeline) -> pd.DataFrame:
     """
     prep, clf = pipeline.named_steps["prep"], pipeline.named_steps["clf"]
     scaler = prep.named_transformers_["num"].named_steps["scale"]
-    sd = dict(zip(NUMERIC_FEATURES, scaler.scale_))
+    # The model's own numeric columns, which may be a subset of NUMERIC_FEATURES.
+    numeric = next(cols for name, _, cols in prep.transformers_ if name == "num")
+    sd = dict(zip(numeric, scaler.scale_))
     names = prep.get_feature_names_out()
     coef = clf.coef_[0]
     table = pd.DataFrame({
@@ -358,34 +450,37 @@ def print_metrics_table(reports: dict) -> None:
         print(pd.DataFrame(rows).set_index("model").round(4).to_string(na_rep="-"))
 
 
-def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
+def evaluate_saved(X_test=None, y_test=None, names=None,
                    X_train=None, y_train=None) -> dict:
     """Evaluate the saved models on test and write every test-time output.
 
     Args:
-        X_test, y_test: the test split; loaded from the parquet when omitted.
+        X_test, y_test: the test split (all ``FEATURE_COLUMNS``); loaded from
+            the parquet when omitted.
         names: model names; each needs ``models/<name>.joblib`` and the
-            ``models/<name>_metrics.json`` written by ``train.py``.
+            ``models/<name>_metrics.json`` written by ``train.py``. Defaults
+            to ``BASE_MODEL_NAMES`` plus ``train.CHALLENGERS``.
         X_train, y_train: the train split, needed to refit the ablations;
             loaded from the parquet when omitted.
 
     Returns:
         {model name: full metrics dict}, as written to the JSON files.
     """
-    if X_test is None or X_train is None:
-        # Imported here, not at the top, because train.py imports this module.
-        from train import load_split
-        if X_test is None:
-            X_test, y_test = load_split("test")
-        if X_train is None:
-            X_train, y_train = load_split("train")
+    # Imported here, not at the top, because train.py imports this module.
+    from train import CHALLENGERS, load_split
+    if names is None:
+        names = BASE_MODEL_NAMES + list(CHALLENGERS)
+    if X_test is None:
+        X_test, y_test = load_split("test")
+    if X_train is None:
+        X_train, y_train = load_split("train")
     y_test, y_train = np.asarray(y_test), np.asarray(y_train)
 
     models, reports, probas = {}, {}, {}
     for name in names:
         models[name] = load_model(MODELS_DIR / f"{name}.joblib")
         reports[name] = json.loads(metrics_path(name).read_text(encoding="utf-8"))
-        probas[name] = models[name].predict_proba(X_test)[:, 1]
+        probas[name] = models[name].predict_proba(X_test[model_columns(models[name])])[:, 1]
         threshold = reports[name]["threshold"]["value"]
         reports[name]["test"] = classification_metrics(y_test, probas[name], threshold)
         reports[name]["test"]["calibration_bins"] = calibration_bins(y_test, probas[name])
@@ -393,6 +488,16 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
 
     print("\n=== Metrics (OOF = out-of-fold on train; test = start 2017-2019) ===")
     print_metrics_table(reports)
+
+    challengers = [n for n in names if n in CHALLENGERS]
+    if "gbm" in reports and challengers:
+        comparisons = {}
+        for name in challengers:
+            print(f"\n=== {name} vs gbm (app model) ===")
+            comparisons[name] = compare_versions(reports["gbm"], reports[name], y_test,
+                                                 probas["gbm"], probas[name])
+            print_comparison(comparisons[name])
+        reports["gbm"]["version_comparison"] = comparisons
 
     if {"gbm", "gbm_uncalibrated"} <= set(reports):
         reports["gbm"].setdefault("calibration", {}).update({
@@ -423,9 +528,9 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
         metrics_path(name).write_text(json.dumps(reports[name], indent=2) + "\n",
                                       encoding="utf-8")
 
-    importance_models = {n: models[n] for n in IMPORTANCE_MODELS if n in models}
+    importance_models = {n: models[n] for n in IMPORTANCE_MODELS + challengers if n in models}
     print(f"\nPermutation importance on test ({N_PERMUTATION_REPEATS} repeats per feature)...")
-    importance = permutation_importance_table(importance_models, X_test[FEATURE_COLUMNS], y_test)
+    importance = permutation_importance_table(importance_models, X_test, y_test)
     importance.to_csv(IMPORTANCE_PATH, index=False, float_format="%.6f")
     print(f"Saved {IMPORTANCE_PATH.relative_to(ROOT)}")
     for name in importance_models:

@@ -9,13 +9,36 @@ only, `python src/evaluate.py`. Do not edit by hand. Load models through `src/pr
 
 | File | Contains | Produced by | Used by |
 |---|---|---|---|
-| `gbm.joblib` | **App model.** `CalibratedClassifierCV(method='isotonic', cv=5)` around the tuned GBM pipeline, fitted on train; `predict_proba` averages the 5 calibrated fold copies | `src/train.py` | `src/predict.py` (`score`), `app/` |
-| `gbm_uncalibrated.joblib` | The tuned GBM pipeline itself: ordinal-coded categoricals + `HistGradientBoostingClassifier(class_weight='balanced')`, native categorical splits. Kept for the before/after comparison and as the ablation reference | `src/train.py` | `src/evaluate.py` |
-| `baseline_lr.joblib` | sklearn Pipeline: impute/scale/one-hot + `LogisticRegression(class_weight='balanced')` (uncalibrated) | `src/train.py` | `src/evaluate.py`, `app/` (explanations) |
-| `<model>_metrics.json` (one per `.joblib`) | Split dates and sizes, feature list, CV grid + best params, F1 threshold and OOF metrics (from out-of-fold train predictions), test ROC-AUC / PR-AUC / Brier, confusion matrix at that threshold, calibration bins, majority baseline, sklearn version. `gbm_metrics.json` adds `calibration` (test Brier before/after), `score_reference` and `ablations` | `src/train.py` (train/CV parts), `src/evaluate.py` (`test`, `majority_baseline`, `calibration.test_*`, `ablations`) | `app/`, report |
-| `score_reference.npy` | Sorted out-of-fold calibrated scores of the 114,600 train trials (start 2008-2016); the reference for `percentile()` | `src/train.py` | `src/predict.py` (`percentile`) |
-| `calibration_before_after.png` | GBM calibration curve + prediction histogram on test, before vs after isotonic calibration | `src/evaluate.py` | report, video |
-| `feature_importance.csv` | Permutation importance on test for `baseline_lr` and `gbm`, one row per model x raw feature: mean/std drop in ROC-AUC and PR-AUC, `rank` by ROC-AUC drop | `src/evaluate.py` | `app/` (driver charts), report |
+| `gbm.joblib` | **App model (v1 features, 29).** `CalibratedClassifierCV(method='isotonic', cv=5)` around the tuned GBM pipeline, fitted on train; `predict_proba` averages the 5 calibrated fold copies | `src/train.py` | `src/predict.py` (`score`), `app/` |
+| `gbm_uncalibrated.joblib` | The tuned GBM pipeline itself (v1): ordinal-coded categoricals + `HistGradientBoostingClassifier(class_weight='balanced')`, native categorical splits. Kept for the before/after comparison and as the ablation reference | `src/train.py` | `src/evaluate.py` |
+| `gbm_v2.joblib` | **Challenger, not used by the app.** The same tuning, CV folds and isotonic calibration on all 39 v2 features (v1 + condition categories + `n_intervention_types`). Kept for the report: it missed the decision rule below | `src/train.py` | `src/evaluate.py`, report |
+| `baseline_lr.joblib` | sklearn Pipeline (v1 features): impute/scale/one-hot + `LogisticRegression(class_weight='balanced')` (uncalibrated) | `src/train.py` | `src/evaluate.py` |
+| `<model>_metrics.json` (one per `.joblib`) | Split dates and sizes, the model's own feature list and `version`, CV grid + best params (+ best cell per fold), F1 threshold and OOF metrics (from out-of-fold train predictions), test ROC-AUC / PR-AUC / Brier, confusion matrix at that threshold, calibration bins, majority baseline, sklearn version. `gbm_metrics.json` adds `calibration` (test Brier before/after), `score_reference`, `ablations` and `version_comparison` (`gbm_v2` vs `gbm`: gains, per-fold CV gains, bootstrap CI, rule, decision) | `src/train.py` (train/CV parts), `src/evaluate.py` (`test`, `majority_baseline`, `calibration.test_*`, `ablations`, `version_comparison`) | `app/`, report |
+| `score_reference.npy` | Sorted out-of-fold calibrated scores of the 114,600 train trials (start 2008-2016) from the app model; the reference for `percentile()` | `src/train.py` | `src/predict.py` (`percentile`) |
+| `calibration_before_after.png` | App GBM calibration curve + prediction histogram on test, before vs after isotonic calibration | `src/evaluate.py` | report, video |
+| `feature_importance.csv` | Permutation importance on test for `baseline_lr`, `gbm` and `gbm_v2`, one row per model x the model's own raw features: mean/std drop in ROC-AUC and PR-AUC, `rank` by ROC-AUC drop | `src/evaluate.py` | `app/` (driver charts, `gbm` rows), report |
+
+## Model v2: condition features (not adopted)
+
+v2 adds 10 design-time features to v1: multi-hot condition areas from keyword rules on the registered condition
+list (`cond_oncology`, `cond_cardio`, `cond_neuro`, `cond_infectious`, `cond_metabolic`, `cond_psych`,
+`cond_respiratory`, `cond_healthy`), `n_condition_categories` and `n_intervention_types`. Both versions use the
+identical grid, CV folds, isotonic calibration and date split. **Rule, fixed before v2 was trained:** v2 replaces
+v1 only if its ROC-AUC is at least 0.005 higher on test AND in 5-fold CV on train.
+
+| GBM | Features | CV ROC-AUC | CV PR-AUC | CV Brier | Test ROC-AUC | Test PR-AUC | Test Brier |
+|---|---|---|---|---|---|---|---|
+| v1 = `gbm.joblib` (app) | 29 | 0.7099 ± 0.0038 | 0.2219 ± 0.0035 | 0.0932 | 0.7102 | 0.2319 | 0.0974 |
+| v2 = `gbm_v2.joblib` | 39 | 0.7144 ± 0.0040 | 0.2287 ± 0.0050 | 0.0929 | 0.7151 | 0.2409 | 0.0969 |
+| Gain | +10 | **+0.0045** | +0.0068 | -0.0003 | **+0.0048** | +0.0090 | -0.0005 |
+
+CV = 5-fold stratified CV on train (start 2008-2016): ROC-AUC / PR-AUC of the best grid cell (mean ± std over
+folds; the rule's CV number), Brier from the calibrated model's out-of-fold predictions. Test = start 2017-2019,
+calibrated models. v2 is better in all 5 CV folds (+0.003 to +0.006) and the paired bootstrap 95% CI of the test
+gain is +0.0029 to +0.0067 (45% of resamples reach +0.005), so the gain is real, but both ROC-AUC gains are below
+0.005, so **`gbm.joblib` stays v1**. Changing the
+app to v2 means setting `APP_FEATURES = FEATURE_COLUMNS` (and `CHALLENGERS` to the v1 list) in `src/train.py`
+and retraining; the app pages already fill all 39 features.
 
 ## Ablations: post-registration edits
 
@@ -38,5 +61,7 @@ reference is `gbm_uncalibrated`). Losing them costs under 0.01 ROC-AUC, so the m
   for recent and ongoing trials.
 - `baseline_lr` and `gbm_uncalibrated` probabilities are inflated by `class_weight='balanced'`; use them for
   ranking only.
+- `FEATURE_COLUMNS` (39) holds more columns than the app model uses (29). Each model is fitted on exactly its own
+  columns (`feature_names_in_`); `predict.score` and `evaluate.py` pass only those (`predict.model_columns`).
 - `.joblib` files only load reliably with the sklearn version in `sklearn_version` of the metrics JSON
   (`requirements.txt` pins it). Retrain if you change the pin.

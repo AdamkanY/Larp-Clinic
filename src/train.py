@@ -13,10 +13,20 @@ only):
   ``CalibratedClassifierCV(method='isotonic', cv=5)``, fitted on train. Each of
   the 5 folds fits the pipeline on 4/5 of train and an isotonic map on the
   remaining 1/5; predictions average the 5 calibrated copies.
+* ``gbm_v2`` (challenger, kept for the report): the same tuning and
+  calibration on the v2 feature set.
 
-Inputs are exactly ``FEATURE_COLUMNS`` from ``src/features.py``; meta and
-display columns (``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date,
-split, titles, conditions, sponsor name, phase label) never reach a model.
+Feature versions (``src/features.py``): v1 = the 29 features of PR #4
+(``V1_FEATURE_COLUMNS``); v2 = all 39 ``FEATURE_COLUMNS``, i.e. v1 plus the
+condition-category flags, ``n_condition_categories`` and
+``n_intervention_types``. Decision rule, fixed before v2 was trained: v2
+becomes the app model only if its ROC-AUC beats v1 by at least 0.005 both on
+test and in 5-fold CV on train. It did not (``version_comparison`` in
+``models/gbm_metrics.json``), so the app model and its baselines use v1
+(``APP_FEATURES``). Each model is fitted on exactly its own columns, so its
+``feature_names_in_`` lists what it uses. Meta and display columns
+(``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date, split, titles,
+conditions, sponsor name, phase label) never reach a model.
 
 Protocol: hyperparameters are picked by 5-fold stratified CV on train (refit on
 PR-AUC); calibration adds no tuned parameters. Every model also gets
@@ -27,7 +37,7 @@ maximises F1 on them, and the calibrated model's OOF scores are saved as
 model is saved.
 
 Usage:
-    python src/train.py        # about 5-10 minutes on 4 cores
+    python src/train.py        # about 20-25 minutes on 4 cores
 """
 
 import json
@@ -57,7 +67,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import evaluate  # noqa: E402
 from features import (BINARY_FEATURES, CATEGORICAL_FEATURES,  # noqa: E402
                       FEATURE_COLUMNS, LABELS, NON_FEATURE_COLUMNS,
-                      NUMERIC_FEATURES)
+                      NUMERIC_FEATURES, V1_FEATURE_COLUMNS)
 from predict import to_model_frame  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +85,13 @@ CV_FOLDS = 5
 REFIT_METRIC = "average_precision"  # PR-AUC: the metric that matters at ~11% positives
 CALIBRATION_METHOD = "isotonic"
 CALIBRATION_CV = 5  # plain int: unshuffled stratified folds; train rows are in random order
+
+# Features of the app model (gbm, gbm_uncalibrated) and of baseline_lr: v1,
+# because v2 missed the decision rule in the module docstring.
+APP_FEATURES = V1_FEATURE_COLUMNS
+# Calibrated GBMs trained with the app model's exact procedure on another
+# feature set, saved as models/<name>.joblib and compared in evaluate.py.
+CHALLENGERS = {"gbm_v2": FEATURE_COLUMNS}
 
 # Small grids on purpose: this is a baseline, and every extra cell is another
 # chance to overfit the CV folds. Both grids turned out flat (all cells within
@@ -127,31 +144,47 @@ def load_split(split: str, df: pd.DataFrame = None) -> tuple:
     return to_model_frame(part), part["label"].to_numpy(dtype=int)
 
 
-def build_lr_pipeline() -> Pipeline:
-    """Logistic regression with imputation, scaling and one-hot encoding."""
+def _kinds(features) -> tuple:
+    """Split a feature list into (categorical, binary, numeric), each in its canonical order."""
+    keep = set(features)
+    return tuple([c for c in kind if c in keep]
+                 for kind in (CATEGORICAL_FEATURES, BINARY_FEATURES, NUMERIC_FEATURES))
+
+
+def build_lr_pipeline(features=None) -> Pipeline:
+    """Logistic regression with imputation, scaling and one-hot encoding.
+
+    Args:
+        features: input columns; defaults to ``APP_FEATURES``.
+    """
+    categorical_cols, binary_cols, numeric_cols = _kinds(features or APP_FEATURES)
     numeric = Pipeline([("impute", SimpleImputer(strategy="median")),
                         ("scale", StandardScaler())])
     # Flags stay 0/1 (no scaling) so their coefficients read as "flag on vs off".
     binary = SimpleImputer(strategy="most_frequent")
     categorical = Pipeline([("impute", SimpleImputer(strategy="most_frequent")),
                             ("onehot", OneHotEncoder(handle_unknown="ignore"))])
-    prep = ColumnTransformer([("num", numeric, NUMERIC_FEATURES),
-                              ("bin", binary, BINARY_FEATURES),
-                              ("cat", categorical, CATEGORICAL_FEATURES)],
+    prep = ColumnTransformer([("num", numeric, numeric_cols),
+                              ("bin", binary, binary_cols),
+                              ("cat", categorical, categorical_cols)],
                              verbose_feature_names_out=False)
     clf = LogisticRegression(class_weight="balanced", max_iter=2000)
     return Pipeline([("prep", prep), ("clf", clf)])
 
 
-def build_gbm_pipeline(drop=()) -> Pipeline:
+def build_gbm_pipeline(drop=(), features=None) -> Pipeline:
     """Histogram gradient boosting with native categorical splits.
 
     Args:
         drop: feature names to leave out (used by the ablations in
-            ``evaluate.py``); the default uses every feature.
+            ``evaluate.py``).
+        features: input columns before ``drop``; defaults to ``APP_FEATURES``.
+            Categoricals come first, then flags and numbers, each in the order
+            of ``src/features.py``, so v1 keeps the column order of PR #4.
     """
-    categorical = [c for c in CATEGORICAL_FEATURES if c not in drop]
-    other = [c for c in BINARY_FEATURES + NUMERIC_FEATURES if c not in drop]
+    categorical, binary, numeric = _kinds([c for c in features or APP_FEATURES
+                                           if c not in drop])
+    other = binary + numeric
     # Unseen categories at scoring time (e.g. a new API enum value) become
     # missing instead of crashing the app.
     encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan,
@@ -188,8 +221,12 @@ def make_cv() -> StratifiedKFold:
 
 
 def tune(name: str, X, y, cv) -> GridSearchCV:
-    """Grid-search one model with stratified CV on train and refit on all of train."""
-    search = GridSearchCV(BUILDERS[name](), PARAM_GRIDS[name], cv=cv,
+    """Grid-search one model with stratified CV on train and refit on all of train.
+
+    The model uses exactly the columns of ``X`` (pass ``X[features]``), so
+    every feature version goes through the same grid and folds.
+    """
+    search = GridSearchCV(BUILDERS[name](features=list(X.columns)), PARAM_GRIDS[name], cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
                           refit=REFIT_METRIC, n_jobs=-1)
     search.fit(X, y)
@@ -197,7 +234,11 @@ def tune(name: str, X, y, cv) -> GridSearchCV:
 
 
 def cv_summary(search: GridSearchCV) -> dict:
-    """Best parameters and the CV scores of every grid cell, for the metrics JSON."""
+    """Best parameters and the CV scores of every grid cell, for the metrics JSON.
+
+    The best cell's per-fold scores are kept too: every model uses the same
+    folds, so two feature versions can be compared fold by fold.
+    """
     res, best = search.cv_results_, search.best_index_
     grid = [{"params": {k.removeprefix("clf__"): v for k, v in params.items()},
              "cv_roc_auc": float(res["mean_test_roc_auc"][i]),
@@ -212,6 +253,9 @@ def cv_summary(search: GridSearchCV) -> dict:
         "best_roc_auc_std": float(res["std_test_roc_auc"][best]),
         "best_pr_auc_mean": float(res["mean_test_average_precision"][best]),
         "best_pr_auc_std": float(res["std_test_average_precision"][best]),
+        "best_roc_auc_folds": [float(res[f"split{i}_test_roc_auc"][best]) for i in range(CV_FOLDS)],
+        "best_pr_auc_folds": [float(res[f"split{i}_test_average_precision"][best])
+                              for i in range(CV_FOLDS)],
         "grid": grid,
     }
 
@@ -274,8 +318,14 @@ def model_details(model) -> dict:
 
 def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
          extra: dict = None) -> None:
-    """Write ``models/<name>.joblib`` and the training part of its metrics JSON."""
+    """Write ``models/<name>.joblib`` and the training part of its metrics JSON.
+
+    The feature list is read from the fitted model (``feature_names_in_``),
+    so the JSON records exactly the columns this model uses.
+    """
     joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
+    features = list(model.feature_names_in_)
+    categorical, binary, numeric = _kinds(features)
     report = {
         "model": name,
         "model_file": f"models/{name}.joblib",
@@ -284,8 +334,10 @@ def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
         "python_version": platform.python_version(),
         "label": {"TERMINATED": 1, "COMPLETED": 0},
         "split": split_summary(df),
-        "features": {"all": FEATURE_COLUMNS, "categorical": CATEGORICAL_FEATURES,
-                     "binary": BINARY_FEATURES, "numeric": NUMERIC_FEATURES},
+        "features": {"version": {tuple(V1_FEATURE_COLUMNS): "v1",
+                                 tuple(FEATURE_COLUMNS): "v2"}.get(tuple(features), "other"),
+                     "all": features, "categorical": categorical,
+                     "binary": binary, "numeric": numeric},
         **model_details(model),
         "cv": cv_info,
         "threshold": threshold,
@@ -295,15 +347,28 @@ def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
                                            encoding="utf-8")
 
 
+def fit_calibrated(base: Pipeline, X, y, cv) -> tuple:
+    """Calibrate a tuned pipeline: OOF scores and F1 threshold first, then fit on all of ``X``.
+
+    Returns:
+        (fitted CalibratedClassifierCV, OOF calibrated scores, threshold info).
+    """
+    calibrated = build_calibrated(base)
+    oof, threshold = out_of_fold(calibrated, X, y, cv)
+    calibrated.fit(X, y)
+    return calibrated, oof, threshold
+
+
 def main() -> None:
     """Tune, fit and save all models, then evaluate them once on test."""
     df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
-    X_train, y_train = load_split("train", df)
+    X_all, y_train = load_split("train", df)
     X_test, y_test = load_split("test", df)
+    X_train = X_all[APP_FEATURES]
     print(f"Train: {len(y_train)} trials ({y_train.mean():.2%} terminated); "
           f"test: {len(y_test)} trials ({y_test.mean():.2%} terminated)")
-    print(f"Features ({len(FEATURE_COLUMNS)}): {', '.join(FEATURE_COLUMNS)}")
+    print(f"App model features ({len(APP_FEATURES)}): {', '.join(APP_FEATURES)}")
 
     cv = make_cv()
     MODELS_DIR.mkdir(exist_ok=True)
@@ -328,11 +393,9 @@ def main() -> None:
     t0 = time.time()
     print(f"\n--- gbm: {CALIBRATION_METHOD} calibration (cv={CALIBRATION_CV}) of the tuned GBM ---")
     base, base_cv_info = tuned["gbm"]
-    calibrated = build_calibrated(base)
-    oof, threshold = out_of_fold(calibrated, X_train, y_train, cv)
+    calibrated, oof, threshold = fit_calibrated(base, X_train, y_train, cv)
     print(f"OOF Brier {threshold['oof_brier']:.4f}, OOF ROC-AUC {threshold['oof_roc_auc']:.4f}; "
           f"F1-max threshold {threshold['value']:.4f} (OOF F1 {threshold['oof_f1']:.4f})")
-    calibrated.fit(X_train, y_train)
     # Sorted, so predict.percentile is a single binary search.
     np.save(SCORE_REFERENCE_PATH, np.sort(oof))
     save("gbm", calibrated, df,
@@ -353,7 +416,28 @@ def main() -> None:
     print(f"Saved models/gbm.joblib and models/{SCORE_REFERENCE_PATH.name} "
           f"({time.time() - t0:.0f}s)")
 
-    evaluate.evaluate_saved(X_test, y_test, X_train=X_train, y_train=y_train)
+    for name, features in CHALLENGERS.items():
+        t0 = time.time()
+        print(f"\n--- {name}: the same grid, CV and calibration on {len(features)} features ---")
+        X = X_all[features]
+        search = tune("gbm", X, y_train, cv)
+        cv_info = cv_summary(search)
+        print(f"best {cv_info['best_params']}  CV ROC-AUC {cv_info['best_roc_auc_mean']:.4f}"
+              f" ± {cv_info['best_roc_auc_std']:.4f}  CV PR-AUC "
+              f"{cv_info['best_pr_auc_mean']:.4f} ± {cv_info['best_pr_auc_std']:.4f}")
+        challenger, _, threshold = fit_calibrated(search.best_estimator_, X, y_train, cv)
+        print(f"OOF Brier {threshold['oof_brier']:.4f}, OOF ROC-AUC {threshold['oof_roc_auc']:.4f}")
+        save(name, challenger, df,
+             {**cv_info, "note": "hyperparameters tuned on the uncalibrated pipeline with the "
+                                 "same grid and folds as gbm; calibration adds no tuned parameters"},
+             threshold,
+             extra={"calibration": {
+                        "method": CALIBRATION_METHOD,
+                        "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split"},
+                    "compared_with": "gbm"})
+        print(f"Saved models/{name}.joblib ({time.time() - t0:.0f}s)")
+
+    evaluate.evaluate_saved(X_test, y_test, X_train=X_all, y_train=y_train)
 
 
 if __name__ == "__main__":

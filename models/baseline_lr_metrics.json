@@ -1,7 +1,7 @@
 {
   "model": "baseline_lr",
   "model_file": "models/baseline_lr.joblib",
-  "trained_on": "2026-11-03",
+  "trained_on": "2026-11-04",
   "sklearn_version": "1.9.1",
   "python_version": "3.13.18",
   "label": {
@@ -30,6 +30,7 @@
     }
   },
   "features": {
+    "version": "v1",
     "all": [
       "phase",
       "allocation",
@@ -110,6 +111,20 @@
     "best_roc_auc_std": 0.0027191912889891778,
     "best_pr_auc_mean": 0.1973421594744766,
     "best_pr_auc_std": 0.0031278018962415306,
+    "best_roc_auc_folds": [
+      0.6857695625470939,
+      0.6817232783553769,
+      0.6866907137509943,
+      0.6827837423076828,
+      0.6892630150681996
+    ],
+    "best_pr_auc_folds": [
+      0.20104554299064592,
+      0.19281034508694103,
+      0.19960288688532984,
+      0.1945612221979512,
+      0.1986908002115151
+    ],
     "grid": [
       {
         "params": {

@@ -12,7 +12,9 @@ Typical use in the app::
 calibration (``CalibratedClassifierCV``, fitted on the train split), so
 ``score`` returns a calibrated probability: across many trials scored 0.20,
 about 20% were terminated. ``percentile`` compares a score with the
-out-of-fold calibrated scores of the 2008-2016 training trials.
+out-of-fold calibrated scores of the 2008-2016 training trials. The app model
+uses the v1 features; ``score`` passes every model only the columns it was
+trained on (``model_columns``), so any saved model can be scored the same way.
 
 This module deliberately imports only pandas, numpy, joblib and ``features`` so
 the app does not pull in training or plotting dependencies.
@@ -80,6 +82,16 @@ def to_model_frame(records) -> pd.DataFrame:
     return pd.DataFrame(columns, index=frame.index)[FEATURE_COLUMNS]
 
 
+def model_columns(model) -> list:
+    """The input columns a fitted model was trained on, in order.
+
+    ``FEATURE_COLUMNS`` can hold more features than a given model uses (the
+    app model is v1, ``models/gbm_v2.joblib`` uses all of them), so each
+    model is handed exactly its own columns.
+    """
+    return list(getattr(model, "feature_names_in_", FEATURE_COLUMNS))
+
+
 @lru_cache(maxsize=None)
 def _load_cached(resolved_path: str):
     """Load a joblib file once per process; Streamlit reruns then reuse it."""
@@ -115,7 +127,8 @@ def score(features: dict, model=None) -> float:
         Probability of TERMINATED in [0, 1].
     """
     model = model if model is not None else load_model()
-    return float(model.predict_proba(to_model_frame([features]))[0, 1])
+    frame = to_model_frame([features])
+    return float(model.predict_proba(frame[model_columns(model)])[0, 1])
 
 
 @lru_cache(maxsize=None)

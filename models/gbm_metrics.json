@@ -1,7 +1,7 @@
 {
   "model": "gbm",
   "model_file": "models/gbm.joblib",
-  "trained_on": "2026-11-03",
+  "trained_on": "2026-11-04",
   "sklearn_version": "1.9.1",
   "python_version": "3.13.18",
   "label": {
@@ -30,6 +30,7 @@
     }
   },
   "features": {
+    "version": "v1",
     "all": [
       "phase",
       "allocation",
@@ -120,6 +121,20 @@
     "best_roc_auc_std": 0.0038020625441110636,
     "best_pr_auc_mean": 0.22187278687135642,
     "best_pr_auc_std": 0.00354269345910573,
+    "best_roc_auc_folds": [
+      0.7109815380167697,
+      0.7063050932589569,
+      0.7070586840843218,
+      0.7083221910421905,
+      0.7168009391306542
+    ],
+    "best_pr_auc_folds": [
+      0.21925755182897597,
+      0.22679413810802448,
+      0.22200620878229826,
+      0.21686482841517096,
+      0.2244412072223124
+    ],
     "grid": [
       {
         "params": {
@@ -342,6 +357,79 @@
       "fp": 0,
       "fn": 5591,
       "tp": 0
+    }
+  },
+  "version_comparison": {
+    "gbm_v2": {
+      "rule": "the challenger replaces the app model only if its ROC-AUC beats the app model's by >= 0.005 on test AND in 5-fold CV on train (best grid cell, same folds); fixed before the challenger was trained",
+      "app_model": {
+        "model": "gbm",
+        "feature_version": "v1",
+        "n_features": 29,
+        "best_params": {
+          "l2_regularization": 1.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7098936891065786,
+        "cv_roc_auc_std": 0.0038020625441110636,
+        "cv_pr_auc": 0.22187278687135642,
+        "cv_pr_auc_std": 0.00354269345910573,
+        "oof_roc_auc": 0.7131666452462198,
+        "oof_pr_auc": 0.22188192349410152,
+        "oof_brier": 0.09323259582164718,
+        "test_roc_auc": 0.7102303052044447,
+        "test_pr_auc": 0.2318545605392039,
+        "test_brier": 0.09738985786150783
+      },
+      "challenger": {
+        "model": "gbm_v2",
+        "feature_version": "v2",
+        "n_features": 39,
+        "best_params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 63
+        },
+        "cv_roc_auc": 0.7143990431102342,
+        "cv_roc_auc_std": 0.004015586135641769,
+        "cv_pr_auc": 0.22866243097202515,
+        "cv_pr_auc_std": 0.005003387589308736,
+        "oof_roc_auc": 0.7167540065796093,
+        "oof_pr_auc": 0.22783833698190792,
+        "oof_brier": 0.09292820591012955,
+        "test_roc_auc": 0.7150792233629696,
+        "test_pr_auc": 0.2408881603723558,
+        "test_brier": 0.09692963024711242
+      },
+      "gain": {
+        "cv_roc_auc": 0.004505354003655593,
+        "cv_pr_auc": 0.006789644100668735,
+        "oof_roc_auc": 0.0035873613333895493,
+        "oof_pr_auc": 0.0059564134878064,
+        "oof_brier": -0.0003043899115176274,
+        "test_roc_auc": 0.00484891815852484,
+        "test_pr_auc": 0.009033599833151912,
+        "test_brier": -0.00046022761439541704
+      },
+      "cv_fold_roc_auc_gains": [
+        0.0034260773865267824,
+        0.00516370645329689,
+        0.0030554086162570826,
+        0.005957948204448615,
+        0.0049236293577485934
+      ],
+      "test_roc_auc_gain_bootstrap": {
+        "n_resamples": 1000,
+        "mean": 0.004858369454570985,
+        "ci95": [
+          0.0029428552214079027,
+          0.0067142700262732
+        ],
+        "share_at_least_min_gain": 0.447
+      },
+      "passes_rule": false,
+      "decision": "gbm stays the app model; gbm_v2 is kept for the report"
     }
   },
   "ablations": {
