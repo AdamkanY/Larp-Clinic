@@ -108,7 +108,7 @@ def load_model(path=DEFAULT_MODEL_PATH):
 
 
 def get_model(path=DEFAULT_MODEL_PATH):
-    """The app's model, or None when it cannot be loaded, so a page can show a message instead of a risk.
+    """The app's model, or None when it cannot be loaded (the page then shows a message).
 
     Shares ``load_model``'s cache: one load per process for every page and
     session. A failed load is not cached, so a model file that appears later is
@@ -129,7 +129,10 @@ def get_model(path=DEFAULT_MODEL_PATH):
 
 @lru_cache(maxsize=None)
 def _read_json(resolved_path: str) -> dict:
-    """Parse a JSON file once per process. Raises on failure, so a missing file is never cached."""
+    """Parse a JSON file once per process.
+
+    Raises on failure, so a missing file is never cached.
+    """
     with open(resolved_path, encoding="utf-8") as handle:
         return json.load(handle)
 
@@ -201,7 +204,7 @@ def percentile(prob: float, reference_path=SCORE_REFERENCE_PATH) -> float:
 
 
 def reference_size(reference_path=SCORE_REFERENCE_PATH) -> int:
-    """Number of historical trials ``percentile`` compares with (the 114,600 train-split trials).
+    """How many historical trials ``percentile`` compares with (114,600 train trials).
 
     Raises, like ``percentile``, if the reference file is missing or unreadable.
     """
