@@ -9,6 +9,7 @@ import copy
 import re
 import sys
 from pathlib import Path
+from unittest import mock
 
 import requests
 import streamlit as st
@@ -19,6 +20,10 @@ sys.path.insert(0, str(ROOT / "tests"))
 from test_features import STUDY  # noqa: E402
 
 HOME = str(ROOT / "app" / "Home.py")
+# The five pages in navigation order, with the title they carry in the navigation, the Home card and the header.
+PAGES = [("pages/1_Find_a_Trial.py", "Find a trial"), ("pages/2_Check_Your_Trial.py", "Check your own trial"),
+         ("pages/3_Explore_Data.py", "Explore the data"), ("pages/4_How_the_Model_Works.py", "How the model works"),
+         ("pages/5_Game.py", "Play the game")]
 NEEDS = [ROOT / "data" / "processed" / "trials.parquet", ROOT / "models" / "gbm.joblib",
          ROOT / "models" / "gbm_metrics.json"]
 
@@ -77,18 +82,24 @@ def has_drivers_chart(at):
                for spec in charts(at))
 
 
+def test_page_files():
+    """Exactly the five pages, numbered in navigation order."""
+    assert sorted(p.name for p in (ROOT / "app" / "pages").glob("*.py")) == [Path(p).name for p, _ in PAGES]
+
+
 def test_home():
-    """Landing page: four cards and the colour legend."""
+    """Landing page: one card per page in navigation order, "ongoing" trials, and the colour legend."""
     at = open_page(None)
     text = markdown(at)
-    for title in ("Find a trial", "Check your own trial", "Explore the data", "How the model works"):
-        assert title in text
+    titles = [re.search(r'class="band-title">([^<]+)<', m.value) for m in at.markdown]
+    assert [t.group(1) for t in titles if t] == [title for _, title in PAGES]
+    assert "Search ongoing trials" in text
     assert "chip green" in text and "chip red" in text
 
 
 def test_explore():
     """Explore: key numbers, a filter that narrows them, and a message instead of an error when nothing matches."""
-    at = open_page("pages/2_Explore.py")
+    at = open_page("pages/3_Explore_Data.py")
     assert not at.exception and len(at.metric) == 3
     total = int(at.metric[0].value.replace(",", ""))
     at.multiselect(key="explore_phases").set_value(["Phase 2"]).run()
@@ -102,7 +113,7 @@ def test_explore():
 
 def test_check_your_trial():
     """Check page: raw API codes stay out of the text, the result strip is there, and Reset restores the example."""
-    at = open_page("pages/5_Check_Your_Trial.py")
+    at = open_page("pages/2_Check_Your_Trial.py")
     assert not at.exception, [e.value for e in at.exception]
     assert "risk-card" in markdown(at) and "compact" in markdown(at)
     table = " ".join(c for df in at.table for c in df.value.index.astype(str))
@@ -117,7 +128,7 @@ def test_check_your_trial():
 
 def test_check_levers_and_conditions():
     """Check page: the table only suggests design levers, and typed conditions are recognised."""
-    at = open_page("pages/5_Check_Your_Trial.py")
+    at = open_page("pages/2_Check_Your_Trial.py")
     # An open-label, single-arm design leaves room for blinding / arm changes.
     at.selectbox(key="chk_masking").set_value("NONE").run()
     rows = [str(r) for df in at.table for r in df.value.index]
@@ -137,7 +148,7 @@ def test_check_model_mismatch_message():
     real = src.predict.model_features
     src.predict.model_features = lambda model: real(model) + ["a_future_feature"]
     try:
-        at = open_page("pages/5_Check_Your_Trial.py")
+        at = open_page("pages/2_Check_Your_Trial.py")
         assert not at.exception, [e.value for e in at.exception]
         assert any("cannot be scored right now" in e.value for e in at.error)
     finally:
@@ -148,7 +159,7 @@ def test_search_with_results_and_details():
     """Search: a result card shows its risk, interventional trials only get one, and Details opens the full view."""
     undo = stub_api([ongoing_study(), ongoing_study("OBSERVATIONAL", "NCT00000002")])
     try:
-        at = open_page("pages/1_Search.py")
+        at = open_page("pages/1_Find_a_Trial.py")
         assert not at.exception, [e.value for e in at.exception]
         cards = [m.value for m in at.markdown if 'class="card-title"' in m.value]
         assert len(cards) == 2 and "% risk" in cards[0] and "% risk" not in cards[1]
@@ -165,7 +176,7 @@ def test_search_offline():
     """Search: no connection gives a plain message and a retry button, not a crash."""
     undo = stub_api(None)
     try:
-        at = open_page("pages/1_Search.py")
+        at = open_page("pages/1_Find_a_Trial.py")
         assert not at.exception
         assert any("Could not reach ClinicalTrials.gov" in e.value for e in at.error)
         assert any(b.label == "Try again" for b in at.button)
@@ -173,12 +184,43 @@ def test_search_offline():
         undo()
 
 
-def test_explain():
-    """Explain: summary box and four tabs, with the numbers filled in."""
-    at = open_page("pages/2_Explain.py")
+def test_how_the_model_works():
+    """Model page: title, summary and reading boxes, five tabs, calibration plot, v1 vs v2 and ablation tables."""
+    at = open_page("pages/4_How_the_Model_Works.py")
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 4 and "In short" in markdown(at)
+    text = markdown(at)
+    assert "<h1" in text and ">How the model works</h1>" in text
+    assert "In short" in text and "How to read a risk score" in text and "Red is not a verdict" in text
+    assert [t.label for t in at.tabs] == ["What is predicted", "How good is it?", "What matters most",
+                                          "Can you trust it?", "Versions and checks"]
     assert [m.label for m in at.metric] == ["ROC-AUC", "PR-AUC", "Brier score"]
+    assert any(c.proto.id and "calibration_chart" in c.proto.id for c in at.get("plotly_chart"))
+    tables = [df.value for df in at.dataframe]
+    versions = [t for t in tables if "Status" in t.columns][0]
+    assert list(versions["Status"]) == ["Used in the app", "Tested, not used"]
+    assert list(versions["Inputs"]) == [29, 38]
+    ablations = [t.value for t in at.table if "Change in test ROC-AUC" in t.value.columns][0]
+    assert len(ablations) == 4 and ablations["Variant"].iloc[0] == "All inputs"
+
+
+def test_every_page_with_mocked_api_client():
+    """Every page opens with src.api_client mocked; only Find a trial calls it, and nothing reaches the network."""
+    from src import api_client
+    found = {"studies": [ongoing_study()], "total": 1, "error": None}
+    no_network = mock.Mock(side_effect=AssertionError("a page tried to reach the network"))
+    with mock.patch.object(api_client, "search_trials", return_value=found) as search, \
+            mock.patch.object(api_client, "get_trial", return_value=ongoing_study()) as get_trial, \
+            mock.patch.object(requests, "get", no_network):
+        for page, title in PAGES:
+            calls = search.call_count
+            at = open_page(page)
+            assert not at.exception, (page, [e.value for e in at.exception])
+            assert f">{title}</h1>" in markdown(at), page
+            assert (search.call_count > calls) == page.endswith("1_Find_a_Trial.py"), page
+        at = open_page("pages/1_Find_a_Trial.py")
+        [b for b in at.button if b.label == "See details"][0].click().run()
+        assert not at.exception and get_trial.called and "risk-card" in markdown(at)
+    assert not no_network.called
 
 
 def play_round(at, user_side="A"):

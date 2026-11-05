@@ -10,17 +10,21 @@ from ui import band_copy, chip, hero, inject_css, tick_scale  # noqa: E402
 
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 
-# (headline, sentence, page, action label, band tone). The sentences are the ones the old cards carried.
-BANDS = [
-    ("Find a trial", "Search ongoing trials on ClinicalTrials.gov and see how likely each one is to stop early.",
-     "pages/1_Search.py", "Search trials", "paper"),
-    ("Check your own trial", "Describe a design and watch the risk change as you adjust it.",
-     "pages/5_Check_Your_Trial.py", "Open the checker", "ink"),
-    ("Explore the data", "Charts of more than 160,000 past trials: which kinds get stopped early?",
-     "pages/2_Explore.py", "Open the charts", "paper"),
-    ("How the model works", "How well it works, what matters most and where it falls short.",
-     "pages/2_Explain.py", "Read the details", "ink"),
+# The five pages in the order people use them. Navigation and landing-page bands both come from this list, so
+# they cannot drift apart: (title, file, sentence for the band, action label).
+PAGES = [
+    ("Find a trial", "pages/1_Find_a_Trial.py",
+     "Search ongoing trials on ClinicalTrials.gov and see how likely each one is to stop early.", "Search trials"),
+    ("Check your own trial", "pages/2_Check_Your_Trial.py",
+     "Describe a design and watch the risk change as you adjust it.", "Open the checker"),
+    ("Explore the data", "pages/3_Explore_Data.py",
+     "Charts of more than 160,000 past trials: which kinds get stopped early?", "Open the charts"),
+    ("How the model works", "pages/4_How_the_Model_Works.py",
+     "How well it works, how to read a score, what matters most and where it falls short.", "Read the details"),
+    ("Play the game", "pages/5_Game.py",
+     "Two past trials, one was stopped early. Can you spot it more often than the model?", "Start a game"),
 ]
+PAGE_FILE = {title: path for title, path, _, _ in PAGES}
 
 
 @st.cache_data(show_spinner=False)
@@ -37,7 +41,8 @@ def headline_numbers():
 
 
 def home():
-    """Landing page: one giant fact, four ways in as alternating bands, and how to read the numbers."""
+    """Landing page: one giant fact, the five pages as alternating bands (same order as the navigation), and how
+    to read the numbers."""
     inject_css()
     numbers = headline_numbers()
     with st.container(key="band_hero"):
@@ -50,12 +55,13 @@ def home():
                  lead="of the past trials in our data ended before their planned end.", scale=ticks)
         else:
             hero("How likely is a clinical trial to be stopped early?", "Estimated from what is known when it is designed.")
-        st.page_link("pages/5_Check_Your_Trial.py", label="Check your own trial")
-    for index, (headline, text, page, action, tone) in enumerate(BANDS):
+        st.page_link(PAGE_FILE["Check your own trial"], label="Check your own trial")
+    for index, (headline, page, text, action) in enumerate(PAGES):
+        tone = "paper" if index % 2 == 0 else "ink"  # bands alternate, starting light
         number = label = None
-        if numbers and page == "pages/2_Explore.py":
+        if numbers and page == PAGE_FILE["Explore the data"]:
             number, label = f"{numbers['total']:,}", "past trials that ended, 2008 to 2019"
-        if numbers and page == "pages/2_Explain.py":
+        if numbers and page == PAGE_FILE["How the model works"]:
             number, label = f"{numbers['roc_auc']:.2f}", "ROC-AUC on newer trials the model never saw"
         with st.container(key=f"band_{tone}_{index}"):
             st.markdown(band_copy(headline, text, number, label), unsafe_allow_html=True)
@@ -79,14 +85,9 @@ def home():
 
 st.set_page_config(page_icon=":material/radar:", layout="wide")  # no page_title: each page then names its own browser tab
 st.session_state["via_router"] = True
-navigation = st.navigation([
-    st.Page(home, title="Home", default=True),
-    st.Page("pages/1_Search.py", title="Find a trial"),
-    st.Page("pages/5_Check_Your_Trial.py", title="Check your own trial"),
-    st.Page("pages/2_Explore.py", title="Explore the data"),
-    st.Page("pages/2_Explain.py", title="How the model works"),
-    st.Page("pages/5_Game.py", title="Play the game"),
-], position="top")
+# Each st.Page title is also the browser tab title of that page.
+navigation = st.navigation([st.Page(home, title="Home", default=True)]
+                           + [st.Page(path, title=title) for title, path, _, _ in PAGES], position="top")
 target = st.session_state.pop("target_page", None)  # a page that was opened directly comes back here
 if target:
     st.switch_page(target)

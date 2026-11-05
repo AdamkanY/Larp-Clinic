@@ -15,9 +15,9 @@ for folder in (ROOT, ROOT / "app"):
         sys.path.insert(0, str(folder))
 
 from src import viz  # noqa: E402
-from ui import page_header, require_router  # noqa: E402
+from ui import chart as show_chart, page_header, require_router  # noqa: E402
 
-require_router("pages/2_Explore.py")
+require_router("pages/3_Explore_Data.py")
 
 MAX_ROWS = 5000
 FILTER_KEYS = {"explore_phases": [], "explore_sponsors": [], "explore_condition": ""}
@@ -36,20 +36,20 @@ def reset_filters():
 
 
 def chart(fig, caption):
-    """Render a Plotly figure with its short explanation underneath."""
-    st.plotly_chart(fig, width="stretch")
+    """Render a Plotly figure in the app look (ui.chart) with its short explanation underneath."""
+    show_chart(fig)
     st.caption(caption)
 
 
 try:
     df = get_trials()
 except (FileNotFoundError, OSError):
-    page_header("📊 Explore the data")
+    page_header("Explore the data")
     st.info("The trial data (data/processed/trials.parquet) is not available here, so there is nothing to chart yet.")
     st.stop()
 
 overall = df["label"].mean()
-page_header("📊 Explore the data",
+page_header("Explore the data",
             f"{len(df):,} past trials that started {df['start_year'].min()}-{df['start_year'].max()} and have ended. "
             f"{overall:.1%} of them were stopped early. Each bar shows how that share changes with one trait.")
 

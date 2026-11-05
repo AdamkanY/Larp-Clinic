@@ -58,7 +58,7 @@ def label(kind, code):
         return NOT_STATED
     return NAMES.get(kind, {}).get(code) or str(code).replace("_", " ").capitalize()
 
-# Plain-English names for the model's input columns (FEATURE_COLUMNS in src/features.py). The Explain page,
+# Plain-English names for the model's input columns (FEATURE_COLUMNS in src/features.py). The How the model works page,
 # the per-trial driver charts and the "what would lower the risk" table all read them from here.
 FEATURE_NAMES = {
     "phase": "Phase",

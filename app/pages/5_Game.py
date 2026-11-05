@@ -97,8 +97,9 @@ def scores():
             sum(r["model_pick"] == "terminated" for r in rounds[:len(picks)]))
 
 
-page_header("Guess the stopped trial",
-            "Two past trials from the same phase. One was stopped early, one was completed. Which was which?")
+page_header("Play the game",
+            "Guess the stopped trial: two past trials from the same phase. One was stopped early, one was "
+            "completed. Which was which?")
 
 trials = get_trials()
 if trials is None:

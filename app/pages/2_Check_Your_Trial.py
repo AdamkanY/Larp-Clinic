@@ -14,9 +14,9 @@ from risk_gauge import (bar_caption, drivers_caption, drivers_chart, estimate_ca
 from src.features import (CONDITION_FLAG_FEATURES, INTERVENTION_TYPES, condition_features,  # noqa: E402
                           features_from_design)
 from src.labels import feature_name, feature_value, label  # noqa: E402
-from ui import page_header, require_router  # noqa: E402
+from ui import chart, page_header, require_router  # noqa: E402
 
-require_router("pages/5_Check_Your_Trial.py")
+require_router("pages/2_Check_Your_Trial.py")
 
 UNSET = "Not specified"
 
@@ -192,7 +192,7 @@ def lowering_changes(design, risk_of, top=5):
     return [(text, risk, risk - base) for text, risk in best[:top] if risk < base]
 
 
-page_header("🧪 Check your own trial",
+page_header("Check your own trial",
             "Describe a trial design and see how likely it is to be stopped early. Change any value and the estimate updates straight away.")
 
 result_strip = st.container(key="sticky_result")  # filled once the risk is known, but shown above the form
@@ -227,7 +227,7 @@ result_strip.markdown(risk_card(risk, delta=risk - previous if changed else None
 st.subheader("Where this design stands")
 bar = risk_bar(risk)
 if bar is not None:
-    st.plotly_chart(bar, width="stretch")
+    chart(bar)
 st.caption("Rough estimate for comparing trials, not an exact chance. Not medical advice.")
 with st.expander("How to read this"):
     st.write(bar_caption())
@@ -238,9 +238,9 @@ try:
     drivers = explain(row)
 except (FileNotFoundError, KeyError, ValueError):
     drivers = None
-chart = drivers_chart(drivers or [])
-if chart is not None:
-    st.plotly_chart(chart, width="stretch", key="drivers_chart")
+drivers_fig = drivers_chart(drivers or [])
+if drivers_fig is not None:
+    chart(drivers_fig, key="drivers_chart")
     st.caption(drivers_caption())
 elif drivers == []:
     st.write("This design looks like a typical past trial in every factor, so nothing pushes it up or down.")

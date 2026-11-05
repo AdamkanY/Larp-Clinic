@@ -218,6 +218,34 @@ def test_game_score_matches_predict():
         assert abs(batch[position] - score(row[FEATURE_COLUMNS].to_dict())) < 1e-9
 
 
+def test_one_palette():
+    """Colours live only in app/ui.py: the CSS, the charts and the Streamlit theme all take them from PALETTE."""
+    import re
+    import tomllib
+
+    import plotly.io as pio
+    import ui
+
+    assert pio.templates.default == ui.TEMPLATE  # registered on import, before any page builds a chart
+    colour = re.compile(r"#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b|rgba?\(")
+    files = [ROOT / "app" / "style.css", ROOT / "app" / "Home.py", ROOT / "app" / "risk_gauge.py",
+             ROOT / "src" / "viz.py", *sorted((ROOT / "app" / "pages").glob("*.py"))]
+    for path in files:
+        assert not colour.findall(path.read_text(encoding="utf-8")), f"colour literal in {path.name}"
+    css = ui.stylesheet()
+    assert f"--ink: {ui.PALETTE['ink']};" in css and f"--low-tint: {ui.PALETTE['low_tint']};" in css
+    theme = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text())["theme"]
+    assert {theme["primaryColor"], theme["textColor"]} == {ui.PALETTE["ink"]}
+    assert theme["backgroundColor"] == ui.PALETTE["paper"]
+    assert theme["secondaryBackgroundColor"] == ui.PALETTE["paper_2"]
+    assert theme["borderColor"] == ui.PALETTE["line"] and theme["linkColor"] == ui.PALETTE["accent_text"]
+    with tempfile.TemporaryDirectory() as tmp:
+        make_trials(Path(tmp) / "trials.parquet")
+        df = viz.load_trials(Path(tmp) / "trials.parquet")
+    fig = viz.rate_bar(viz.rate_by(df, "phase_label"), "phase_label", "Phase", 0.1)
+    assert fig.data[0].marker.color == ui.PALETTE["bar"]  # viz.py has no colours of its own
+
+
 if __name__ == "__main__":
     test_labels()
     test_viz()

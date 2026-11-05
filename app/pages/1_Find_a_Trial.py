@@ -11,9 +11,9 @@ from risk_gauge import (bar_caption, drivers_caption, drivers_chart, estimate_ca
                         risk_bar, risk_card, risk_chip)
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 from src.labels import label  # noqa: E402
-from ui import chip, esc, page_header, require_router  # noqa: E402
+from ui import chart, chip, esc, page_header, require_router  # noqa: E402
 
-require_router("pages/1_Search.py")
+require_router("pages/1_Find_a_Trial.py")
 
 PAGE = 10
 EXAMPLES = ["breast cancer", "diabetes", "asthma", "depression", "COVID-19"]
@@ -133,14 +133,14 @@ def detail_view(nct_id):
             st.markdown(risk_card(risk), unsafe_allow_html=True)
             bar = risk_bar(risk)
             if bar is not None:
-                st.plotly_chart(bar, width="stretch")
+                chart(bar)
             st.caption("Rough estimate for comparing trials, not an exact chance. Not medical advice.")
             with st.expander("How to read this"):
                 st.write(bar_caption())
                 st.write(estimate_caption(risk, ongoing=True))
-            chart = drivers_chart(drivers_for(nct_id, last_update(study), study) or [])
-            if chart is not None:
-                st.plotly_chart(chart, width="stretch", key="drivers_chart")
+            drivers_fig = drivers_chart(drivers_for(nct_id, last_update(study), study) or [])
+            if drivers_fig is not None:
+                chart(drivers_fig, key="drivers_chart")
                 st.caption(drivers_caption())
     with right:
         st.markdown("##### At a glance")
@@ -161,11 +161,11 @@ for key, default in {"q": "", "phase_filter": "", "sponsor_filter": "", "shown":
     st.session_state.setdefault(key, default)
 
 if st.session_state["selected"]:
-    page_header("🔎 Find a trial")
+    page_header("Find a trial")
     detail_view(st.session_state["selected"])
     st.stop()
 
-page_header("🔎 Find a trial", "Search ongoing interventional trials (treatments, devices, behaviour changes) on ClinicalTrials.gov and see how likely each one is to stop early.")
+page_header("Find a trial", "Search ongoing interventional trials (treatments, devices, behaviour changes) on ClinicalTrials.gov and see how likely each one is to stop early.")
 st.text_input("Search", key="q", on_change=new_search, label_visibility="collapsed",
               placeholder="Condition, drug or keyword, for example breast cancer")
 c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment="bottom")

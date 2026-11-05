@@ -18,7 +18,7 @@ Do not edit by hand. Load models through `src/predict.py` (`load_model`,
 | `<model>_metrics.json` (one per `.joblib`) | Split dates and sizes, feature list, CV grid + best params, F1 threshold and OOF metrics (from out-of-fold train predictions), test ROC-AUC / PR-AUC / Brier, confusion matrix at that threshold, calibration bins, majority baseline, sklearn version. `gbm_metrics.json` adds `calibration` (test Brier before/after), `score_reference` and `ablations` | `src/train.py` (train/CV parts), `src/evaluate.py` (`test`, `majority_baseline`, `calibration.test_*`, `ablations`) | `app/`, report |
 | `score_reference.npy` | Sorted out-of-fold calibrated scores of the 114,600 train trials (start 2008-2016); the reference for `percentile()`. `score_reference_v2.npy` is the same for `gbm_v2` | `src/train.py` | `src/predict.py` (`percentile`) |
 | `calibration_before_after.png` | GBM calibration curve + prediction histogram on test, before vs after isotonic calibration | `src/evaluate.py` | report, video |
-| `feature_importance.csv` | Permutation importance on test for `baseline_lr`, `gbm` and `gbm_v2`, one row per model x raw feature: mean/std drop in ROC-AUC and PR-AUC, `rank` by ROC-AUC drop | `src/evaluate.py` | `app/pages/2_Explain.py` (`gbm` rows), report |
+| `feature_importance.csv` | Permutation importance on test for `baseline_lr`, `gbm` and `gbm_v2`, one row per model x raw feature: mean/std drop in ROC-AUC and PR-AUC, `rank` by ROC-AUC drop | `src/evaluate.py` | `app/pages/4_How_the_Model_Works.py` (`gbm` rows), report |
 
 ## v1 vs v2: condition categories (2026-11-05)
 

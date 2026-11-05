@@ -158,7 +158,7 @@ def score_frame(records, model=None) -> np.ndarray:
     """Calibrated predicted termination risk for many trials in one model call.
 
     Same numbers as ``score`` row by row; use it for whole tables (the game,
-    the Explain page), where thousands of single calls would take minutes.
+    the How the model works page), where thousands of single calls would take minutes.
     Each model is fed only the columns it was fitted on, so a table holding
     extra feature columns (e.g. the v2 condition flags) scores correctly.
 

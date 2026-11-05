@@ -1,19 +1,101 @@
-"""Shared look of the Trial-Radar pages: one stylesheet (style.css), full-width bands, the tick scale and the page header."""
+"""Shared look of the Trial-Radar pages: the one colour palette, the Plotly template built from it, one stylesheet
+(style.css), full-width bands, the tick scale and the page header."""
 import functools
 import html
 import re
 from pathlib import Path
 
+import plotly.graph_objects as go
+import plotly.io as pio
 import streamlit as st
 
 STYLE = Path(__file__).resolve().parent / "style.css"
 TICKS = 100  # one tick = 1% of the past trials
 
+# The only place colours are defined. style.css reads them as CSS variables (--ink, --low-tint, ...), every Plotly
+# chart through the "trial_radar" template below. .streamlit/config.toml cannot import Python, so its [theme]
+# repeats five of them; tests/test_app.py checks that it still matches.
+PALETTE = {
+    # Surfaces and text
+    "ink": "#0A1F1A", "ink_2": "#123029", "paper": "#EDEFE6", "paper_2": "#F6F7F1", "line": "#C8CCBE",
+    "field_line": "#78857D",  # 3:1 against the paper, so input borders are visible
+    "muted": "#4B5A53", "muted_on_ink": "#A9B8B0", "glow": "#226852",
+    # The pink accent: only "this trial" and the one main action
+    "accent": "#FF3D8B", "accent_deep": "#C80F5A", "accent_text": "#9E0A4A",
+    # Risk tones (chips, cards, the comparison bar): text, tint behind text, on dark bands, pale chart band
+    "low": "#1F6B52", "mid": "#8A5A0B", "high": "#A3282A",
+    "low_tint": "#DCEBE2", "mid_tint": "#F3E6C6", "high_tint": "#F2D9D5",
+    "low_on_ink": "#6FCBA5", "mid_on_ink": "#E8B94A", "high_on_ink": "#FF8A75",
+    "low_band": "#C5DDD0", "mid_band": "#EBDDAE", "high_band": "#E3B7B0",
+    # Chart series: one deep green for "share stopped early", orange for "raises the risk", grey for neither.
+    # Each is at least 3:1 against the paper.
+    "bar": "#17463A", "up": "#B8452E", "neutral": "#6B7A72", "pale": "#D3DAD3",
+}
+PALETTE["down"] = PALETTE["bar"]  # "lowers the risk" uses the same green as the data bars
+FONT_FAMILY = "IBM Plex Sans, sans-serif"
+TEMPLATE = "trial_radar"
+
+
+def alpha(colour, opacity):
+    """A palette hex colour as rgba() with the given opacity (Plotly has no color-mix)."""
+    value = colour.lstrip("#")
+    red, green, blue = (int(value[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({red},{green},{blue},{opacity})"
+
+
+def plotly_template():
+    """The chart look as a Plotly template: transparent so the paper shows through, hairline grid, ink tooltips,
+    muted axis text, the palette's series colours and dashed reference lines in the muted colour."""
+    font = {"family": FONT_FAMILY, "size": 13, "color": PALETTE["ink"]}
+    small = {"family": FONT_FAMILY, "size": 12, "color": PALETTE["muted"]}
+    axis = {"tickfont": small, "title": {"font": small}, "gridcolor": alpha(PALETTE["ink"], 0.12),
+            "linecolor": PALETTE["ink"], "zeroline": False, "automargin": True}
+    return go.layout.Template(layout={
+        "font": font, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)",
+        "colorway": [PALETTE["bar"], PALETTE["up"], PALETTE["neutral"], PALETTE["accent_deep"]],
+        "hoverlabel": {"bgcolor": PALETTE["ink"], "bordercolor": PALETTE["ink"], "align": "left",
+                       "font": {"family": FONT_FAMILY, "color": PALETTE["paper"], "size": 13}},
+        "xaxis": axis, "yaxis": axis, "legend": {"font": font, "title": {"text": ""}},
+        "title": {"font": {"family": FONT_FAMILY, "size": 15, "color": PALETTE["ink"]}},
+        "shapedefaults": {"line": {"color": PALETTE["muted"]}},
+        "annotationdefaults": {"font": small},
+    })
+
+
+# Registered on import, so every figure the pages (and src/viz.py) build afterwards starts from this look.
+pio.templates[TEMPLATE] = plotly_template()
+pio.templates.default = TEMPLATE
+
+
+def chart(fig, key=None):
+    """Show a Plotly figure in the app look, full width.
+
+    theme=None stops Streamlit from laying its own chart theme over the template. Streamlit's frontend still fills
+    the font and both backgrounds from its page theme unless the figure's own layout sets them (template values do
+    not count), so they are copied from the template onto the layout here; values a chart set itself are kept.
+    Axis margins grow to fit their titles.
+    """
+    base = pio.templates[TEMPLATE].layout
+    fig.update_layout(
+        template=TEMPLATE,
+        font={**base.font.to_plotly_json(), **fig.layout.font.to_plotly_json()},
+        paper_bgcolor=fig.layout.paper_bgcolor or base.paper_bgcolor,
+        plot_bgcolor=fig.layout.plot_bgcolor or base.plot_bgcolor,
+    )
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    st.plotly_chart(fig, theme=None, width="stretch", key=key)
+
+
+def css_variables():
+    """The palette as CSS custom properties (ink_2 -> --ink-2), for the top of style.css."""
+    return ":root {" + " ".join(f"--{name.replace('_', '-')}: {value};" for name, value in PALETTE.items()) + "}"
+
 
 @functools.lru_cache(maxsize=1)
 def stylesheet():
-    """Text of style.css, read once per server."""
-    return STYLE.read_text(encoding="utf-8")
+    """The palette's CSS variables followed by the text of style.css, built once per server."""
+    return css_variables() + "\n" + STYLE.read_text(encoding="utf-8")
 
 
 def plain(title):

@@ -7,12 +7,10 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.predict import percentile, reference_size
-from src.viz import CHART_LAYOUT, INK, MUTED, finish
+from ui import PALETTE
 
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
-GREEN, YELLOW, RED = "#C5DDD0", "#EBDDAE", "#E3B7B0"  # pale bands; ink text and the pink marker stay readable on them
-MARKER = "#C80F5A"
-UP, DOWN = "#B8452E", "#17463A"  # the Explain page's "more stopped" / "fewer stopped" colours
+INK = PALETTE["ink"]
 
 
 def percentile_of(risk):
@@ -100,24 +98,24 @@ def risk_bar(risk):
     if pct is None:
         return None
     fig = go.Figure()
-    for start, end, colour, name in [(0, 50, GREEN, "Less risky than half"), (50, 90, YELLOW, "Higher"),
-                                     (90, 100, RED, "")]:  # too narrow for a label
+    # Pale bands, so ink text and the pink marker stay readable on them.
+    for start, end, colour, name in [(0, 50, PALETTE["low_band"], "Less risky than half"),
+                                     (50, 90, PALETTE["mid_band"], "Higher"), (90, 100, PALETTE["high_band"], "")]:  # too narrow for a label
         fig.add_trace(go.Bar(x=[end - start], y=[""], base=[start], orientation="h", marker_color=colour,
                              width=0.7, text=name, textposition="inside", insidetextanchor="middle",
                              textfont={"size": 13, "color": INK}, hoverinfo="skip"))
     # One pink line through the bar marks this trial; its label sits above the bar so it never covers a segment label.
-    fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.45, y1=0.45, line={"color": MARKER, "width": 4})
+    fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.45, y1=0.45, line={"color": PALETTE["accent_deep"], "width": 4})
     anchor = "right" if pct > 80 else ("left" if pct < 20 else "center")
     fig.add_annotation(x=pct, y=0.45, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=False, yanchor="bottom",
-                       xanchor=anchor, yshift=6, bgcolor=INK, font={"color": "#EDEFE6", "size": 13}, borderpad=5)
+                       xanchor=anchor, yshift=6, bgcolor=INK, font={"color": PALETTE["paper"], "size": 13}, borderpad=5)
     fig.update_layout(
         barmode="overlay", showlegend=False, height=190, margin={"l": 10, "r": 10, "t": 55, "b": 60},
         xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
                "title": "Past trials that were less risky", "showgrid": False, "linecolor": INK},
         yaxis={"visible": False, "range": [-0.5, 0.5]},  # fixed, so the label does not stretch the axis
-        **CHART_LAYOUT,
     )
-    return finish(fig)
+    return fig
 
 
 def bar_caption():
@@ -143,21 +141,20 @@ def drivers_chart(drivers):
     widest = max(abs(v) for v in signed)
     fig = go.Figure(go.Bar(
         x=signed, y=[f"{name}: {value}" for name, value, _, _ in ordered], orientation="h",
-        marker_color=[UP if v > 0 else DOWN for v in signed],
+        marker_color=[PALETTE["up"] if v > 0 else PALETTE["down"] for v in signed],
         text=["raises the risk" if v > 0 else "lowers the risk" for v in signed], textposition="outside",
         cliponaxis=False, hovertemplate="%{y}<br>%{text}<extra></extra>",
     ))
     fig.add_vline(x=0, line={"color": INK, "width": 1})
     fig.update_layout(
         title={"text": "What pushes this trial's risk up / down", "x": 0, "xanchor": "left"},
-        showlegend=False, height=120 + 46 * len(drivers), margin={"l": 0, "r": 10, "t": 50, "b": 40},
+        showlegend=False, height=140 + 46 * len(drivers), margin={"l": 0, "r": 10, "t": 50, "b": 60},
         xaxis={"range": [-widest * 1.9, widest * 1.9], "showticklabels": False, "showgrid": False, "zeroline": False,
                "title": {"text": "← lowers the risk · compared with a typical past trial · raises the risk →",
-                         "font": {"color": MUTED, "size": 12}}},
+                         "font": {"color": PALETTE["muted"], "size": 12}}},
         yaxis={"automargin": True},
-        **CHART_LAYOUT,
     )
-    return finish(fig)
+    return fig
 
 
 def drivers_caption():
