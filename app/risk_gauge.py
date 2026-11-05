@@ -1,33 +1,21 @@
 """Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from."""
-from pathlib import Path
-
-import numpy as np
 import plotly.graph_objects as go
-import streamlit as st
 
-from src.predict import load_metrics
+from src.predict import load_metrics, percentile, reference_size
 from src.viz import CHART_LAYOUT, INK, finish
 
-REFERENCE = Path(__file__).resolve().parents[1] / "models" / "score_reference.npy"
 GREEN, YELLOW, RED = "#C5DDD0", "#EBDDAE", "#E3B7B0"  # pale bands; ink text and the pink marker stay readable on them
 MARKER = "#C80F5A"
+# What np.load raises for a missing or broken models/score_reference.npy; the display then shows no rank.
+NO_REFERENCE = (OSError, ValueError)
 
 
-@st.cache_data(show_spinner=False)
-def reference_scores():
-    """Sorted out-of-fold risk scores of the historical training trials, or None if the file is missing."""
+def rank(risk):
+    """src.predict.percentile(risk): share of past trials (in percent) with a lower score; None without the reference file."""
     try:
-        return np.sort(np.load(REFERENCE))
-    except (OSError, ValueError):
+        return percentile(risk)
+    except NO_REFERENCE:
         return None
-
-
-def percentile_of(risk):
-    """Share of historical trials (in percent) with a lower score than risk; None without the reference file."""
-    reference = reference_scores()
-    if reference is None:
-        return None
-    return float(100.0 * np.searchsorted(reference, risk, side="left") / len(reference))
 
 
 def underestimate():
@@ -63,7 +51,7 @@ def risk_tone(risk):
     Green below the median trial, yellow up to the riskiest 10%, red above. Without the reference file the
     tone is "gray" and the rank is None.
     """
-    pct = percentile_of(risk)
+    pct = rank(risk)
     if pct is None:
         return "gray", "Estimated risk of stopping early", None
     if pct < 50:
@@ -101,7 +89,7 @@ def risk_bar(risk):
 
     Returns None if the reference scores are missing, so callers can simply skip the bar.
     """
-    pct = percentile_of(risk)
+    pct = rank(risk)
     if pct is None:
         return None
     fig = go.Figure()
@@ -127,7 +115,9 @@ def risk_bar(risk):
 
 def bar_caption():
     """One sentence explaining how to read the bar."""
-    reference = reference_scores()
-    count = f"{len(reference):,}" if reference is not None else "the"
+    try:
+        count = f"{reference_size():,}"
+    except NO_REFERENCE:
+        count = "the"
     return (f"The bar ranks this trial among {count} past trials (started 2008-2016): green = less risky than "
             "half of them, yellow = up to the riskiest 10%, red = the riskiest 10%.")

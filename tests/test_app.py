@@ -157,12 +157,40 @@ def test_risk_colours():
         print("skipped: models/score_reference.npy is missing")
         return
     import risk_gauge
+    from src.predict import percentile
     scores = np.sort(np.load(reference))
     assert risk_gauge.risk_tone(float(scores[len(scores) // 10]))[0] == "green"
     assert risk_gauge.risk_tone(float(scores[int(len(scores) * 0.7)]))[0] == "yellow"
     assert risk_gauge.risk_tone(float(scores[-1]) + 0.01)[0] == "red"
     assert "% risk" in risk_gauge.risk_chip(0.1) and "compact" in risk_gauge.risk_card(0.1, compact=True)
     assert "compact" not in risk_gauge.risk_card(0.1)
+    # The rank on screen is src.predict.percentile's, and the caption counts the same reference trials.
+    assert risk_gauge.risk_tone(0.2)[2] == percentile(0.2)
+    assert f"among {len(scores):,} past trials" in risk_gauge.bar_caption()
+
+
+def test_risk_without_reference():
+    """Without models/score_reference.npy the risk is still shown, just without a rank: grey label, no bar."""
+    import risk_gauge
+    from src.predict import percentile
+    try:  # the error src.predict raises for a missing file is one the display expects
+        percentile(0.2, reference_path="models/missing_reference.npy")
+    except risk_gauge.NO_REFERENCE:
+        pass
+
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("models/score_reference.npy")
+
+    real = risk_gauge.percentile, risk_gauge.reference_size
+    risk_gauge.percentile = risk_gauge.reference_size = missing
+    try:
+        assert risk_gauge.risk_tone(0.2) == ("gray", "Estimated risk of stopping early", None)
+        assert risk_gauge.risk_bar(0.2) is None
+        assert "among the past trials" in risk_gauge.bar_caption()
+        card = risk_gauge.risk_card(0.2, compact=True)
+        assert "20.0%" in card and "meter" not in card
+    finally:
+        risk_gauge.percentile, risk_gauge.reference_size = real
 
 
 if __name__ == "__main__":
@@ -171,4 +199,5 @@ if __name__ == "__main__":
     test_api_client()
     test_loaders()
     test_risk_colours()
+    test_risk_without_reference()
     print("all ok")

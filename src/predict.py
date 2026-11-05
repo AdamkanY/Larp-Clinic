@@ -198,3 +198,11 @@ def percentile(prob: float, reference_path=SCORE_REFERENCE_PATH) -> float:
     """
     reference = _score_reference(str(_resolve(reference_path)))
     return float(100.0 * np.searchsorted(reference, prob, side="left") / len(reference))
+
+
+def reference_size(reference_path=SCORE_REFERENCE_PATH) -> int:
+    """Number of historical trials ``percentile`` compares with (the 114,600 train-split trials).
+
+    Raises, like ``percentile``, if the reference file is missing or unreadable.
+    """
+    return len(_score_reference(str(_resolve(reference_path))))
