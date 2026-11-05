@@ -8,10 +8,15 @@ Leakage rule: every value is read through an explicit path below. Enrollment,
 locations, whyStopped, results, completion/last-update dates and every date
 other than ``startDateStruct`` are never read, so they cannot leak in even
 when the record contains them (live trials from the app carry the full record).
+
+A design typed into the app has no API record, so ``features_from_design``
+writes one and passes it to ``build_features``: there is still only one place
+where a trial becomes features.
 """
 
 import re
 from datetime import date
+from decimal import Decimal
 
 # Intervention types in the API enum; one 0/1 column each (multi-hot).
 INTERVENTION_TYPES = [
@@ -19,6 +24,22 @@ INTERVENTION_TYPES = [
     "GENETIC", "DIETARY_SUPPLEMENT", "COMBINATION_PRODUCT", "DIAGNOSTIC_TEST",
     "OTHER",
 ]
+
+# Codes a trial design can take for each categorical feature, as the API spells them and in the order the app
+# lists them: the one list behind the "Check your own trial" form, its what-if table and the search filters
+# (src/api_client.py). Plain names are in src/labels.py. Phase holds the feature's values, so the two
+# combinations the registry allows appear joined ("PHASE1/PHASE2"). Rare registry codes (sponsor class
+# UNKNOWN, AMBIG) are not offered.
+CATEGORY_CODES = {
+    "phase": ["EARLY_PHASE1", "PHASE1", "PHASE1/PHASE2", "PHASE2", "PHASE2/PHASE3", "PHASE3", "PHASE4", "NA"],
+    "allocation": ["RANDOMIZED", "NON_RANDOMIZED", "NA"],
+    "intervention_model": ["SINGLE_GROUP", "PARALLEL", "CROSSOVER", "FACTORIAL", "SEQUENTIAL"],
+    "primary_purpose": ["TREATMENT", "PREVENTION", "DIAGNOSTIC", "SUPPORTIVE_CARE", "SCREENING",
+                        "HEALTH_SERVICES_RESEARCH", "BASIC_SCIENCE", "DEVICE_FEASIBILITY", "OTHER"],
+    "masking": ["NONE", "SINGLE", "DOUBLE", "TRIPLE", "QUADRUPLE"],
+    "sponsor_class": ["INDUSTRY", "NIH", "FED", "OTHER_GOV", "INDIV", "NETWORK", "OTHER"],
+    "sex": ["ALL", "FEMALE", "MALE"],
+}
 
 # Columns that identify or describe a row but are NEVER fed to the model.
 META_COLUMNS = ["nct_id", "overall_status", "label", "start_date"]
@@ -194,3 +215,89 @@ def build_features(study_json: dict) -> dict:
             int(kind in present) if interventions is not None else None
         )
     return row
+
+
+def _age_text(years):
+    """An age in years as the API writes it ('18.5 Years'), spelled so parse_age_years reads back the same float."""
+    if years is None:
+        return None
+    # Decimal never switches to exponent notation ('1e-05'), which parse_age_years would not recognise.
+    return f"{Decimal(repr(float(years))):f} Years"
+
+
+def _without_none(node):
+    """Drop None values at every level: an API record leaves out what a registration does not state."""
+    if isinstance(node, dict):
+        return {key: _without_none(value) for key, value in node.items() if value is not None}
+    if isinstance(node, list):
+        return [_without_none(item) for item in node]
+    return node
+
+
+def features_from_design(*, phase, allocation, intervention_model, primary_purpose, masking, sponsor_class, sex,
+                         intervention_types, n_arms, has_collaborators, has_dmc, healthy_volunteers,
+                         min_age_years, max_age_years, eligibility_text_len, n_primary_outcomes,
+                         n_secondary_outcomes, n_conditions) -> dict:
+    """Features of a trial design typed in by hand, encoded exactly like a registered trial.
+
+    Writes the design as a minimal API v2 study record and returns ``build_features`` of it, so the phase code,
+    the intervention multi-hot, the missing-maximum-age fill and the flags all come from the one feature
+    function. Used by the app's "Check your own trial" form. Every argument is required, so a caller cannot
+    leave one out by accident.
+
+    Args:
+        phase, allocation, intervention_model, primary_purpose, masking, sponsor_class, sex: codes from
+            ``CATEGORY_CODES`` (two phases as "PHASE1/PHASE2"), or None if not stated.
+        intervention_types: codes from ``INTERVENTION_TYPES``; empty means none.
+        n_arms, n_primary_outcomes, n_secondary_outcomes, n_conditions: counts (int).
+        has_collaborators, has_dmc, healthy_volunteers: yes/no.
+        min_age_years: youngest age allowed, in years, or None if not stated.
+        max_age_years: oldest age allowed, in years, or None for no upper limit.
+        eligibility_text_len: length of the eligibility criteria in characters (int), or None if not stated.
+
+    Returns:
+        The ``build_features`` dict of that record (id, status, label and start date are None).
+
+    Raises:
+        ValueError: for a code outside ``CATEGORY_CODES`` or ``INTERVENTION_TYPES``. ``build_features`` would
+            pass it on and the model would treat it as missing: a plausible but wrong score.
+    """
+    categories = {"phase": phase, "allocation": allocation, "intervention_model": intervention_model,
+                  "primary_purpose": primary_purpose, "masking": masking, "sponsor_class": sponsor_class,
+                  "sex": sex}
+    unknown = [f"{name} {code!r}" for name, code in categories.items()
+               if code is not None and code not in CATEGORY_CODES[name]]
+    unknown += [f"intervention type {kind!r}" for kind in intervention_types if kind not in INTERVENTION_TYPES]
+    if unknown:
+        raise ValueError(f"Unknown code: {', '.join(unknown)}")
+
+    record = {"protocolSection": {
+        "designModule": {
+            "phases": phase.split("/") if phase else None,
+            "designInfo": {"allocation": allocation, "interventionModel": intervention_model,
+                           "primaryPurpose": primary_purpose, "maskingInfo": {"masking": masking}},
+        },
+        "armsInterventionsModule": {
+            "armGroups": [{"label": f"Group {i + 1}"} for i in range(n_arms)],
+            "interventions": [{"type": kind} for kind in intervention_types],
+        },
+        "sponsorCollaboratorsModule": {
+            "leadSponsor": {"class": sponsor_class},
+            "collaborators": [{"name": "Collaborator"}] if has_collaborators else [],
+        },
+        "oversightModule": {"oversightHasDmc": bool(has_dmc)},
+        "conditionsModule": {"conditions": [f"Condition {i + 1}" for i in range(n_conditions)]},
+        "outcomesModule": {
+            "primaryOutcomes": [{"measure": f"Primary outcome {i + 1}"} for i in range(n_primary_outcomes)],
+            "secondaryOutcomes": [{"measure": f"Secondary outcome {i + 1}"} for i in range(n_secondary_outcomes)],
+        },
+        "eligibilityModule": {
+            # Only the length of the criteria is a feature, so any text of that length will do.
+            "eligibilityCriteria": None if eligibility_text_len is None else "x" * eligibility_text_len,
+            "healthyVolunteers": bool(healthy_volunteers),
+            "sex": sex,
+            "minimumAge": _age_text(min_age_years),
+            "maximumAge": _age_text(max_age_years),
+        },
+    }}
+    return build_features(_without_none(record))

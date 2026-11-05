@@ -31,6 +31,18 @@ def test_labels():
     assert label("anything", "SOME_NEW_CODE") == "Some new code"
 
 
+def test_choices():
+    """The check form and the search filters offer codes from one list in src/, and each has a plain name."""
+    from src.features import CATEGORICAL_FEATURES, CATEGORY_CODES
+    from src.labels import NAMES, PHASE_ORDER
+    assert list(CATEGORY_CODES) == CATEGORICAL_FEATURES
+    for kind, codes in CATEGORY_CODES.items():
+        assert [code for code in codes if code not in NAMES[kind]] == [], kind  # no raw code in a dropdown
+    assert PHASE_ORDER == [label("phase", code) for code in CATEGORY_CODES["phase"]]
+    assert api_client.PHASES == ["EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4", "NA"]
+    assert api_client.SPONSOR_CLASSES == CATEGORY_CODES["sponsor_class"]
+
+
 def make_trials(path):
     """Write a tiny invented trials.parquet with the columns the dashboard reads."""
     rows = []
@@ -195,6 +207,7 @@ def test_risk_without_reference():
 
 if __name__ == "__main__":
     test_labels()
+    test_choices()
     test_viz()
     test_api_client()
     test_loaders()

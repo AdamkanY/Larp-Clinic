@@ -1,11 +1,19 @@
 """Thin client for the ClinicalTrials.gov API v2 (search and single-trial lookup)."""
+import sys
+from pathlib import Path
+
 import requests
 import streamlit as st
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from features import CATEGORY_CODES  # noqa: E402
+
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
 ONGOING = ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING", "ENROLLING_BY_INVITATION"]
-PHASES = ["EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4", "NA"]
-SPONSOR_CLASSES = ["INDUSTRY", "NIH", "FED", "OTHER_GOV", "INDIV", "NETWORK", "OTHER"]
+# Filter choices come from the codes the whole app offers. The API filters on single phases, so the joined
+# values of the phase feature ("PHASE1/PHASE2") are left out.
+PHASES = [code for code in CATEGORY_CODES["phase"] if "/" not in code]
+SPONSOR_CLASSES = list(CATEGORY_CODES["sponsor_class"])
 TIMEOUT = 20
 
 

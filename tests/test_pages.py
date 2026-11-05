@@ -15,8 +15,11 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
-from test_features import STUDY  # noqa: E402
+from src import predict  # noqa: E402
+from src.features import FEATURE_COLUMNS, build_features  # noqa: E402
+from test_features import EXAMPLE_RECORD, STUDY  # noqa: E402
 
 HOME = str(ROOT / "app" / "Home.py")
 NEEDS = [ROOT / "data" / "processed" / "trials.parquet", ROOT / "models" / "gbm.joblib",
@@ -101,6 +104,29 @@ def test_check_your_trial():
     assert at.selectbox(key="chk_phase").value == "PHASE3"
     [b for b in at.button if b.label == "Reset to the example trial"][0].click().run()
     assert at.selectbox(key="chk_phase").value == "PHASE2" and not at.exception
+
+
+def test_check_form_matches_build_features():
+    """The form's example trial is scored with exactly the features build_features gives the same design as a record."""
+    scored = []
+    real_score = predict.score
+
+    def recording_score(features, model=None):
+        scored.append(features)
+        return real_score(features, model)
+
+    predict.score = recording_score  # the page imports score from src.predict on every run
+    try:
+        at = open_page("pages/5_Check_Your_Trial.py")
+    finally:
+        predict.score = real_score
+    assert not at.exception, [e.value for e in at.exception]
+    expected = build_features(EXAMPLE_RECORD)
+    # The design itself is scored first; the what-if table scores its variants after it.
+    assert {c: scored[0][c] for c in FEATURE_COLUMNS} == {c: expected[c] for c in FEATURE_COLUMNS}
+    risk = real_score(expected)
+    assert at.session_state["previous_risk"] == risk and f"{risk:.1%}" == "16.7%"
+    assert f'<div class="num">{risk:.1%}</div>' in markdown(at)
 
 
 def test_search_with_results_and_details():
