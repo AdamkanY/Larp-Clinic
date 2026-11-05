@@ -15,9 +15,7 @@ for folder in (ROOT, ROOT / "app"):
         sys.path.insert(0, str(folder))
 
 from src import viz  # noqa: E402
-from ui import page_header, require_router  # noqa: E402
-
-require_router("views/4_Explore.py")
+from ui import page_header  # noqa: E402
 
 MAX_ROWS = 5000
 FILTER_KEYS = {"explore_phases": [], "explore_sponsors": [], "explore_condition": ""}

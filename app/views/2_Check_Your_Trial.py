@@ -11,9 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_g
 from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
 from src.labels import label  # noqa: E402
-from ui import page_header, require_router  # noqa: E402
-
-require_router("views/2_Check_Your_Trial.py")
+from ui import page_header  # noqa: E402
 
 UNSET = "Not specified"
 

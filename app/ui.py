@@ -31,17 +31,6 @@ def chip(text, tone="gray"):
     return f'<span class="chip {tone}">{esc(text)}</span>'
 
 
-def require_router(page):
-    """Send a page that was opened directly (browser refresh, bookmark) through Home.py first.
-
-    Opened on its own, a page would miss the top navigation and the wide layout that Home.py sets up. Home.py
-    sets `via_router` and, if a target was stored here, switches straight back to that page.
-    """
-    if not st.session_state.get("via_router"):
-        st.session_state["target_page"] = page
-        st.switch_page("Home.py")
-
-
 def inject_css():
     """Apply the shared stylesheet to the current page."""
     st.markdown(f"<style>{stylesheet()}</style>", unsafe_allow_html=True)

@@ -10,9 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_g
 from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card, risk_chip  # noqa: E402
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 from src.labels import label  # noqa: E402
-from ui import chip, esc, page_header, require_router  # noqa: E402
-
-require_router("views/1_Search.py")
+from ui import chip, esc, page_header  # noqa: E402
 
 PAGE = 10
 EXAMPLES = ["breast cancer", "diabetes", "asthma", "depression", "COVID-19"]

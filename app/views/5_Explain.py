@@ -14,9 +14,7 @@ sys.path.insert(0, str(ROOT))  # repo root, for src/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
 from src.labels import PHASE_ORDER, label  # noqa: E402
 from src.viz import CHART_LAYOUT, INK, MUTED, finish  # noqa: E402
-from ui import page_header, require_router  # noqa: E402
-
-require_router("views/5_Explain.py")
+from ui import page_header  # noqa: E402
 
 MODELS = ROOT / "models"
 TOP_FEATURES = 12

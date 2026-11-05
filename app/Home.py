@@ -78,7 +78,6 @@ def home():
 
 
 st.set_page_config(page_icon=":material/radar:", layout="wide")  # no page_title: each page then names its own browser tab
-st.session_state["via_router"] = True
 navigation = st.navigation([
     st.Page(home, title="Home", default=True),
     st.Page("views/1_Search.py", title="Find a trial"),
@@ -86,7 +85,4 @@ navigation = st.navigation([
     st.Page("views/4_Explore.py", title="Explore the data"),
     st.Page("views/5_Explain.py", title="How the model works"),
 ], position="top")
-target = st.session_state.pop("target_page", None)  # a page that was opened directly comes back here
-if target:
-    st.switch_page(target)
 navigation.run()
