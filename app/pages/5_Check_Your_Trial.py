@@ -136,22 +136,35 @@ def feature_row():
     return row
 
 
-def lowering_changes(row, score, top=5):
-    """Best single change per setting that lowers the risk, strongest first, as (description, new risk, change)."""
-    base = score(row)
-    best = []
+def single_changes(row):
+    """Every single change the what-if table weighs, as (setting, description, changed feature dict).
+
+    Each other allowed value of every dropdown (skipping the current one and NOT_ADVISABLE ones), then each
+    flipped flag, in CHOICES and FLAGS order.
+    """
+    candidates = []
     for key, values in CHOICES.items():
-        tries = [(value, score({**row, key: value})) for value in values
-                 if value != row[key] and value not in NOT_ADVISABLE.get(key, ())]
-        if tries:
-            value, risk = min(tries, key=lambda t: t[1])
-            best.append((f"{NAMES[key]}: {label(key, row[key]) if row[key] else UNSET} → {label(key, value)}", risk))
+        now = label(key, row[key]) if row[key] else UNSET
+        candidates += [(key, f"{NAMES[key]}: {now} → {label(key, value)}", {**row, key: value})
+                       for value in values if value != row[key] and value not in NOT_ADVISABLE.get(key, ())]
     for key, name in FLAGS.items():
         flipped = 1 - row[key]
-        best.append((f"{name}: {'yes' if row[key] else 'no'} → {'yes' if flipped else 'no'}",
-                     score({**row, key: flipped})))
-    best.sort(key=lambda t: t[1])
-    return [(text, risk, risk - base) for text, risk in best[:top] if risk < base]
+        candidates.append((key, f"{name}: {'yes' if row[key] else 'no'} → {'yes' if flipped else 'no'}",
+                           {**row, key: flipped}))
+    return candidates
+
+
+def lowering_changes(candidates, risks, base, top=5):
+    """Best single change per setting that lowers the risk, strongest first, as (description, new risk, change).
+
+    candidates comes from single_changes and risks holds their scores in the same order; base is the risk as entered.
+    """
+    best = {}  # setting -> (description, risk) of its lowest-risk change
+    for (key, text, _), risk in zip(candidates, risks):
+        if key not in best or risk < best[key][1]:  # strict, so a tie keeps the earlier value
+            best[key] = (text, risk)
+    ranked = sorted(best.values(), key=lambda t: t[1])
+    return [(text, risk, risk - base) for text, risk in ranked[:top] if risk < base]
 
 
 page_header("🧪 Check your own trial",
@@ -165,10 +178,13 @@ if get_model() is None:
     result_strip.info("The estimate is not available here yet: the model file is missing.")
     st.stop()
 
-from src.predict import score  # noqa: E402
+from src.predict import score_many  # noqa: E402
 
+# The design and every what-if variant go to the model in one call: a call costs about the same for 1 row as
+# for 40, so scoring them one by one made every rerun take seconds.
+candidates = single_changes(row)
 try:
-    risk = score(row)
+    risk, *candidate_risks = score_many([row] + [changed for _, _, changed in candidates])
 except ValueError as exc:
     result_strip.error(f"The model could not score this design: {exc}")
     st.stop()
@@ -188,7 +204,7 @@ with st.expander("How to read this"):
     st.write(estimate_caption(risk))
 
 st.subheader("What would lower the risk?")
-changes = lowering_changes(row, score)
+changes = lowering_changes(candidates, candidate_risks, risk)
 if changes:
     st.table(pd.DataFrame(
         [(text, f"{new:.1%}", f"{delta:+.1%}") for text, new, delta in changes],

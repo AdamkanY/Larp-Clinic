@@ -32,6 +32,7 @@ Check that it works:
 
 ```bash
 python tests/test_features.py
+python tests/test_predict.py
 python tests/test_app.py
 python tests/test_pages.py
 ```

@@ -3,10 +3,11 @@
 Typical use in the app::
 
     from features import build_features
-    from predict import percentile, score
+    from predict import percentile, score, score_many
 
     risk = score(build_features(study_json))   # calibrated P(TERMINATED), 0-1
     rank = percentile(risk)                     # "riskier than rank% of trials"
+    risks = score_many([row_a, row_b, row_c])   # several trials in one model call
 
 ``models/gbm.joblib`` is the gradient boosting pipeline wrapped in isotonic
 calibration (``CalibratedClassifierCV``, fitted on the train split), so
@@ -116,6 +117,31 @@ def score(features: dict, model=None) -> float:
     """
     model = model if model is not None else load_model()
     return float(model.predict_proba(to_model_frame([features]))[0, 1])
+
+
+def score_many(features_list: list[dict], model=None) -> list[float]:
+    """Calibrated predicted termination risk for several trials in one model call.
+
+    Gives the same numbers as ``[score(f) for f in features_list]``, much
+    faster: a ``predict_proba`` call on the default model (five calibrated
+    copies of the GBM pipeline) costs about the same for one row as for a
+    thousand, so score rows together whenever there are several.
+
+    Args:
+        features_list: ``build_features`` dicts, one per trial. Extra keys are
+            ignored, as in ``score``.
+        model: an already loaded model; defaults to ``models/gbm.joblib``
+            (calibrated), with the same meaning as in ``score``.
+
+    Returns:
+        One probability of TERMINATED in [0, 1] per dict, in input order; an
+        empty list for no dicts.
+    """
+    rows = list(features_list)
+    if not rows:
+        return []
+    model = model if model is not None else load_model()
+    return model.predict_proba(to_model_frame(rows))[:, 1].tolist()
 
 
 @lru_cache(maxsize=None)

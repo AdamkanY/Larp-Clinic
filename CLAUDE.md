@@ -28,7 +28,7 @@ deployed on Streamlit Community Cloud.
 | `app/` | Streamlit app: entry point `Home.py` plus `pages/`. | You change anything the user sees. |
 | `.streamlit/` | Streamlit settings: `config.toml` holds the light theme (ink and paper colours, self-hosted fonts, pill buttons), turns on static serving for the fonts in `app/static/` and hides the Deploy button. | You change colours, fonts, corner radius or toolbar. |
 | `models/` | Saved models (`.joblib`) and their metrics. | You save or load a trained model. |
-| `tests/` | Offline tests: features (synthetic records), app helpers and page smoke tests (no network). | You change `src/` or `app/`. |
+| `tests/` | Offline tests: features (synthetic records), batched vs single scoring, app helpers and page smoke tests (no network). | You change `src/` or `app/`. |
 | `notebooks/` | Exploration only. Nothing in `src/` or `app/` imports from here. | You explore data or prototype. |
 
 Every folder has its own `CLAUDE.md` with a file table. Read it before editing in that folder.
