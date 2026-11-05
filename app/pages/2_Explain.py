@@ -85,13 +85,13 @@ def load_test_scores():
     """
     try:
         from src.features import FEATURE_COLUMNS
-        from src.predict import load_model, to_model_frame
+        from src.predict import score_frame
         test = pd.read_parquet(
             ROOT / "data" / "processed" / "trials.parquet",
             columns=FEATURE_COLUMNS + ["split", "label", "start_date", "phase_label"],
             filters=[("split", "==", "test")],
         )
-        risk = load_model().predict_proba(to_model_frame(test))[:, 1]
+        risk = score_frame(test)
     except (ImportError, FileNotFoundError, OSError, ValueError, KeyError):
         return None
     return pd.DataFrame({

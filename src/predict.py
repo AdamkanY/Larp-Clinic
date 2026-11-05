@@ -151,8 +151,27 @@ def score(features: dict, model=None) -> float:
     Returns:
         Probability of TERMINATED in [0, 1].
     """
+    return float(score_frame([features], model)[0])
+
+
+def score_frame(records, model=None) -> np.ndarray:
+    """Calibrated predicted termination risk for many trials in one model call.
+
+    Same numbers as ``score`` row by row; use it for whole tables (the game,
+    the Explain page), where thousands of single calls would take minutes.
+    Each model is fed only the columns it was fitted on, so a table holding
+    extra feature columns (e.g. the v2 condition flags) scores correctly.
+
+    Args:
+        records: a DataFrame with at least the model's feature columns, or a
+            list of ``build_features`` dicts.
+        model: an already loaded model; defaults to ``models/gbm.joblib``.
+
+    Returns:
+        Array of P(TERMINATED), one per row, in input order.
+    """
     model = model if model is not None else load_model()
-    return float(model.predict_proba(to_model_frame([features], model_features(model)))[0, 1])
+    return model.predict_proba(to_model_frame(records, model_features(model)))[:, 1]
 
 
 @lru_cache(maxsize=None)

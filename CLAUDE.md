@@ -59,7 +59,7 @@ Every folder has its own `CLAUDE.md` with a file table. Read it before editing i
 | Nov 10 | EDA + app search | Done (EDA notebook `notebooks/01_eda.ipynb`, Explore dashboard, Find a trial) |
 | Nov 17 | Baseline model | Done (logistic regression baseline and calibrated GBM in `models/`) |
 | Nov 24 | End-to-end app | Done (search with risk, own-trial checker, model explanation) |
-| Dec 1 | Game, what-if sliders, dashboard, deployed | In progress: what-if table (design levers only), dashboard and per-trial driver charts done; model v2 (condition categories) tested, not promoted; game not started; Cloud deployment tested once by hand |
+| Dec 1 | Game, what-if sliders, dashboard, deployed | In progress: what-if table (design levers only), dashboard and per-trial driver charts done; model v2 (condition categories) tested, not promoted; game built (`app/pages/5_Game.py`, `src/game.py`); Cloud deployment tested once by hand |
 | Dec 6 | Feature freeze | Not started |
 | Dec 11 | Final + video | Not started |
 

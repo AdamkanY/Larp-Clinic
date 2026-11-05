@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from features import (CATEGORICAL_FEATURES, FEATURE_COLUMNS, MAX_AGE_FILL,  # noqa: E402
                       build_features)
 from labels import FEATURE_NAMES, NO_MAX_AGE, feature_name  # noqa: E402
-from predict import explain, model_features, to_model_frame  # noqa: E402
+from predict import explain, model_features, score, score_frame, to_model_frame  # noqa: E402
 from test_features import STUDY  # noqa: E402
 from train import build_gbm_pipeline  # noqa: E402
 
@@ -110,6 +110,21 @@ def test_explain_saved_model():
     assert 0 < len(drivers) <= 5
     assert all(name in FEATURE_NAMES.values() and direction in ("up", "down") and size > 0
                for name, _, direction, size in drivers)
+
+
+def test_score_frame_matches_score_and_ignores_extra_columns():
+    """Batch scoring equals score() row by row and feeds a model only the columns it was fitted on."""
+    rows = pd.DataFrame([typical()] * 3)
+    rows["has_dmc"] = [0.0, 1.0, 0.0]
+    rows["masking"] = ["NONE", "NONE", "DOUBLE"]
+    model = toy_model()
+    batch = score_frame(rows, model)
+    single = [score(r, model) for r in rows.to_dict("records")]
+    assert np.allclose(batch, single)
+    small = build_gbm_pipeline(features=FEATURE_COLUMNS[:5]).fit(
+        to_model_frame(pd.DataFrame([typical()] * 40), FEATURE_COLUMNS[:5]), [0, 1] * 20)
+    assert model_features(small) == FEATURE_COLUMNS[:5]
+    assert len(score_frame(rows.assign(not_a_feature="x"), small)) == 3  # extra and unused columns are dropped
 
 
 if __name__ == "__main__":
