@@ -1,9 +1,9 @@
 {
   "model": "baseline_lr",
   "model_file": "models/baseline_lr.joblib",
-  "trained_on": "2026-11-03",
+  "trained_on": "2026-11-05",
   "sklearn_version": "1.9.1",
-  "python_version": "3.13.18",
+  "python_version": "3.12.16",
   "label": {
     "TERMINATED": 1,
     "COMPLETED": 0
@@ -29,6 +29,7 @@
       "terminated_rate": 0.11682721440959526
     }
   },
+  "feature_set": "v1",
   "features": {
     "all": [
       "phase",
@@ -149,20 +150,20 @@
     ]
   },
   "threshold": {
-    "value": 0.5705891646954451,
+    "value": 0.5705891649009917,
     "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
     "oof_f1": 0.2793327556325823,
-    "oof_roc_auc": 0.6852366938688066,
-    "oof_pr_auc": 0.1968845186514449,
-    "oof_brier": 0.22612968742417858
+    "oof_roc_auc": 0.6852366930992142,
+    "oof_pr_auc": 0.1968845185283827,
+    "oof_brier": 0.22612968744226877
   },
   "test": {
     "roc_auc": 0.6885953207426037,
     "pr_auc": 0.21762557096924318,
-    "brier": 0.20527207076633638,
-    "mean_predicted": 0.4258934783452412,
+    "brier": 0.20527207076606158,
+    "mean_predicted": 0.4258934783446284,
     "at_threshold": {
-      "threshold": 0.5705891646954451,
+      "threshold": 0.5705891649009917,
       "precision": 0.2210563756002134,
       "recall": 0.4446431765337149,
       "f1": 0.2953020134228188,
@@ -176,43 +177,43 @@
     },
     "calibration_bins": [
       {
-        "mean_predicted": 0.14588730250776813,
+        "mean_predicted": 0.1458873025067423,
         "observed_rate": 0.041370664437944
       },
       {
-        "mean_predicted": 0.22550606437335632,
+        "mean_predicted": 0.225506064372239,
         "observed_rate": 0.05014625992478061
       },
       {
-        "mean_predicted": 0.284641198531459,
+        "mean_predicted": 0.2846411985305967,
         "observed_rate": 0.05078369905956113
       },
       {
-        "mean_predicted": 0.338962265547915,
+        "mean_predicted": 0.33896226554732656,
         "observed_rate": 0.06122022565816966
       },
       {
-        "mean_predicted": 0.39616719478996043,
+        "mean_predicted": 0.39616719478935786,
         "observed_rate": 0.08984538236523193
       },
       {
-        "mean_predicted": 0.456692146358114,
+        "mean_predicted": 0.4566921463576177,
         "observed_rate": 0.11327063740856844
       },
       {
-        "mean_predicted": 0.5128995855426874,
+        "mean_predicted": 0.5128995855425158,
         "observed_rate": 0.1391558712912662
       },
       {
-        "mean_predicted": 0.5635619441839376,
+        "mean_predicted": 0.5635619441839714,
         "observed_rate": 0.16405433646812956
       },
       {
-        "mean_predicted": 0.6156448395383617,
+        "mean_predicted": 0.6156448395378754,
         "observed_rate": 0.1966151274550773
       },
       {
-        "mean_predicted": 0.7189779284252859,
+        "mean_predicted": 0.7189779284244756,
         "observed_rate": 0.2618052653572921
       }
     ]

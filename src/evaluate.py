@@ -34,8 +34,8 @@ from sklearn.metrics import (average_precision_score, brier_score_loss,
 from sklearn.model_selection import cross_validate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import FEATURE_COLUMNS, NUMERIC_FEATURES  # noqa: E402
-from predict import load_model  # noqa: E402
+from features import NUMERIC_FEATURES  # noqa: E402
+from predict import load_model, model_features  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
@@ -278,10 +278,11 @@ def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dic
     # Imported here, not at the top, because train.py imports this module.
     from train import build_gbm_pipeline, make_cv
 
-    runs = [{"name": "all_features", "dropped": [], "n_features": len(FEATURE_COLUMNS),
+    n_features = X_train.shape[1]
+    runs = [{"name": "all_features", "dropped": [], "n_features": n_features,
              **reference, "delta_test_roc_auc": 0.0, "delta_test_pr_auc": 0.0}]
     for name, dropped in ABLATIONS.items():
-        model = build_gbm_pipeline(drop=dropped).set_params(
+        model = build_gbm_pipeline(drop=dropped, features=list(X_train.columns)).set_params(
             **{f"clf__{k}": v for k, v in params.items()})
         cv = cross_validate(model, X_train, y_train, cv=make_cv(),
                             scoring=["roc_auc", "average_precision"], n_jobs=-1)
@@ -289,7 +290,7 @@ def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dic
         test_roc = float(roc_auc_score(y_test, proba))
         test_pr = float(average_precision_score(y_test, proba))
         runs.append({
-            "name": name, "dropped": dropped, "n_features": len(FEATURE_COLUMNS) - len(dropped),
+            "name": name, "dropped": dropped, "n_features": n_features - len(dropped),
             "cv_roc_auc": float(cv["test_roc_auc"].mean()),
             "cv_pr_auc": float(cv["test_average_precision"].mean()),
             "test_roc_auc": test_roc, "test_pr_auc": test_pr,
@@ -315,7 +316,8 @@ def lr_coefficients(pipeline) -> pd.DataFrame:
     """
     prep, clf = pipeline.named_steps["prep"], pipeline.named_steps["clf"]
     scaler = prep.named_transformers_["num"].named_steps["scale"]
-    sd = dict(zip(NUMERIC_FEATURES, scaler.scale_))
+    numeric = [c for c in NUMERIC_FEATURES if c in prep.feature_names_in_]
+    sd = dict(zip(numeric, scaler.scale_))
     names = prep.get_feature_names_out()
     coef = clf.coef_[0]
     table = pd.DataFrame({
@@ -359,15 +361,21 @@ def print_metrics_table(reports: dict) -> None:
 
 
 def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
-                   X_train=None, y_train=None) -> dict:
+                   X_train=None, y_train=None, suffix: str = "") -> dict:
     """Evaluate the saved models on test and write every test-time output.
 
     Args:
         X_test, y_test: the test split; loaded from the parquet when omitted.
+            Each model is fed its own input columns (``model_features``), so
+            ``X_test`` may hold more.
         names: model names; each needs ``models/<name>.joblib`` and the
             ``models/<name>_metrics.json`` written by ``train.py``.
         X_train, y_train: the train split, needed to refit the ablations;
             loaded from the parquet when omitted.
+        suffix: "" for the app models; a feature-set suffix such as "_v2" for a
+            comparison run, which skips the calibration plot and the ablations
+            (both describe the app model) and only replaces its own rows of
+            ``feature_importance.csv``.
 
     Returns:
         {model name: full metrics dict}, as written to the JSON files.
@@ -385,7 +393,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
     for name in names:
         models[name] = load_model(MODELS_DIR / f"{name}.joblib")
         reports[name] = json.loads(metrics_path(name).read_text(encoding="utf-8"))
-        probas[name] = models[name].predict_proba(X_test)[:, 1]
+        probas[name] = models[name].predict_proba(X_test[model_features(models[name])])[:, 1]
         threshold = reports[name]["threshold"]["value"]
         reports[name]["test"] = classification_metrics(y_test, probas[name], threshold)
         reports[name]["test"]["calibration_bins"] = calibration_bins(y_test, probas[name])
@@ -394,16 +402,18 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
     print("\n=== Metrics (OOF = out-of-fold on train; test = start 2017-2019) ===")
     print_metrics_table(reports)
 
-    if {"gbm", "gbm_uncalibrated"} <= set(reports):
-        reports["gbm"].setdefault("calibration", {}).update({
-            "test_before": ranking_metrics(y_test, probas["gbm_uncalibrated"]),
-            "test_after": ranking_metrics(y_test, probas["gbm"]),
+    gbm, uncalibrated = f"gbm{suffix}", f"gbm_uncalibrated{suffix}"
+    if {gbm, uncalibrated} <= set(reports):
+        reports[gbm].setdefault("calibration", {}).update({
+            "test_before": ranking_metrics(y_test, probas[uncalibrated]),
+            "test_after": ranking_metrics(y_test, probas[gbm]),
         })
-        cal = reports["gbm"]["calibration"]
+        cal = reports[gbm]["calibration"]
         print(f"\nGBM test Brier: before {cal['test_before']['brier']:.4f} -> after "
               f"{cal['test_after']['brier']:.4f} (constant base rate: "
-              f"{reports['gbm']['majority_baseline']['brier_constant_rate']:.4f}); "
+              f"{reports[gbm]['majority_baseline']['brier_constant_rate']:.4f}); "
               f"ROC-AUC {cal['test_before']['roc_auc']:.4f} -> {cal['test_after']['roc_auc']:.4f}")
+    if not suffix and {"gbm", "gbm_uncalibrated"} <= set(reports):
         plot_calibration(y_test, {n: probas[n] for n in CALIBRATION_PLOT_MODELS})
         print(f"Saved {CALIBRATION_PATH.relative_to(ROOT)}")
 
@@ -423,9 +433,17 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
         metrics_path(name).write_text(json.dumps(reports[name], indent=2) + "\n",
                                       encoding="utf-8")
 
-    importance_models = {n: models[n] for n in IMPORTANCE_MODELS if n in models}
+    importance_models = {n + suffix: models[n + suffix] for n in IMPORTANCE_MODELS
+                         if n + suffix in models}
     print(f"\nPermutation importance on test ({N_PERMUTATION_REPEATS} repeats per feature)...")
-    importance = permutation_importance_table(importance_models, X_test[FEATURE_COLUMNS], y_test)
+    importance = pd.concat(
+        [permutation_importance_table({n: m}, X_test[model_features(m)], y_test)
+         for n, m in importance_models.items()], ignore_index=True)
+    if IMPORTANCE_PATH.exists():
+        # Keep the rows of models not evaluated in this run (e.g. gbm_v2 next to gbm).
+        kept = pd.read_csv(IMPORTANCE_PATH)
+        importance = pd.concat([kept[~kept["model"].isin(importance_models)], importance],
+                               ignore_index=True)
     importance.to_csv(IMPORTANCE_PATH, index=False, float_format="%.6f")
     print(f"Saved {IMPORTANCE_PATH.relative_to(ROOT)}")
     for name in importance_models:
