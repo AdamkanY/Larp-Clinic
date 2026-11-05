@@ -1,0 +1,3 @@
+# Everything needed to run the tests (python tests/<file> or pytest tests/).
+-r requirements.txt
+pytest

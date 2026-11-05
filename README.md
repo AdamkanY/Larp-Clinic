@@ -1,82 +1,119 @@
 # Trial-Radar
 
-How likely is a clinical trial to be stopped early? Trial-Radar estimates that risk from facts known when a trial
-is registered, using data from [ClinicalTrials.gov](https://clinicaltrials.gov). It is a Streamlit app with a small
-machine-learning model behind it. HSG Computer Science group project, English track.
+Trial-Radar estimates how likely a clinical trial is to be stopped early, using only what is known when it is registered.
+It learns from 162,457 completed and terminated trials on [ClinicalTrials.gov](https://clinicaltrials.gov) (started 2008-2019)
+and scores trials that are still running. Streamlit app with a calibrated gradient-boosting model; HSG Computer Science group project.
 
 **Not medical advice.** It is a student project: do not use it to decide about treatment or participation.
 
-## What the app does
+## Features
 
 | Page | What you can do |
 |---|---|
-| Find a trial | Search ongoing interventional trials on ClinicalTrials.gov. Every result shows its estimated risk; open one for details. |
-| Check your own trial | Describe a design from scratch and watch the estimate change. Shows which single change would lower it. |
-| Explore the data | Charts of the 162,457 past trials the model was built on: which kinds get stopped early more often? |
-| How the model works | What is predicted, how good it is, what matters most and how far to trust the percentages. |
+| Find a trial | Search ongoing interventional trials through the ClinicalTrials.gov API. Every result shows its estimated risk; open one for details. |
+| Check your own trial | Describe a design from scratch and watch the estimate change; see which single change would lower it. |
+| Explore the data | Interactive charts of the past trials the model learned from: which kinds get stopped early more often? |
+| How the model works | What is predicted, how good it is, which factors matter most and how far to trust the percentages. |
 
-## Run it on your computer
+Still to come: a game where you guess which of two historical trials was terminated and are scored against the model.
 
-You need Python 3.12 and the files of this repository (the data and model files are included).
+## Setup
+
+**Python 3.12 is required.** The dependencies are pinned for it, and the saved model only loads with the pinned
+scikit-learn version. The data and model files are part of the repository.
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+For the tests, install `requirements-dev.txt` instead (it adds pytest), then run `pytest tests`.
+
+## Run
+
+```bash
 streamlit run app/Home.py
 ```
 
-The app opens in your browser. The search needs an internet connection; everything else works offline.
+The app opens in your browser. The trial search needs an internet connection; everything else works offline.
 
-Check that it works:
+## Data pipeline
+
+The processed table and the trained models are committed, so you only need these steps to rebuild them. The raw
+API pages in `data/raw/` are not in git.
 
 ```bash
-python tests/test_features.py
-python tests/test_app.py
-python tests/test_pages.py
+python src/fetch_data.py      # download raw trials from the ClinicalTrials.gov API v2 into data/raw/ (resumable)
+python src/build_dataset.py   # build_features on every record -> data/processed/trials.parquet
+python src/train.py           # fit baseline + gradient boosting on the train split, save to models/
+python src/evaluate.py        # score the saved models on the test split: metrics, calibration, importance
 ```
 
-## How the model was built
+`train.py` already runs the evaluation once after saving; `evaluate.py` re-runs it without retraining.
+The exploratory analysis is in `notebooks/01_eda.ipynb`.
 
-- **Data:** all interventional trials on ClinicalTrials.gov that started 2008-2019 and either completed or were
-  terminated: 162,457 trials, 11.3% of them terminated. Withdrawn and still-running trials are left out.
-- **Goal:** predict "terminated" from design information only (phase, allocation, blinding, sponsor, outcomes,
-  eligibility and so on). Anything learned after registration, such as enrollment, sites, results or the reason for
-  stopping, is excluded on purpose.
-- **Split by date, never random:** trained on trials that started 2008-2016 (114,600), tested on 2017-2019 (47,857).
-- **Model:** gradient boosting, wrapped in isotonic calibration so the output reads as a probability. A logistic
-  regression is kept as a baseline.
-- **Code:** `src/fetch_data.py` then `src/build_dataset.py` then `src/train.py`. The feature function in
-  `src/features.py` is the only one, used by training and by the app.
+## Model results
 
-## How good is it, and what are the limits?
+Trained on trials that started 2008-2016 (114,600), tested on 2017-2019 (47,857). 11.3% of the trials were terminated,
+so we report ranking and precision-recall metrics, not accuracy.
 
-On the test trials: ROC-AUC 0.71 (guessing: 0.50), PR-AUC 0.23 (guessing: 0.12), Brier score 0.097 (always guessing
-the average: 0.103).
+| Test set 2017-2019 | ROC-AUC | PR-AUC | Brier score |
+|---|---|---|---|
+| Calibrated gradient boosting (the app model) | **0.71** | 0.23 | 0.097 |
+| Logistic regression baseline | 0.69 | 0.22 | 0.205 |
+| Always predict the average | 0.50 | 0.12 | 0.103 |
 
-- The **ranking works**: the 10% of trials rated riskiest were stopped 2.4 times as often as the average.
-- The **percentages are too low**: the model predicts 9.9% on average for the test trials, 11.7% were stopped.
-  Read a percentage as a rough, lower-end figure and use it mainly to compare trials.
-- Inside a single phase it ranks less well than across all trials (ROC-AUC 0.61 in phase 2).
-- It cannot know about funding, recruitment or safety problems, the usual reasons trials stop.
-- It has never seen a trial that is still running, so scores in the search are less certain.
+- **Calibrated:** raw boosting scores overshoot (mean prediction 39%), so they are mapped to probabilities with
+  isotonic calibration. That cut the Brier score from 0.186 to 0.097 without hurting ranking.
+- **Still a little low:** the model predicts 9.9% on average for the test trials and 11.7% were stopped. Read a
+  percentage as a rough, lower-end figure and use it mainly to compare trials.
+- **Robust to later edits:** refitting without eligibility length and outcome counts, which a sponsor can change
+  after registration, lowers test ROC-AUC by less than 0.01.
 
-The "How the model works" page shows all of this with numbers.
+**How leakage is handled**
 
-## Project layout
+- Only design-time fields are read. `build_features` takes one API study record and reads an explicit list of
+  fields; training and the app use that same function.
+- Anything that reveals the outcome is excluded: the reason a trial stopped, every date except the start date,
+  results, and enrollment (finished trials report actual counts, which give the outcome away).
+- Locations and number of sites are excluded too, because sites are added after a trial has started.
+- The split is by start date, never random, and hyperparameters and the decision threshold are chosen by
+  cross-validation on the train split only. The test years are never used for tuning.
 
-| Folder | Holds |
+## Deploy on Streamlit Community Cloud
+
+1. Push the repository to GitHub and create a new app at [share.streamlit.io](https://share.streamlit.io).
+2. Set the main file to `app/Home.py`.
+3. Under **Advanced settings**, choose **Python 3.12**.
+4. Deploy. Dependencies come from `requirements.txt`; the data and model files are already in the repository.
+
+The first visit to "How the model works" scores the test trials once (a few seconds); after that it is cached.
+
+## Team
+
+HSG Computer Science group project, supervised by Dominik Buchegger.
+
+| Member | Role |
 |---|---|
-| `app/` | The Streamlit app: `Home.py` (entry point and navigation), `pages/`, shared look in `ui.py` and `risk_gauge.py` |
-| `src/` | Data fetching, features, training, evaluation, prediction, the ClinicalTrials.gov client, chart helpers |
-| `data/` | `processed/trials.parquet` (the model-ready table); raw API pages are regenerated by `src/fetch_data.py` |
-| `models/` | The saved model, its metrics and evaluation outputs |
-| `tests/` | Offline checks |
-| `notebooks/` | Exploration only |
+| Adam Kanouni | ML model |
+| Simon Seidl | Data pipeline |
+| Dominic Haibach | Evaluation and explainability |
+| Matteo Kaufmann | App and UX |
+| Raphael Schmid | Visuals, game, video |
 
-## Put it online
+**Use of AI:** we used an AI coding assistant (Claude Code) while building this repository, for parts of the code,
+tests and documentation. The team set the requirements and is responsible for the result.
 
-Streamlit Community Cloud: connect the repository and set the main file to `app/Home.py` and the Python version
-to 3.12. The first visit to "How the model works" scores the test trials once (a few seconds); after that it is cached.
+## Limitations
+
+- **A modest model.** ROC-AUC 0.71 ranks trials better than chance but is far from certain for any single trial.
+- **Design facts only.** It cannot know about funding, recruitment or safety problems, the usual reasons trials stop.
+- **Any reason counts.** "Terminated" is the registry status, so a trial stopped for a business decision counts the
+  same as one stopped for safety.
+- **Registry records change.** ClinicalTrials.gov shows the latest version of a record, so some design fields may
+  have been edited after the initial registration.
+- **Ongoing trials are new to the model.** It was trained only on finished trials, so scores for running ones, as in
+  the search, are less certain.
 
 AI agents working in this repository: read `CLAUDE.md` first.

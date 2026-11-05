@@ -1,8 +1,9 @@
-# Tested with Python 3.12. Each lower bound is the version the app was tested with; the upper bound keeps a new
-# major release from breaking it. scikit-learn is pinned exactly: models/gbm.joblib only loads with that version.
-streamlit>=1.66,<2
-pandas>=3.1,<4
-numpy>=2.5,<3
+# Python 3.12 is required. Streamlit, pandas, numpy and scikit-learn are pinned exactly so the app on Streamlit
+# Community Cloud behaves like the one on our laptops; scikit-learn because models/gbm.joblib only loads with the
+# version it was trained with. The others have a tested lower bound and an upper bound below the next major release.
+streamlit==1.66.1
+pandas==3.1.1
+numpy==2.5.4
 pyarrow>=26,<27
 requests>=2.34,<3
 plotly>=7.1,<8
