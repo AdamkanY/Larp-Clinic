@@ -139,6 +139,41 @@ def test_explain():
     assert [m.label for m in at.metric] == ["ROC-AUC", "PR-AUC", "Brier score"]
 
 
+def play_round(at, user_side="A"):
+    """Click one of the two pick buttons and return the page after the answer is shown."""
+    [b for b in at.button if b.label == f"Trial {user_side} was stopped early"][0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    return at
+
+
+def test_game():
+    """Game: two cards without the outcome, a reveal with link and scores, ten rounds, a final scoreboard, play again."""
+    at = open_page("pages/5_Game.py")
+    assert not at.exception, [e.value for e in at.exception]
+    text = markdown(at)
+    assert "Round 1 of 10" in text and "of the time" in text
+    assert text.count('class="card-title"') == 2 and "Stopped early" not in text and "Completed" not in text  # no spoilers
+    assert {b.label for b in at.button} >= {"Trial A was stopped early", "Trial B was stopped early"}
+
+    play_round(at, "A")
+    text = markdown(at)
+    assert "was stopped early.**" in text and "chip red" in text and "chip green" in text
+    assert [b.label for b in at.button] == ["Next round"]
+    links = [e for e in at.get("link_button")]
+    assert len(links) == 2 and all(l.proto.url.startswith("https://clinicaltrials.gov/study/NCT") for l in links)
+
+    for round_number in range(2, 11):
+        [b for b in at.button if b.label in ("Next round", "See the final score")][0].click().run()
+        assert f"Round {round_number} of 10" in markdown(at)
+        play_round(at, "B")
+    assert [b.label for b in at.button] == ["See the final score"]
+    at.button[0].click().run()
+    assert not at.exception and [m.label for m in at.metric] == ["You", "Model", "Model on 2,000 pairs"]
+    assert len(at.table[0].value) == 10
+    [b for b in at.button if b.label == "Play again"][0].click().run()
+    assert not at.exception and "Round 1 of 10" in markdown(at)
+
+
 if __name__ == "__main__":
     if not all(p.exists() for p in NEEDS):
         print("skipped: data/ or models/ files are missing")

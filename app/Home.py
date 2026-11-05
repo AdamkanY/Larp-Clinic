@@ -85,6 +85,7 @@ navigation = st.navigation([
     st.Page("pages/5_Check_Your_Trial.py", title="Check your own trial"),
     st.Page("pages/2_Explore.py", title="Explore the data"),
     st.Page("pages/2_Explain.py", title="How the model works"),
+    st.Page("pages/5_Game.py", title="Play the game"),
 ], position="top")
 target = st.session_state.pop("target_page", None)  # a page that was opened directly comes back here
 if target:
