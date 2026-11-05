@@ -1,17 +1,12 @@
 """Check your own trial: enter a design from scratch and see its predicted risk of stopping early."""
-import sys
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
-# Pages run with app/ on the path, so add the repo root to import src/.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card  # noqa: E402
-from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
-from src.labels import label  # noqa: E402
-from ui import page_header  # noqa: E402
+# Home.py runs first and puts the repo root and app/ on sys.path.
+from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card
+from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL
+from src.labels import label
+from ui import page_header
 
 UNSET = "Not specified"
 

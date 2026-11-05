@@ -1,6 +1,5 @@
 """Explain the model: what it predicts, how well it works on unseen trials, which factors matter, how far to trust it."""
 import json
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -9,13 +8,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from sklearn.metrics import roc_auc_score
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))  # repo root, for src/
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
-from src.labels import PHASE_ORDER, label  # noqa: E402
-from src.viz import CHART_LAYOUT, INK, MUTED, finish  # noqa: E402
-from ui import page_header  # noqa: E402
+# Home.py runs first and puts the repo root and app/ on sys.path.
+from src.labels import PHASE_ORDER, label
+from src.viz import CHART_LAYOUT, INK, MUTED, finish
+from ui import page_header
 
+ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
 TOP_FEATURES = 12
 MIN_GROUP = 1000  # smaller groups give ROC-AUC values too noisy to read

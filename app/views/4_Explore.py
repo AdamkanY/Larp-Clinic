@@ -3,19 +3,11 @@
 Descriptive only: no model is loaded here. Aggregations and figures live in `src/viz.py`.
 """
 
-import sys
-from pathlib import Path
-
 import streamlit as st
 
-# Streamlit runs pages as scripts, so the repo root is not on sys.path by default.
-ROOT = Path(__file__).resolve().parents[2]
-for folder in (ROOT, ROOT / "app"):
-    if str(folder) not in sys.path:
-        sys.path.insert(0, str(folder))
-
-from src import viz  # noqa: E402
-from ui import page_header  # noqa: E402
+# Home.py runs first and puts the repo root and app/ on sys.path.
+from src import viz
+from ui import page_header
 
 MAX_ROWS = 5000
 FILTER_KEYS = {"explore_phases": [], "explore_sponsors": [], "explore_condition": ""}

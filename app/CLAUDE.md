@@ -3,8 +3,10 @@
 The Streamlit app (entry point plus pages). Not for: model training, data cleaning or feature logic
 (import them from `src/`). Relative paths only; the app must run on Streamlit Community Cloud.
 
-Run with `streamlit run app/Home.py` from the repo root. Pages add the repo root to `sys.path` so they can
-import `src.*`. Pages must not call `st.set_page_config` (`Home.py` does it once for all).
+Run with `streamlit run app/Home.py` from the repo root. `Home.py` runs before every page, so it is the one place that
+puts the repo root and `app/` on `sys.path` (guarded: the script runs again on every rerun) and sets the page config.
+Pages import `src.*`, `ui` and `risk_gauge` directly and never touch `sys.path` or call `st.set_page_config`. So a
+page started on its own stops at its first import: always start `Home.py`.
 
 Page scripts live in `views/`, numbered in navigation order (`3_` is kept for the game); the URL is the file name
 without the number (`/Search`, `/Check_Your_Trial`, `/Explore`, `/Explain`). **Never name that folder `pages/`.**
@@ -14,7 +16,7 @@ that way for every visitor until someone opens Home. `tests/test_pages.py` fails
 
 | File | Contains / does | Produced by | Used by |
 |---|---|---|---|
-| `Home.py` | Entry point. Sets the page config once, builds the navigation with `st.navigation(position="top")` (Home, Find a trial, Check your own trial, Explore the data, How the model works; Streamlit folds it into a sidebar on a phone) and holds the landing page as full-width ink and paper bands: a hero with one giant statistic (share stopped early, read from `models/gbm_metrics.json`) above a 100-tick scale, one band per page (headline, one sentence, one action; Explore and Explain carry a big number from the same file), then the colour legend with the plain note on how to read a result | Matteo | `streamlit run app/Home.py` |
+| `Home.py` | Entry point, runs before every page. Puts the repo root and `app/` on `sys.path` (once), sets the page config, builds the navigation with `st.navigation(position="top")` (Home, Find a trial, Check your own trial, Explore the data, How the model works; Streamlit folds it into a sidebar on a phone) and holds the landing page as full-width ink and paper bands: a hero with one giant statistic (share stopped early, read from `models/gbm_metrics.json`) above a 100-tick scale, one band per page (headline, one sentence, one action; Explore and Explain carry a big number from the same file), then the colour legend with the plain note on how to read a result | Matteo | `streamlit run app/Home.py` |
 | `ui.py` | Python side of the look: `stylesheet()` (reads `style.css` once), `inject_css`, `hero(...)`, `band_copy(...)`, `tick_scale(marked, label)` (the signature 100-tick scale), `page_header(title, subtitle)` (dark band that opens every page but Home), `chip(text, tone)` and `esc(text)` (HTML escaping). Cards and panels are `st.container(key="card_...")` / `key="panel_..."` styled by key; landing bands are `key="band_hero"`, `band_ink_*`, `band_paper_*`. Restart the server after editing `ui.py` or `style.css` (Streamlit does not reload imported modules) | Matteo | all pages |
 | `style.css` | The whole stylesheet: design tokens as CSS variables (ink, paper, one pink accent used only for "this trial" and the main action, risk colours, corner and spacing scales), frosted top navigation, full-bleed bands with grain and radar rings, buttons, chips, inputs, metric tiles, risk card and sticky strip, one page-load reveal (off under `prefers-reduced-motion`). Fonts come from `.streamlit/config.toml` | Matteo | `ui.py` |
 | `static/fonts/` | Self-hosted variable fonts (Bricolage Grotesque, IBM Plex Sans; OFL licence), served at `/app/static/fonts/...` because `enableStaticServing` is on | Google Fonts | `.streamlit/config.toml` |

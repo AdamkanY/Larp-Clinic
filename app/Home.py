@@ -1,14 +1,23 @@
-"""Trial-Radar entry point: sets up the top navigation (in the order people use the app) and the landing page."""
+"""Trial-Radar entry point: sets up the top navigation (in the order people use the app) and the landing page.
+
+Streamlit runs this file before every page (st.navigation), so it is also the one place that makes the repo root
+(for src/) and app/ (for ui and risk_gauge) importable.
+"""
 import json
 import sys
 from pathlib import Path
 
 import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+APP = Path(__file__).resolve().parent
+ROOT = APP.parent
+# Guarded because this script runs again on every rerun; unguarded, each run would add both folders once more.
+for folder in (ROOT, APP):
+    if str(folder) not in sys.path:
+        sys.path.insert(0, str(folder))
 from ui import band_copy, chip, hero, inject_css, tick_scale  # noqa: E402
 
-METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
+METRICS = ROOT / "models" / "gbm_metrics.json"
 
 # (headline, sentence, page, action label, band tone). The sentences are the ones the old cards carried.
 BANDS = [
