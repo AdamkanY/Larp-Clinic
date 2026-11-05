@@ -7,4 +7,4 @@ Currently empty (`.gitkeep` only). Naming: `NN_topic_initials.ipynb`.
 
 | File | Contains | Produced by | Used by |
 |---|---|---|---|
-| `01_eda.ipynb` (expected) | EDA of the raw export, due Nov 10 | Team | Nobody (reference) |
+| `01_eda.ipynb` (expected) | EDA of the raw export (was due Nov 10; optional now: the Explore page and its follow-up/COVID section cover the EDA) | Team | Nobody (reference) |

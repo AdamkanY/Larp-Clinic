@@ -1,8 +1,14 @@
-"""Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.
+"""Download interventional studies from ClinicalTrials.gov: ended and still running.
+
+Statuses: COMPLETED and TERMINATED (the status label in ``trials.parquet``) plus the
+still-running ones (RECRUITING, ACTIVE_NOT_RECRUITING, ENROLLING_BY_INVITATION,
+NOT_YET_RECRUITING), which the 3-year horizon label and the follow-up charts need.
 
 Raw API pages are written unchanged to ``data/raw/pages/page_NNNNN.json``.
 The script is resumable: each page stores the ``nextPageToken`` that leads to
 the following one, so a rerun continues after the last complete page.
+``data/raw/manifest.json`` records the query and ``fetched_on``, the download
+date that ``src/build_dataset.py`` uses as the data snapshot.
 
 Usage:
     python src/fetch_data.py            # fetch or resume
@@ -14,6 +20,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 import requests
@@ -27,8 +34,9 @@ MAX_RETRIES = 6
 REQUEST_TIMEOUT = 60
 PAUSE_BETWEEN_PAGES = 0.5  # seconds; be polite to the public API
 
-# Only the design-time fields build_features reads. Projecting keeps the raw
-# download small and means leaky fields (enrollment, results...) never touch disk.
+# The design-time fields build_features reads, plus a few display and outcome
+# fields it never reads. Projecting keeps the raw download small and means leaky
+# fields (enrollment, results, locations...) never touch disk.
 # Use --full to download whole records instead.
 FIELDS = [
     "NCTId", "OverallStatus", "StartDate", "Phase", "DesignAllocation",
@@ -40,7 +48,13 @@ FIELDS = [
     "Condition",
     # Display-only (never features): shown in the app's trial cards and tables.
     "BriefTitle", "LeadSponsorName",
+    # Outcome-only (never features): read by src/horizon.py alone. The completion date
+    # builds the 3-year horizon label; whyStopped feeds the stop-reason charts.
+    "CompletionDate", "CompletionDateType", "WhyStopped",
 ]
+# Ended trials (status label) and still-running ones (horizon label, follow-up charts).
+STATUSES = ["COMPLETED", "TERMINATED", "RECRUITING", "ACTIVE_NOT_RECRUITING",
+            "ENROLLING_BY_INVITATION", "NOT_YET_RECRUITING"]
 
 
 def base_params(full: bool) -> dict:
@@ -48,7 +62,7 @@ def base_params(full: bool) -> dict:
     params = {
         "format": "json",
         "pageSize": PAGE_SIZE,
-        "filter.overallStatus": "COMPLETED,TERMINATED",
+        "filter.overallStatus": ",".join(STATUSES),
         "filter.advanced": "AREA[StudyType]INTERVENTIONAL",
         "countTotal": "true",
     }
@@ -102,7 +116,10 @@ def resume_state(params: dict, restart: bool):
             raise SystemExit("Existing pages used different query parameters; "
                              "rerun with --restart.")
     if not pages:
-        write_json_atomic(MANIFEST, {"params": params, "started": time.ctime()})
+        # fetched_on is the data snapshot: the horizon label only counts trials that
+        # were followed long enough before this date. A resumed download keeps it.
+        write_json_atomic(MANIFEST, {"params": params, "started": time.ctime(),
+                                     "fetched_on": date.today().isoformat()})
         return 1, None
     last = json.loads(pages[-1].read_text(encoding="utf-8"))
     number = int(pages[-1].stem.split("_")[1])

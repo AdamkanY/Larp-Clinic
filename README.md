@@ -32,8 +32,11 @@ Check that it works:
 
 ```bash
 python tests/test_features.py
+python tests/test_horizon.py
 python tests/test_app.py
 python tests/test_pages.py
+python tests/test_train_horizon.py
+python tests/test_claude_md.py
 ```
 
 ## How the model was built
@@ -63,6 +66,25 @@ the average: 0.103).
 
 The "How the model works" page shows all of this with numbers.
 
+## Experiment: a fixed 3-year label (not in the app yet)
+
+Counting only trials that have ended favours early stops in recent start years, because a stopped trial ends
+sooner than one that runs its course. A fixed horizon avoids that: "was the trial terminated within 3 years of
+its start?", with trials still running at the 3-year mark counted as "no". Every trial then gets the same time,
+the data reaches 2023 instead of 2019, and the test years (2020 onwards) show whether a model trained before
+COVID still works after it.
+
+The code is ready but the team has not decided yet, so the app still uses the model above:
+
+```bash
+python src/fetch_data.py --restart   # adds still-running trials, the stop date and the stop reason
+python src/build_dataset.py          # also writes trials_3y.parquet and outcomes.parquet
+python src/train_horizon.py          # trains and compares; writes models/horizon_3y/metrics.json
+```
+
+The stop date and the stop reason are used only to build that label and the charts in "Explore the data",
+never as model inputs.
+
 ## Project layout
 
 | Folder | Holds |
@@ -79,4 +101,5 @@ The "How the model works" page shows all of this with numbers.
 Streamlit Community Cloud: connect the repository and set the main file to `app/Home.py` and the Python version
 to 3.12. The first visit to "How the model works" scores the test trials once (a few seconds); after that it is cached.
 
-AI agents working in this repository: read `CLAUDE.md` first.
+AI agents working in this repository: read `CLAUDE.md` first. A Claude Code hook in `.claude/` checks before
+every reply that the `CLAUDE.md` guides still match the files.

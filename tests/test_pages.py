@@ -2,12 +2,14 @@
 
 Run with ``python tests/test_pages.py``. No network: ClinicalTrials.gov is replaced by an invented
 record. The pages read the real `data/processed/trials.parquet` and `models/` files, so this needs the repository
-as downloaded; the tests print "skipped" if those files are missing.
+as downloaded; the tests print "skipped" if those files are missing. The follow-up and COVID section of Explore
+gets an invented `outcomes.parquet` (and is checked to stay hidden without one).
 """
 
 import copy
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 import requests
@@ -15,7 +17,10 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
+from src import viz  # noqa: E402  (the module object the Explore page uses)
+from test_app import make_outcomes  # noqa: E402
 from test_features import STUDY  # noqa: E402
 
 HOME = str(ROOT / "app" / "Home.py")
@@ -87,6 +92,30 @@ def test_explore():
     clear = [b for b in at.button if b.label == "Clear filters"][0]
     clear.click().run()
     assert int(at.metric[0].value.replace(",", "")) == total
+
+
+def explore_with_outcomes(path):
+    """Open Explore while viz reads outcomes.parquet from `path` (which may not exist)."""
+    real = viz.OUTCOMES_PATH
+    viz.OUTCOMES_PATH = path
+    try:
+        return open_page("pages/2_Explore.py")
+    finally:
+        viz.OUTCOMES_PATH = real
+
+
+def test_explore_follow_up():
+    """Explore: the follow-up and COVID charts appear once outcomes.parquet exists, and not before."""
+    title = "Why the newest years look riskier"
+    with tempfile.TemporaryDirectory() as tmp:
+        missing = explore_with_outcomes(Path(tmp) / "missing.parquet")
+        assert not missing.exception and not any(title in h.value for h in missing.subheader)
+        path = Path(tmp) / "outcomes.parquet"
+        make_outcomes(path)
+        at = explore_with_outcomes(path)
+    assert not at.exception, [e.value for e in at.exception]
+    assert any(title in h.value for h in at.subheader)
+    assert any("COVID-19 as a reason" in m.value for m in at.markdown)
 
 
 def test_check_your_trial():

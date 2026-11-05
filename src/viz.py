@@ -3,6 +3,10 @@
 Pure functions on the `trials.parquet` DataFrame: no Streamlit and no model code, so they can be
 reused by other pages (or tested) without a running app. Termination rate = mean of `label`
 (TERMINATED = 1, COMPLETED = 0); the pages call it "stopped early".
+
+The follow-up and COVID charts at the end read `outcomes.parquet` instead (every trial since 2008,
+still-running ones included, with the stop date and stop reason). That table is for charts only; no
+model ever trains on it.
 """
 
 import sys
@@ -16,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import labels  # noqa: E402
 
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "trials.parquet"
+OUTCOMES_PATH = DATA_PATH.parent / "outcomes.parquet"
 STUDY_URL = "https://clinicaltrials.gov/study/"
 
 # One deep green (the app's "ink" family) for every "share stopped early" bar, so the charts read as one family.
@@ -210,3 +215,171 @@ def trials_table(df) -> pd.DataFrame:
     out = df[["nct_id", "brief_title", "phase_label", "lead_sponsor_name", "overall_status"]].copy()
     out.insert(0, "link", STUDY_URL + out["nct_id"])
     return out.drop(columns="nct_id")
+
+
+# ---- Follow-up and COVID (outcomes.parquet) ----
+
+SECOND = "#B8452E"  # the second series colour of CHART_LAYOUT's colorway
+STATUS_GROUPS = {
+    "COMPLETED": "Completed", "TERMINATED": "Stopped early", "RECRUITING": "Still running",
+    "ACTIVE_NOT_RECRUITING": "Still running", "ENROLLING_BY_INVITATION": "Still running",
+    "NOT_YET_RECRUITING": "Not started yet",
+}
+
+
+def load_outcomes(path=None) -> pd.DataFrame:
+    """Read `outcomes.parquet` (written by `src/build_dataset.py`) and add start year, stop year and status group.
+
+    `path=None` means `OUTCOMES_PATH`, looked up at call time so tests can point it elsewhere.
+    """
+    df = pd.read_parquet(path or OUTCOMES_PATH)
+    df["start_year"] = df["start_date"].dt.year.astype(int)
+    df["stop_year"] = df["completion_date"].dt.year.astype("Int64")
+    df["status_group"] = df["overall_status"].map(STATUS_GROUPS).fillna("Other")
+    df["phase_label"] = df["phase_label"].map(lambda v: labels.label("phase", v))
+    df["sponsor_class"] = df["sponsor_class"].map(lambda v: labels.label("sponsor_class", v))
+    return df
+
+
+def followup_by_year(df) -> pd.DataFrame:
+    """Per start year: trials, share not ended yet, and the share stopped early counted two ways.
+
+    `rate_status` is today's label (stopped early among the trials that have ended); `rate_3y` is the horizon
+    label (stopped within 3 years, every trial counted, still-running ones as "not stopped"). Years without
+    3 years of follow-up have no `rate_3y`.
+    """
+    groups = df.groupby("start_year")
+    out = pd.DataFrame({
+        "trials": groups.size(),
+        "not_ended": groups["status_group"].agg(lambda s: s.isin(["Still running", "Not started yet"]).mean()),
+        "ended": groups["label_status"].count(),
+        "rate_status": groups["label_status"].mean(),
+        "labelled_3y": groups["label_3y"].count(),
+        "rate_3y": groups["label_3y"].mean(),
+    }).reset_index()
+    for column in ("rate_status", "rate_3y", "not_ended"):
+        out[column] = out[column].astype(float)
+    return out
+
+
+def last_followed_year(stats) -> int:
+    """The latest start year in which some trials already have the 3-year label (None if none do)."""
+    years = stats.loc[stats["labelled_3y"] > 0, "start_year"]
+    return int(years.max()) if len(years) else None
+
+
+def followup_chart(stats) -> go.Figure:
+    """Two lines by start year: stopped early among ended trials vs stopped within 3 years among all trials."""
+    fig = go.Figure()
+    series = [("rate_status", "Stopped early, among trials that have ended", BAR, "ended"),
+              ("rate_3y", "Stopped within 3 years, all trials", SECOND, "labelled_3y")]
+    for column, name, colour, count in series:
+        fig.add_trace(go.Scatter(
+            x=stats["start_year"], y=stats[column], name=name, mode="lines+markers",
+            line={"color": colour, "width": 2}, marker={"size": 7}, customdata=stats[[count]],
+            hovertemplate=f"<b>%{{x}}</b><br>{name}: %{{y:.1%}}<br>%{{customdata[0]:,}} trials<extra></extra>"))
+    last = last_followed_year(stats)
+    if last is not None and last < stats["start_year"].max():
+        # Shade the years whose trials have not had 3 years yet; the page explains what that means.
+        fig.add_vrect(x0=last + 0.5, x1=stats["start_year"].max() + 0.5, fillcolor=MUTED, opacity=0.08,
+                      line_width=0)
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), hovermode="x unified",
+                      legend={"orientation": "h", "y": 1.12, "x": 0}, **CHART_LAYOUT)
+    fig.update_yaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero", gridcolor=GRID,
+                     zeroline=False)
+    _year_axis(fig, stats["start_year"])
+    return finish(fig)
+
+
+def _year_axis(fig, years) -> None:
+    """Start-year axis over many years: every second year, so the labels stay level and readable."""
+    first, last = int(years.min()), int(years.max())
+    fig.update_xaxes(title="Start year", dtick=2 if last - first > 12 else 1, tick0=first,
+                     range=[first - 0.6, last + 0.6], linecolor=INK, showgrid=False)
+
+
+def not_ended_chart(stats) -> go.Figure:
+    """Bars: the share of each start year's trials that has not ended yet (still running or not started)."""
+    # No labels on the bars: with one bar per year they shrink to unreadable; the hover gives the numbers.
+    fig = px.bar(stats, x="start_year", y="not_ended", custom_data=["trials"])
+    fig.update_traces(marker_color=BAR,
+                      hovertemplate="<b>%{x}</b><br>Not ended yet: %{y:.1%}<br>of %{customdata[0]:,} trials"
+                                    "<extra></extra>")
+    _year_axis(fig, stats["start_year"])
+    return _style(fig, y_title="Share not ended yet")  # last, so the axis titles get the shared font
+
+
+def covid_by_stop_year(df, first_year=2015) -> pd.DataFrame:
+    """Per year a trial stopped: terminated trials and the share whose stated reason mentions COVID-19."""
+    stopped = df[df["overall_status"].eq("TERMINATED") & df["stop_year"].notna()]
+    stopped = stopped[stopped["stop_year"] >= first_year]
+    out = (stopped.groupby("stop_year")["mentions_covid"]
+           .agg(n="size", covid="sum", rate="mean").reset_index())
+    out["stop_year"] = out["stop_year"].astype(int)
+    return out
+
+
+def covid_chart(stats) -> go.Figure:
+    """Bars: share of the trials stopped in each year that name COVID-19 as a reason."""
+    fig = px.bar(stats, x="stop_year", y="rate", custom_data=["n", "covid"],
+                 text=[f"{r:.0%}" if r >= 0.005 else "" for r in stats["rate"]])
+    fig.update_traces(marker_color=SECOND, textposition="outside", cliponaxis=False, textfont_size=12,
+                      hovertemplate="<b>Stopped in %{x}</b><br>Mention COVID-19: %{y:.1%}<br>"
+                                    "%{customdata[1]:,} of %{customdata[0]:,} trials<extra></extra>")
+    fig.update_xaxes(title="Year the trial stopped", dtick=1)
+    fig.update_yaxes(range=[0, max(stats["rate"].max(), 0.01) * 1.3])
+    return _style(fig, y_title="Share naming COVID-19")
+
+
+def time_to_stop(df, start_years=(2008, 2015), max_years=10.0, step=0.25) -> pd.DataFrame:
+    """Share of terminations that happened within t years of the start, for t = 0 .. max_years.
+
+    Only trials that started in `start_years` count, so every one of them has been followed for years
+    and late terminations are not missing.
+    """
+    first, last = start_years
+    years = df.loc[df["overall_status"].eq("TERMINATED") & df["start_year"].between(first, last),
+                   "years_to_stop"].dropna()
+    grid = [round(i * step, 2) for i in range(int(max_years / step) + 1)]
+    return pd.DataFrame({"years": grid, "share": [(years <= t).mean() if len(years) else float("nan")
+                                                  for t in grid], "n": len(years)})
+
+
+def time_to_stop_chart(curve, marks=(3, 5)) -> go.Figure:
+    """Cumulative line: share of terminations within t years of the start, with the 3- and 5-year points named."""
+    fig = px.line(curve, x="years", y="share")
+    fig.update_traces(line=dict(color=BAR, width=2),
+                      hovertemplate="Within %{x} years: %{y:.0%} of terminations<extra></extra>")
+    for mark in marks:
+        point = curve.loc[curve["years"] == mark, "share"]
+        if len(point) and point.notna().all():
+            share = float(point.iloc[0])
+            fig.add_scatter(x=[mark], y=[share], mode="markers+text", text=[f"{share:.0%} within {mark} years"],
+                            textposition="bottom right", marker={"color": SECOND, "size": 9},
+                            hoverinfo="skip", showlegend=False)
+    fig.update_xaxes(title="Years since the start", dtick=1, range=[0, curve["years"].max()])
+    fig.update_yaxes(range=[0, 1.05])
+    return _style(fig, y_title="Share of stopped trials")
+
+
+def stop_reasons(df) -> pd.DataFrame:
+    """Share of terminated trials per rough stop-reason group (from `src/horizon.py`), commonest first."""
+    stopped = df[df["overall_status"].eq("TERMINATED")]
+    out = stopped["stop_reason"].fillna("Other or not stated").value_counts().rename_axis("reason")
+    return out.reset_index(name="n").assign(share=lambda t: t["n"] / t["n"].sum())
+
+
+def stop_reasons_chart(stats) -> go.Figure:
+    """Horizontal bars of the stop-reason groups, the commonest on top."""
+    ordered = stats.iloc[::-1]
+    fig = px.bar(ordered, x="share", y="reason", orientation="h", custom_data=["n"],
+                 text=[f"{s:.0%}" for s in ordered["share"]])
+    fig.update_traces(marker_color=BAR, textposition="outside", cliponaxis=False,
+                      hovertemplate="<b>%{y}</b><br>%{x:.1%} of stopped trials<br>%{customdata[0]:,} trials"
+                                    "<extra></extra>")
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
+                      height=max(300, 34 * len(stats) + 70), bargap=0.3, **CHART_LAYOUT)
+    fig.update_xaxes(title="Share of stopped trials", tickformat=".0%", rangemode="tozero", gridcolor=GRID,
+                     range=[0, stats["share"].max() * 1.3], zeroline=False)
+    fig.update_yaxes(title=None, automargin=True, linecolor=INK)
+    return finish(fig)

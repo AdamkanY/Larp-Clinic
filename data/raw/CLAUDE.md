@@ -9,15 +9,21 @@ Not for: intermediate files, samples, or anything produced by `build_dataset.py`
 | File | Contains | Produced by | Used by |
 |---|---|---|---|
 | `pages/page_NNNNN.json` | One API response per file (up to 1000 studies, plus `nextPageToken`, first page has `totalCount`) | `src/fetch_data.py` | `src/build_dataset.py` |
-| `manifest.json` | Query parameters of the download; a rerun with different parameters is refused (use `--restart`) | `src/fetch_data.py` | `src/fetch_data.py` (resume check) |
+| `manifest.json` | Query parameters of the download and `fetched_on` (the download date = the data snapshot for the horizon label); a rerun with different parameters is refused (use `--restart`) | `src/fetch_data.py` | `src/fetch_data.py` (resume check), `src/build_dataset.py` (snapshot date, horizon check) |
 
 ## Query
 
-`GET https://clinicaltrials.gov/api/v2/studies` with `filter.overallStatus=COMPLETED,TERMINATED`,
+`GET https://clinicaltrials.gov/api/v2/studies` with
+`filter.overallStatus=COMPLETED,TERMINATED,RECRUITING,ACTIVE_NOT_RECRUITING,ENROLLING_BY_INVITATION,NOT_YET_RECRUITING`,
 `filter.advanced=AREA[StudyType]INTERVENTIONAL`, `pageSize=1000`, paginated by `nextPageToken`. By default a
-`fields` projection limits the download to the design-time fields below (so enrollment, results and
-completion dates are never stored); `--full` downloads whole records. Resumable: rerun to continue after an
-interruption. Retries 429/5xx with exponential backoff.
+`fields` projection limits the download to the design-time fields below plus a few display and outcome fields, so
+enrollment, results, locations and every date other than the start and completion date are never stored;
+`--full` downloads whole records. Resumable: rerun to continue after an interruption. Retries 429/5xx with
+exponential backoff; any other 4xx (for example a field name the API does not know) stops with the API's message.
+
+Downloads made before 2026-11-05 hold only COMPLETED/TERMINATED trials and no completion date or `whyStopped`.
+`build_dataset.py` then still builds `trials.parquet` but skips the two horizon files; download again with
+`python src/fetch_data.py --restart`.
 
 ## Decisions
 
@@ -26,10 +32,13 @@ interruption. Retries 429/5xx with exponential backoff.
 - **Date window:** start date 2008-01-01 to 2019-12-31. Train = start 2008-2016, test = start 2017-2019.
   Start dates >= 2020 and unparseable ones are dropped.
 - **Label:** TERMINATED = 1, COMPLETED = 0; every other status is dropped for training.
+- **Horizon experiment** (root `CLAUDE.md`, "Experiment exception"): still-running trials and the completion date
+  are downloaded for the 3-year label of `src/horizon.py`; `whyStopped` only for the stop-reason charts.
 
 ## API fields used (JSON path under `protocolSection`) and tags
 
-Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
+Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column, **LABEL** builds a label only,
+**EDA** charts only. LABEL and EDA fields are read by `src/horizon.py` alone, never by `build_features`.
 
 | Path | Used as | Tag |
 |---|---|---|
@@ -37,6 +46,8 @@ Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
 | `identificationModule.briefTitle` / `sponsorCollaboratorsModule.leadSponsor.name` / `conditionsModule.conditions` (joined) | `brief_title` / `lead_sponsor_name` / `conditions` | DISPLAY (never a feature) |
 | `statusModule.overallStatus` | `overall_status`, `label` | META / TARGET |
 | `statusModule.startDateStruct.date` | `start_date` (only date allowed; `split` is derived from it, not a feature) | META + SAFE |
+| `statusModule.completionDateStruct.{date,type}` | stop date of a terminated trial for the 3-year horizon label (`ESTIMATED` dates are not used) | LABEL (LEAKAGE as a feature) |
+| `statusModule.whyStopped` | `why_stopped`, `stop_reason`, `mentions_covid` in `outcomes.parquet` | EDA (LEAKAGE as a feature) |
 | `designModule.phases` | `phase` | SAFE |
 | `designModule.designInfo.{allocation,interventionModel,primaryPurpose,maskingInfo.masking}` | same-named columns | SAFE |
 | `armsInterventionsModule.armGroups` | `n_arms` (absent = 0) | SAFE |
@@ -47,13 +58,17 @@ Tags: **SAFE** feature, **LEAKAGE** (never use), **META** non-feature column.
 | `outcomesModule.{primaryOutcomes,secondaryOutcomes}` / `conditionsModule.conditions` | counts (absent = 0) | SAFE |
 | `designModule.enrollmentInfo` | - | LEAKAGE (excluded permanently) |
 | `contactsLocationsModule` | - | excluded from v1 |
-| `statusModule.whyStopped`, `completionDateStruct`, `primaryCompletionDateStruct`, `lastUpdate*`, `resultsFirst*` | - | LEAKAGE |
+| `primaryCompletionDateStruct`, `lastUpdate*`, `resultsFirst*` | - (not downloaded) | LEAKAGE |
 | `resultsSection`, `hasResults` | - | LEAKAGE |
 
 ## Quirks
 
 - Missing source fields become missing values, not 0 (older registrations lack arms, DMC and FDA flags).
   `minimumAge` / `maximumAge` of `N/A` also become missing.
-- Start dates are month precision (`YYYY-MM`); stored as the 1st of the month.
-- Terminated share rises for recent start years partly because recent trials have had less time to terminate;
-  the 2017-2019 test window may therefore differ in base rate from train.
+- Start and completion dates are mostly month precision (`YYYY-MM`); stored as the 1st of the month. The
+  horizon label therefore counts whole months (36 months = 3 years).
+- Follow-up bias: the terminated share among *ended* trials rises for recent start years, because trials still
+  running are left out and a stopped trial ends sooner than one that runs its course. The 2017-2019 test window
+  of `trials.parquet` is affected; the 3-year horizon label is built to avoid it.
+- Sponsors report a stop weeks or months late, so the horizon label only uses trials that started at least
+  3 years and 6 months before `fetched_on` (`REPORTING_LAG_MONTHS` in `src/horizon.py`).

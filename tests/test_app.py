@@ -1,8 +1,9 @@
 """Offline checks for the app's helper code: labels, chart data, API client and risk colours.
 
 Run with ``python tests/test_app.py`` (or pytest). No network needed: the API is replaced by a stub and the chart
-data is a small invented table, not real trial data. The risk-colour check uses `models/score_reference.npy` and
-is skipped when that file is missing.
+data is a small invented table, not real trial data. The follow-up and COVID charts get an invented
+`outcomes.parquet` built from the made-up records of `test_horizon.py`. The risk-colour check uses
+`models/score_reference.npy` and is skipped when that file is missing.
 """
 
 import sys
@@ -16,6 +17,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
+sys.path.insert(0, str(ROOT / "tests"))
 from src import api_client, viz  # noqa: E402
 from src.labels import label  # noqa: E402
 
@@ -85,6 +87,46 @@ def test_viz():
     assert list(viz.trials_table(df.head(1)).columns)[0] == "link"
 
 
+def make_outcomes(path):
+    """Write an invented outcomes.parquet: the made-up records of test_horizon.py through the real builder."""
+    import build_dataset
+    from test_horizon import SNAPSHOT, merged
+    build_dataset.build_outcomes(merged(), SNAPSHOT).to_parquet(path)
+
+
+def test_outcome_charts():
+    """Follow-up, COVID, time-to-stop and stop-reason charts work on the table build_dataset.py writes."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "outcomes.parquet"
+        make_outcomes(path)
+        df = viz.load_outcomes(path)
+    assert {"start_year", "stop_year", "status_group"} <= set(df.columns)
+    assert set(df["status_group"]) == {"Completed", "Stopped early", "Still running", "Not started yet", "Other"}
+
+    stats = viz.followup_by_year(df)
+    row = stats.set_index("start_year")
+    assert row.loc[2012, "trials"] == 4 and row.loc[2012, "rate_status"] == 1.0
+    assert abs(row.loc[2012, "rate_3y"] - 0.5) < 1e-9  # one of two labelled 2012 trials stopped within 3 years
+    assert pd.isna(row.loc[2024, "rate_3y"]) and row.loc[2024, "not_ended"] == 1.0
+    assert viz.last_followed_year(stats) == 2023
+    fig = viz.followup_chart(stats)
+    assert len(fig.data) == 2 and len(fig.layout.shapes) == 1  # two labels, shaded unfollowed years
+    assert len(viz.not_ended_chart(stats).data) == 1
+
+    covid = viz.covid_by_stop_year(df)
+    assert covid.set_index("stop_year").loc[2020, "covid"] == 1 and (covid["stop_year"] >= 2015).all()
+    assert len(viz.covid_chart(covid).data) == 1
+
+    curve = viz.time_to_stop(df)
+    assert curve["share"].is_monotonic_increasing and curve["n"].iloc[0] == 3  # NCT01, NCT02, NCT11
+    assert abs(curve.set_index("years").loc[3.0, "share"] - 2 / 3) < 1e-9
+    assert len(viz.time_to_stop_chart(curve).data) == 3  # the curve plus the 3- and 5-year points
+
+    reasons = viz.stop_reasons(df)
+    assert abs(reasons["share"].sum() - 1) < 1e-9 and "COVID-19" in set(reasons["reason"])
+    assert len(viz.stop_reasons_chart(reasons).data) == 1
+
+
 class Response:
     """Minimal stand-in for requests.Response."""
 
@@ -151,6 +193,7 @@ def test_risk_colours():
 if __name__ == "__main__":
     test_labels()
     test_viz()
+    test_outcome_charts()
     test_api_client()
     test_risk_colours()
     print("all ok")

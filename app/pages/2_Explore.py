@@ -29,6 +29,52 @@ def get_trials():
     return viz.load_trials()
 
 
+@st.cache_data(show_spinner=False)
+def get_outcomes():
+    """Every trial since 2008, still-running ones included (outcomes.parquet), or None until it has been built."""
+    try:
+        return viz.load_outcomes()
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def follow_up_section(outcomes):
+    """Charts on how counting only ended trials skews recent years, how soon trials stop, and COVID-19."""
+    st.subheader("Why the newest years look riskier, and what COVID-19 did")
+    st.caption("These charts use every interventional trial that started in 2008 or later, including the ones "
+               "still running. The filters at the top do not apply here.")
+    followup = viz.followup_by_year(outcomes)
+    c7, c8 = st.columns([3, 2])
+    with c7:
+        chart(viz.followup_chart(followup),
+              "Counting only trials that have ended favours early stops in the newest years: a trial that is "
+              "stopped ends sooner than one that runs its course. The 3-year line removes that: every trial gets "
+              "the same 3 years, and the ones still running count as not stopped. Where the lines differ, the "
+              "difference comes from how trials are counted. Shaded years have not had 3 years yet.")
+    with c8:
+        chart(viz.not_ended_chart(followup),
+              "Share of each year's trials that is still running or has not started. The rest of this page "
+              "leaves them out.")
+    c9, c10 = st.columns(2)
+    with c9:
+        st.markdown("**COVID-19 as a reason for stopping**")
+        covid = viz.covid_by_stop_year(outcomes)
+        download_year = str(outcomes.attrs.get("snapshot", ""))[:4]  # the data ends on the download day
+        partial = f" {download_year} is not over yet." if download_year == str(covid["stop_year"].max()) else ""
+        chart(viz.covid_chart(covid), "Share of the trials stopped in each year whose stated reason mentions "
+                                      f"COVID-19 or the pandemic.{partial}")
+    with c10:
+        st.markdown("**How soon trials are stopped**")
+        curve = viz.time_to_stop(outcomes)
+        chart(viz.time_to_stop_chart(curve),
+              f"The {int(curve['n'].iloc[0]):,} trials that started 2008-2015 and were stopped early: the share that "
+              "had stopped within each number of years after the start.")
+    st.markdown("**Why trials were stopped**")
+    chart(viz.stop_reasons_chart(viz.stop_reasons(outcomes)),
+          "The reason sponsors gave, sorted into rough groups by keywords: one group per trial, the first that "
+          "matches, COVID-19 first. A guide to the big picture, not an exact count.")
+
+
 def reset_filters():
     """Back to all trials: clears every filter, the year range included."""
     st.session_state.update(FILTER_KEYS)
@@ -129,6 +175,11 @@ with c6:
     chart(viz.rate_bar(viz.eligibility_stats(filtered), "eligibility_group", "Characters of eligibility text", average),
           "Longer criteria go with more stopped trials. A pattern, not proof of cause: long criteria often "
           "belong to larger, more complex studies. About 500 characters is a short paragraph.")
+
+# ---- Follow-up and COVID: shown once data/processed/outcomes.parquet has been built ----
+outcomes = get_outcomes()
+if outcomes is not None and not outcomes.empty:
+    follow_up_section(outcomes)
 
 # ---- Trial table ----
 st.subheader("Browse the trials")
