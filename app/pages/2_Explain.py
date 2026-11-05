@@ -12,7 +12,7 @@ from sklearn.metrics import roc_auc_score
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))  # repo root, for src/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
-from src.labels import PHASE_ORDER, label  # noqa: E402
+from src.labels import PHASE_ORDER, feature_name, label  # noqa: E402
 from src.viz import CHART_LAYOUT, INK, MUTED, finish  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
@@ -23,31 +23,6 @@ TOP_FEATURES = 12
 MIN_GROUP = 1000  # smaller groups give ROC-AUC values too noisy to read
 MIN_DIRECTION = 0.03  # rank correlations weaker than this count as "no clear direction"
 ORANGE, BLUE, GREY = "#B8452E", "#17463A", "#6B7A72"  # each at least 3:1 against the paper background
-
-# Plain-English names for the model's input columns; anything missing falls back to a cleaned-up column name.
-FRIENDLY = {
-    "healthy_volunteers": "Accepts healthy volunteers",
-    "eligibility_text_len": "Length of eligibility criteria",
-    "max_age_years": "Maximum age",
-    "min_age_years": "Minimum age",
-    "phase": "Phase",
-    "intervention_drug": "Tests a drug",
-    "masking": "Blinding",
-    "has_dmc": "Has a data monitoring committee",
-    "sponsor_class": "Sponsor type",
-    "intervention_behavioral": "Behavioral intervention",
-    "intervention_model": "Intervention model",
-    "n_primary_outcomes": "Number of primary outcomes",
-    "n_secondary_outcomes": "Number of secondary outcomes",
-    "intervention_device": "Tests a device",
-    "primary_purpose": "Primary purpose",
-    "n_conditions": "Number of conditions",
-    "allocation": "Allocation (randomized or not)",
-    "has_max_age": "Has a maximum age",
-    "has_collaborators": "Has collaborators",
-    "n_arms": "Number of arms",
-}
-
 
 @st.cache_data(show_spinner=False)
 def load_metrics():
@@ -95,7 +70,7 @@ def load_importance():
     except (OSError, ValueError):
         return None
     table = table[table["model"] == "gbm"].sort_values("rank").head(TOP_FEATURES).copy()
-    table["Factor"] = [FRIENDLY.get(f, f.replace("_", " ").capitalize()) for f in table["feature"]]
+    table["Factor"] = [feature_name(f) for f in table["feature"]]
     directions = load_directions(tuple(table["feature"]))
     table["Direction"] = [directions[f] if directions else "direction not available" for f in table["feature"]]
     return table
