@@ -16,7 +16,8 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
-from src import api_client, viz  # noqa: E402
+from src import api_client, game, viz  # noqa: E402
+from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS  # noqa: E402
 from src.labels import label  # noqa: E402
 
 
@@ -148,9 +149,81 @@ def test_risk_colours():
     assert "compact" not in risk_gauge.risk_card(0.1)
 
 
+def make_game_trials():
+    """Invented test-split table for the game: a model-feature column set plus label and phase_label.
+
+    Phase 2: 10 terminated / 30 completed; Phase 3: 5 / 5; "Early": terminated only, so it can never be paired.
+    `n_arms` doubles as the score of the stub model below: terminated trials get a higher value than completed ones.
+    """
+    rows = []
+    for phase, n_term, n_comp in (("Phase 2", 10, 30), ("Phase 3", 5, 5), ("Early", 4, 0)):
+        for outcome, count in ((1, n_term), (0, n_comp)):
+            for _ in range(count):
+                rows.append({"label": outcome, "phase_label": phase, "n_arms": 2.0 + outcome})
+    trials = pd.DataFrame(rows)
+    for col in FEATURE_COLUMNS:
+        if col not in trials:
+            trials[col] = "X" if col in CATEGORICAL_FEATURES else 0.0
+    return trials
+
+
+class StubModel:
+    """Stands in for the trained model: the score is the n_arms column, so higher n_arms means 'riskier'."""
+
+    def predict_proba(self, frame):
+        """Return [P(0), P(1)] columns like scikit-learn, with P(1) = n_arms / 10."""
+        risk = frame["n_arms"].to_numpy() / 10
+        return np.column_stack([1 - risk, risk])
+
+
+def test_game_pairs():
+    """Pair sampler: one terminated + one completed per pair, same phase, no repeats, reproducible, never invents pairs."""
+    trials = make_game_trials()
+    pairs = game.sample_pairs(trials, 12, seed=1)
+    assert len(pairs) == 12
+    assert (trials.loc[pairs["terminated"], "label"] == 1).all() and (trials.loc[pairs["completed"], "label"] == 0).all()
+    assert (trials.loc[pairs["terminated"], "phase_label"].to_numpy()
+            == trials.loc[pairs["completed"], "phase_label"].to_numpy()).all()
+    assert pairs["terminated"].is_unique and pairs["completed"].is_unique
+    assert "Early" not in set(trials.loc[pairs["terminated"], "phase_label"])  # no completed partner exists
+    assert game.sample_pairs(trials, 12, seed=1).equals(pairs)
+    assert not game.sample_pairs(trials, 12, seed=2).equals(pairs)
+    assert len(game.sample_pairs(trials, 1000, seed=1)) == 15  # asks for more than exist: gets all pairable ones
+
+
+def test_game_scoring():
+    """Model pick and accuracy: higher score wins, ties count half, and a game decides everything up front."""
+    trials = make_game_trials()
+    assert game.model_pick(0.3, 0.1) == "terminated" and game.model_pick(0.1, 0.3) == "completed"
+    assert game.model_pick(0.2, 0.2, rng=0) in {"terminated", "completed"}
+    pairs = game.sample_pairs(trials, 10, seed=3)
+    assert game.pairwise_accuracy(trials, pairs, StubModel()) == 1.0  # stub always scores the terminated one higher
+    flat = trials.assign(n_arms=2.0)  # everything tied
+    assert game.pairwise_accuracy(flat, pairs, StubModel()) == 0.5
+    rounds = game.new_game(trials, 10, model=StubModel(), seed=4)
+    assert len(rounds) == 10 and all(r["model_pick"] == "terminated" for r in rounds)
+    assert {r["left"] for r in rounds} == {"terminated", "completed"}  # display order is shuffled
+
+
+def test_game_score_matches_predict():
+    """The batch scoring used by the game equals predict.score row by row (skipped without the saved model)."""
+    if not (ROOT / "models" / "gbm.joblib").exists() or not (ROOT / "data" / "processed" / "trials.parquet").exists():
+        print("skipped: models/gbm.joblib or data/processed/trials.parquet is missing")
+        return
+    from src.predict import score
+    trials = game.load_test_trials().head(3)
+    assert (trials["split"] == "test").all()
+    batch = game.score_rows(trials)
+    for position, (_, row) in enumerate(trials.iterrows()):
+        assert abs(batch[position] - score(row[FEATURE_COLUMNS].to_dict())) < 1e-9
+
+
 if __name__ == "__main__":
     test_labels()
     test_viz()
     test_api_client()
     test_risk_colours()
+    test_game_pairs()
+    test_game_scoring()
+    test_game_score_matches_predict()
     print("all ok")
