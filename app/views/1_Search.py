@@ -12,7 +12,7 @@ from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, su
 from src.labels import label  # noqa: E402
 from ui import chip, esc, page_header, require_router  # noqa: E402
 
-require_router("pages/1_Search.py")
+require_router("views/1_Search.py")
 
 PAGE = 10
 EXAMPLES = ["breast cancer", "diabetes", "asthma", "depression", "COVID-19"]

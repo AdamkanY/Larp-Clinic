@@ -16,7 +16,7 @@ from src.labels import PHASE_ORDER, label  # noqa: E402
 from src.viz import CHART_LAYOUT, INK, MUTED, finish  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
-require_router("pages/2_Explain.py")
+require_router("views/5_Explain.py")
 
 MODELS = ROOT / "models"
 TOP_FEATURES = 12
@@ -351,7 +351,7 @@ if metrics:
 else:
     intro = "Trial-Radar looks only at facts known when a trial is registered and compares them with past trials that had ended."
 page_header("🧠 How the model works", intro)
-st.page_link("pages/5_Check_Your_Trial.py", label="Try it yourself: check your own trial")
+st.page_link("views/2_Check_Your_Trial.py", label="Try it yourself: check your own trial")
 
 scores = load_test_scores() if metrics else None
 phases = phase_table(scores) if scores is not None else None

@@ -13,7 +13,7 @@ from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # no
 from src.labels import label  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
-require_router("pages/5_Check_Your_Trial.py")
+require_router("views/2_Check_Your_Trial.py")
 
 UNSET = "Not specified"
 

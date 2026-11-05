@@ -17,7 +17,7 @@ for folder in (ROOT, ROOT / "app"):
 from src import viz  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
-require_router("pages/2_Explore.py")
+require_router("views/4_Explore.py")
 
 MAX_ROWS = 5000
 FILTER_KEYS = {"explore_phases": [], "explore_sponsors": [], "explore_condition": ""}

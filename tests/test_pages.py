@@ -24,7 +24,7 @@ NEEDS = [ROOT / "data" / "processed" / "trials.parquet", ROOT / "models" / "gbm.
 
 
 def open_page(page):
-    """Start the app at Home.py and switch to one page, the way a visitor uses the sidebar."""
+    """Start the app at Home.py and switch to one page, the way a visitor uses the top navigation."""
     st.cache_data.clear()
     at = AppTest.from_file(HOME, default_timeout=120).run()
     assert not at.exception, [e.value for e in at.exception]
@@ -75,9 +75,18 @@ def test_home():
     assert "chip green" in text and "chip red" in text
 
 
+def test_no_pages_folder():
+    """Page scripts live in app/views/: a folder named app/pages/ would switch on Streamlit's old multipage mode.
+
+    In that mode a fresh server whose first request is a page URL runs that page without Home.py (no top
+    navigation), and keeps doing so for every visitor until someone opens Home.
+    """
+    assert not (ROOT / "app" / "pages").exists(), "keep page scripts in app/views/ and delete app/pages/"
+
+
 def test_explore():
     """Explore: key numbers, a filter that narrows them, and a message instead of an error when nothing matches."""
-    at = open_page("pages/2_Explore.py")
+    at = open_page("views/4_Explore.py")
     assert not at.exception and len(at.metric) == 3
     total = int(at.metric[0].value.replace(",", ""))
     at.multiselect(key="explore_phases").set_value(["Phase 2"]).run()
@@ -91,7 +100,7 @@ def test_explore():
 
 def test_check_your_trial():
     """Check page: raw API codes stay out of the text, the result strip is there, and Reset restores the example."""
-    at = open_page("pages/5_Check_Your_Trial.py")
+    at = open_page("views/2_Check_Your_Trial.py")
     assert not at.exception, [e.value for e in at.exception]
     assert "risk-card" in markdown(at) and "compact" in markdown(at)
     table = " ".join(c for df in at.table for c in df.value.index.astype(str))
@@ -107,7 +116,7 @@ def test_search_with_results_and_details():
     """Search: a result card shows its risk, interventional trials only get one, and Details opens the full view."""
     undo = stub_api([ongoing_study(), ongoing_study("OBSERVATIONAL", "NCT00000002")])
     try:
-        at = open_page("pages/1_Search.py")
+        at = open_page("views/1_Search.py")
         assert not at.exception, [e.value for e in at.exception]
         cards = [m.value for m in at.markdown if 'class="card-title"' in m.value]
         assert len(cards) == 2 and "% risk" in cards[0] and "% risk" not in cards[1]
@@ -123,7 +132,7 @@ def test_search_offline():
     """Search: no connection gives a plain message and a retry button, not a crash."""
     undo = stub_api(None)
     try:
-        at = open_page("pages/1_Search.py")
+        at = open_page("views/1_Search.py")
         assert not at.exception
         assert any("Could not reach ClinicalTrials.gov" in e.value for e in at.error)
         assert any(b.label == "Try again" for b in at.button)
@@ -133,7 +142,7 @@ def test_search_offline():
 
 def test_explain():
     """Explain: summary box and four tabs, with the numbers filled in."""
-    at = open_page("pages/2_Explain.py")
+    at = open_page("views/5_Explain.py")
     assert not at.exception, [e.value for e in at.exception]
     assert len(at.tabs) == 4 and "In short" in markdown(at)
     assert [m.label for m in at.metric] == ["ROC-AUC", "PR-AUC", "Brier score"]

@@ -13,13 +13,13 @@ METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 # (headline, sentence, page, action label, band tone). The sentences are the ones the old cards carried.
 BANDS = [
     ("Find a trial", "Search ongoing trials on ClinicalTrials.gov and see how likely each one is to stop early.",
-     "pages/1_Search.py", "Search trials", "paper"),
+     "views/1_Search.py", "Search trials", "paper"),
     ("Check your own trial", "Describe a design and watch the risk change as you adjust it.",
-     "pages/5_Check_Your_Trial.py", "Open the checker", "ink"),
+     "views/2_Check_Your_Trial.py", "Open the checker", "ink"),
     ("Explore the data", "Charts of more than 160,000 past trials: which kinds get stopped early?",
-     "pages/2_Explore.py", "Open the charts", "paper"),
+     "views/4_Explore.py", "Open the charts", "paper"),
     ("How the model works", "How well it works, what matters most and where it falls short.",
-     "pages/2_Explain.py", "Read the details", "ink"),
+     "views/5_Explain.py", "Read the details", "ink"),
 ]
 
 
@@ -50,12 +50,12 @@ def home():
                  lead="of the past trials in our data ended before their planned end.", scale=ticks)
         else:
             hero("How likely is a clinical trial to be stopped early?", "Estimated from what is known when it is designed.")
-        st.page_link("pages/5_Check_Your_Trial.py", label="Check your own trial")
+        st.page_link("views/2_Check_Your_Trial.py", label="Check your own trial")
     for index, (headline, text, page, action, tone) in enumerate(BANDS):
         number = label = None
-        if numbers and page == "pages/2_Explore.py":
+        if numbers and page == "views/4_Explore.py":
             number, label = f"{numbers['total']:,}", "past trials that ended, 2008 to 2019"
-        if numbers and page == "pages/2_Explain.py":
+        if numbers and page == "views/5_Explain.py":
             number, label = f"{numbers['roc_auc']:.2f}", "ROC-AUC on newer trials the model never saw"
         with st.container(key=f"band_{tone}_{index}"):
             st.markdown(band_copy(headline, text, number, label), unsafe_allow_html=True)
@@ -81,10 +81,10 @@ st.set_page_config(page_icon=":material/radar:", layout="wide")  # no page_title
 st.session_state["via_router"] = True
 navigation = st.navigation([
     st.Page(home, title="Home", default=True),
-    st.Page("pages/1_Search.py", title="Find a trial"),
-    st.Page("pages/5_Check_Your_Trial.py", title="Check your own trial"),
-    st.Page("pages/2_Explore.py", title="Explore the data"),
-    st.Page("pages/2_Explain.py", title="How the model works"),
+    st.Page("views/1_Search.py", title="Find a trial"),
+    st.Page("views/2_Check_Your_Trial.py", title="Check your own trial"),
+    st.Page("views/4_Explore.py", title="Explore the data"),
+    st.Page("views/5_Explain.py", title="How the model works"),
 ], position="top")
 target = st.session_state.pop("target_page", None)  # a page that was opened directly comes back here
 if target:
