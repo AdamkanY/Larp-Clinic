@@ -27,8 +27,9 @@ deployed on Streamlit Community Cloud.
 | `src/` | Reusable Python: fetching, features, dataset build, training, API client. | You change data handling, features, the model or the API client. |
 | `app/` | Streamlit app: entry point `Home.py` plus `pages/`. | You change anything the user sees. |
 | `.streamlit/` | Streamlit settings: `config.toml` holds the light theme (ink and paper colours, self-hosted fonts, pill buttons), turns on static serving for the fonts in `app/static/` and hides the Deploy button. | You change colours, fonts, corner radius or toolbar. |
+| `.claude/` | Claude Code settings for everyone who works here: `settings.json` runs `hooks/check_claude_md.py` when a session starts and before Claude ends each turn, so these guides stay current (see the last section). | You change the hooks or the guide check. |
 | `models/` | Saved models (`.joblib`) and their metrics. | You save or load a trained model. |
-| `tests/` | Offline tests: features (synthetic records), app helpers and page smoke tests (no network). | You change `src/` or `app/`. |
+| `tests/` | Offline tests: features (synthetic records), app helpers, page smoke tests (no network) and the guide check. | You change `src/`, `app/` or a `CLAUDE.md`. |
 | `notebooks/` | Exploration only. Nothing in `src/` or `app/` imports from here. | You explore data or prototype. |
 
 Every folder has its own `CLAUDE.md` with a file table. Read it before editing in that folder.
@@ -65,6 +66,15 @@ Every folder has its own `CLAUDE.md` with a file table. Read it before editing i
 
 Update the status column when a milestone moves.
 
+## Recent changes
+
+Newest first; keep at most 8 lines (git log has the rest).
+
+- 2026-11-05 · Guides check: `.claude/` hooks keep every `CLAUDE.md` current; `tests/test_claude_md.py`.
+- 2026-11-04 · New look (PR 17) after the redesign (PR 16): top navigation, bands, tick scale, plain names.
+- 2026-11-04 · Explain page: label definition, risk-group chart, phase and year breakdown (PR 14).
+- 2026-11-03 · Calibrated GBM and logistic regression baseline (PR 4); API pipeline replaced the CSV (PR 2).
+
 ## Conventions
 
 - PEP8; a docstring on every function; comments explain *why*, not what.
@@ -76,5 +86,18 @@ Update the status column when a milestone moves.
 
 ## How to keep this file current
 
-Any agent that adds, moves or deletes a file must update the matching `CLAUDE.md` (the folder's file table,
-and this file if the directory map or roadmap changes) **in the same commit**.
+The guides are the team's shared memory, so keep them true after every prompt that changes something, in the
+same commit as the change:
+
+1. **The folder's `CLAUDE.md`:** a row for every new file, no row for a deleted one, and a corrected row when
+   what a file does or holds changed. Mark planned files "(expected)" and drop the marker once they exist.
+2. **This file:** a dated line under "Recent changes" for anything notable; move Status, Roadmap and Open
+   decisions when they change; a directory-map row for every new top-level folder.
+3. **Numbers** quoted in any guide (dataset sizes, metrics) whenever the data or a model is rebuilt.
+
+This is checked automatically. `.claude/settings.json` runs `.claude/hooks/check_claude_md.py` before Claude
+ends each turn. It blocks the stop once when a file has no row in its folder's table, a table lists a file
+that is gone, an "(expected)" file now exists, or files changed since the last check while their guide and
+"Recent changes" did not; Claude then updates the guides or says why nothing needed to change. It never blocks
+twice in a row and stays silent if something goes wrong (it needs `python3` and `git`). People working without
+Claude run `python tests/test_claude_md.py`, which does the table part of the same check.
