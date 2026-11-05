@@ -1,15 +1,14 @@
 """Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from."""
-import json
 from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.predict import load_metrics
 from src.viz import CHART_LAYOUT, INK, finish
 
 REFERENCE = Path(__file__).resolve().parents[1] / "models" / "score_reference.npy"
-METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 GREEN, YELLOW, RED = "#C5DDD0", "#EBDDAE", "#E3B7B0"  # pale bands; ink text and the pink marker stay readable on them
 MARKER = "#C80F5A"
 
@@ -31,16 +30,17 @@ def percentile_of(risk):
     return float(100.0 * np.searchsorted(reference, risk, side="left") / len(reference))
 
 
-@st.cache_data(show_spinner=False)
 def underestimate():
     """How much higher the real share stopped early on the newer test trials was than the model's average prediction.
 
     0.18 means 18% higher. None if the metrics file is missing or incomplete.
     """
+    metrics = load_metrics()
+    if metrics is None:
+        return None
     try:
-        metrics = json.loads(METRICS.read_text())
         return metrics["split"]["test"]["terminated_rate"] / metrics["test"]["mean_predicted"] - 1
-    except (OSError, ValueError, KeyError, ZeroDivisionError):
+    except (KeyError, ZeroDivisionError):
         return None
 
 

@@ -14,10 +14,15 @@ calibration (``CalibratedClassifierCV``, fitted on the train split), so
 about 20% were terminated. ``percentile`` compares a score with the
 out-of-fold calibrated scores of the 2008-2016 training trials.
 
+The app's pages load the model and its metrics only through ``get_model`` and
+``load_metrics``: each file is read once per process, and both return None
+while the file is missing so a page can show a message instead.
+
 This module deliberately imports only pandas, numpy, joblib and ``features`` so
 the app does not pull in training or plotting dependencies.
 """
 
+import json
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -32,6 +37,7 @@ from features import (BINARY_FEATURES, CATEGORICAL_FEATURES,  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_PATH = "models/gbm.joblib"
+DEFAULT_METRICS_PATH = "models/gbm_metrics.json"
 SCORE_REFERENCE_PATH = "models/score_reference.npy"
 
 
@@ -99,6 +105,54 @@ def load_model(path=DEFAULT_MODEL_PATH):
         call ``predict_proba`` on the output of ``to_model_frame``.
     """
     return _load_cached(str(_resolve(path)))
+
+
+def get_model(path=DEFAULT_MODEL_PATH):
+    """The app's model, or None when it cannot be loaded, so a page can show a message instead of a risk.
+
+    Shares ``load_model``'s cache: one load per process for every page and
+    session. A failed load is not cached, so a model file that appears later is
+    picked up without a restart.
+
+    Args:
+        path: as for ``load_model``.
+
+    Returns:
+        The fitted estimator, or None if the file is missing or a library it
+        needs to unpickle (scikit-learn) is not installed.
+    """
+    try:
+        return load_model(path)
+    except (ImportError, FileNotFoundError):
+        return None
+
+
+@lru_cache(maxsize=None)
+def _read_json(resolved_path: str) -> dict:
+    """Parse a JSON file once per process. Raises on failure, so a missing file is never cached."""
+    with open(resolved_path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_metrics(path=DEFAULT_METRICS_PATH):
+    """Metrics of the app model (``models/gbm_metrics.json``), read once per process.
+
+    Every page that quotes a metric reads it here, so they all show the same
+    numbers from one read of the file.
+
+    Args:
+        path: a ``<model>_metrics.json`` written by ``src/train.py`` and
+            ``src/evaluate.py``; a relative path is resolved against the
+            repository root.
+
+    Returns:
+        The parsed JSON, shared by every caller (treat it as read-only), or
+        None if the file is missing or not valid JSON.
+    """
+    try:
+        return _read_json(str(_resolve(path)))
+    except (OSError, ValueError):
+        return None
 
 
 def score(features: dict, model=None) -> float:

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_g
 from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card  # noqa: E402
 from src.features import FEATURE_COLUMNS, INTERVENTION_TYPES, MAX_AGE_FILL  # noqa: E402
 from src.labels import label  # noqa: E402
+from src.predict import get_model  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
 require_router("pages/5_Check_Your_Trial.py")
@@ -54,16 +55,6 @@ DEFAULTS = {
 FLAGS = {"has_collaborators": "Has collaborators", "has_dmc": "Has data monitoring committee"}
 # Values that make no sense as advice: a drug trial cannot simply become "no phase", nor a randomized one "single group".
 NOT_ADVISABLE = {"phase": {"NA"}, "allocation": {"NA"}}
-
-
-@st.cache_resource(show_spinner=False)
-def get_model():
-    """Load the trained model once per server; None while src/predict.py or models/gbm.joblib is missing."""
-    try:
-        from src.predict import load_model
-        return load_model()
-    except (ImportError, FileNotFoundError):
-        return None
 
 
 def reset_form():

@@ -1,10 +1,11 @@
-"""Offline checks for the app's helper code: labels, chart data, API client and risk colours.
+"""Offline checks for the app's helper code: labels, chart data, API client, model loaders and risk colours.
 
 Run with ``python tests/test_app.py`` (or pytest). No network needed: the API is replaced by a stub and the chart
 data is a small invented table, not real trial data. The risk-colour check uses `models/score_reference.npy` and
 is skipped when that file is missing.
 """
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -133,6 +134,22 @@ def test_api_client():
     assert api_client.summarize({})["Phase"] == "NA"  # a missing phase reads like the API's own "not applicable"
 
 
+def test_loaders():
+    """The app's loaders in src/predict.py: None instead of an error for a missing file, one shared read otherwise."""
+    from src import predict
+    assert predict.load_metrics("models/missing_metrics.json") is None
+    assert predict.get_model("models/missing_model.joblib") is None
+    metrics_file = ROOT / "models" / "gbm_metrics.json"
+    if not metrics_file.exists():
+        print("skipped: models/gbm_metrics.json is missing")
+        return
+    metrics = predict.load_metrics()
+    assert metrics == json.loads(metrics_file.read_text(encoding="utf-8"))
+    assert predict.load_metrics() is metrics  # read once, then shared by every page
+    if (ROOT / "models" / "gbm.joblib").exists():
+        assert predict.get_model() is predict.load_model()
+
+
 def test_risk_colours():
     """Colour follows the rank among past trials: green below the median, red among the riskiest 10%."""
     reference = ROOT / "models" / "score_reference.npy"
@@ -152,5 +169,6 @@ if __name__ == "__main__":
     test_labels()
     test_viz()
     test_api_client()
+    test_loaders()
     test_risk_colours()
     print("all ok")

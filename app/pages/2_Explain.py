@@ -1,5 +1,4 @@
 """Explain the model: what it predicts, how well it works on unseen trials, which factors matter, how far to trust it."""
-import json
 import sys
 from pathlib import Path
 
@@ -13,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))  # repo root, for src/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
 from src.labels import PHASE_ORDER, label  # noqa: E402
+from src.predict import load_metrics  # noqa: E402
 from src.viz import CHART_LAYOUT, INK, MUTED, finish  # noqa: E402
 from ui import page_header, require_router  # noqa: E402
 
@@ -47,15 +47,6 @@ FRIENDLY = {
     "has_collaborators": "Has collaborators",
     "n_arms": "Number of arms",
 }
-
-
-@st.cache_data(show_spinner=False)
-def load_metrics():
-    """Metrics of the app model (models/gbm_metrics.json), or None if the file is missing."""
-    try:
-        return json.loads((MODELS / "gbm_metrics.json").read_text())
-    except (OSError, ValueError):
-        return None
 
 
 @st.cache_data(show_spinner=False)

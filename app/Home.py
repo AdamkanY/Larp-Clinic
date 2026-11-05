@@ -1,14 +1,13 @@
 """Trial-Radar entry point: sets up the top navigation (in the order people use the app) and the landing page."""
-import json
 import sys
 from pathlib import Path
 
 import streamlit as st
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, for src/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from src.predict import load_metrics  # noqa: E402
 from ui import band_copy, chip, hero, inject_css, tick_scale  # noqa: E402
-
-METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 
 # (headline, sentence, page, action label, band tone). The sentences are the ones the old cards carried.
 BANDS = [
@@ -23,16 +22,17 @@ BANDS = [
 ]
 
 
-@st.cache_data(show_spinner=False)
 def headline_numbers():
-    """Share stopped early, number of past trials and test ROC-AUC from models/gbm_metrics.json; None if it is missing."""
+    """Share stopped early, number of past trials and test ROC-AUC from the model's metrics; None if they are missing."""
+    metrics = load_metrics()
+    if metrics is None:
+        return None
     try:
-        metrics = json.loads(METRICS.read_text())
         train, test = metrics["split"]["train"], metrics["split"]["test"]
         total = train["n_trials"] + test["n_trials"]
         stopped = train["n_terminated"] + test["n_terminated"]
         return {"rate": stopped / total, "total": total, "roc_auc": metrics["test"]["roc_auc"]}
-    except (OSError, ValueError, KeyError, ZeroDivisionError):
+    except (KeyError, ZeroDivisionError):
         return None
 
 

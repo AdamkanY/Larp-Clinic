@@ -10,22 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_g
 from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card, risk_chip  # noqa: E402
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 from src.labels import label  # noqa: E402
+from src.predict import get_model  # noqa: E402
 from ui import chip, esc, page_header, require_router  # noqa: E402
 
 require_router("pages/1_Search.py")
 
 PAGE = 10
 EXAMPLES = ["breast cancer", "diabetes", "asthma", "depression", "COVID-19"]
-
-
-@st.cache_resource(show_spinner=False)
-def get_model():
-    """Load the trained model once per server; None while src/predict.py or models/gbm.joblib is missing."""
-    try:
-        from src.predict import load_model
-        return load_model()
-    except (ImportError, FileNotFoundError):
-        return None
 
 
 @st.cache_data(show_spinner=False, max_entries=500)
