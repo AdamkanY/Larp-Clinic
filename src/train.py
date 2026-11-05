@@ -30,6 +30,7 @@ Usage:
     python src/train.py        # about 5-10 minutes on 4 cores
 """
 
+import importlib.util
 import json
 import platform
 import sys
@@ -297,6 +298,10 @@ def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
 
 def main() -> None:
     """Tune, fit and save all models, then evaluate them once on test."""
+    # The evaluation at the end draws a plot with matplotlib before it writes the test metrics. Failing there would
+    # leave freshly saved models whose metrics files lack their test part, so check before training starts.
+    if importlib.util.find_spec("matplotlib") is None:
+        sys.exit("matplotlib is missing. Install the training requirements: pip install -r requirements-dev.txt")
     df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
     X_train, y_train = load_split("train", df)

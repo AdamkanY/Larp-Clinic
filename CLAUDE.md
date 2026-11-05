@@ -71,7 +71,8 @@ Update the status column when a milestone moves.
 - Small commits with clear messages.
 - No notebook code is imported by the app.
 - Relative paths only (never `/Users/...`).
-- Update `requirements.txt` whenever a library is added.
+- Update `requirements.txt` whenever the app needs a new library; one that only training or the tests need goes in
+  `requirements-dev.txt`.
 - Raw data is not in git (no LFS any more); regenerate it with `src/fetch_data.py`.
 
 ## How to keep this file current

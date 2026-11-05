@@ -1,0 +1,7 @@
+# The app's requirements plus what training, evaluation and the tests need:
+#   pip install -r requirements-dev.txt
+# Bounds follow the rule in requirements.txt (lower = tested version, upper = next major release).
+-r requirements.txt
+# Draws models/calibration_before_after.png in src/evaluate.py, which src/train.py runs at the end.
+matplotlib>=3.11,<4
+pytest>=9.2,<10

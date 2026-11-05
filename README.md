@@ -17,7 +17,8 @@ machine-learning model behind it. HSG Computer Science group project, English tr
 
 ## Run it on your computer
 
-You need Python 3.12 and the files of this repository (the data and model files are included).
+You need Python 3.13 (3.12 and 3.14 work too; 3.11 cannot install the requirements) and the files of this repository
+(the data and model files are included).
 
 ```bash
 python3 -m venv .venv
@@ -28,12 +29,11 @@ streamlit run app/Home.py
 
 The app opens in your browser. The search needs an internet connection; everything else works offline.
 
-Check that it works:
+Check that it works (the tests need the development requirements, which add pytest and matplotlib):
 
 ```bash
-python tests/test_features.py
-python tests/test_app.py
-python tests/test_pages.py
+pip install -r requirements-dev.txt
+python -m pytest tests/
 ```
 
 ## How the model was built
@@ -47,7 +47,8 @@ python tests/test_pages.py
 - **Model:** gradient boosting, wrapped in isotonic calibration so the output reads as a probability. A logistic
   regression is kept as a baseline.
 - **Code:** `src/fetch_data.py` then `src/build_dataset.py` then `src/train.py`. The feature function in
-  `src/features.py` is the only one, used by training and by the app.
+  `src/features.py` is the only one, used by training and by the app. Training needs `requirements-dev.txt`
+  (matplotlib draws the calibration plot).
 
 ## How good is it, and what are the limits?
 
@@ -76,7 +77,10 @@ The "How the model works" page shows all of this with numbers.
 
 ## Put it online
 
-Streamlit Community Cloud: connect the repository and set the main file to `app/Home.py` and the Python version
-to 3.12. The first visit to "How the model works" scores the test trials once (a few seconds); after that it is cached.
+Streamlit Community Cloud: connect the repository, set the main file to `app/Home.py` and, under **Advanced settings**
+in the same dialog, choose **Python 3.13** (3.12 and 3.14 work too). That dialog is the only place to set it: no file
+in the repository does, and changing it later means deleting the app and deploying it again. Cloud installs
+`requirements.txt`, which holds only what the app needs. The first visit to "How the model works" scores the test
+trials once (a few seconds); after that it is cached.
 
 AI agents working in this repository: read `CLAUDE.md` first.
