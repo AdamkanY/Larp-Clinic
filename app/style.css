@@ -210,7 +210,6 @@ a { color: var(--accent-text); text-underline-offset: 3px; }
 }
 /* Form panels are not boxes: a hairline and a large light title, so the page does not turn into a stack of cards. */
 [class*="st-key-panel"] { background: transparent; border: 0; border-top: 1px solid var(--ink); border-radius: 0; padding: var(--s5) 0 var(--s6); }
-[class*="st-key-card_home"]:hover { border-color: var(--ink); }
 /* Search results are a ruled list, not a stack of boxes. */
 [class*="st-key-card_result"] { background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: var(--s5) 0 var(--s4); }
 [class*="st-key-card_result"] .card-title { font-size: clamp(1.375rem, 2.4vw, 1.875rem); }
