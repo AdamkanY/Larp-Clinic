@@ -14,22 +14,28 @@ only):
   the 5 folds fits the pipeline on 4/5 of train and an isotonic map on the
   remaining 1/5; predictions average the 5 calibrated copies.
 
-Inputs are exactly ``FEATURE_COLUMNS`` from ``src/features.py``; meta and
-display columns (``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date,
-split, titles, conditions, sponsor name, phase label) never reach a model.
+Inputs are one of the ``FEATURE_SETS`` below (default ``APP_FEATURE_SET``, the
+set of the model the app loads); meta and display columns
+(``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date, split, titles,
+conditions, sponsor name, phase label) never reach a model.
 
 Protocol: hyperparameters are picked by 5-fold stratified CV on train (refit on
 PR-AUC); calibration adds no tuned parameters. Every model also gets
 out-of-fold (OOF) train predictions: the decision threshold is the one that
 maximises F1 on them, and the calibrated model's OOF scores are saved as
-``models/score_reference.npy`` for ``predict.percentile``. The test split
+``models/score_reference.npy`` for ``predict.percentile``. The typical train
+trial (median of every number and flag, most common value of every category)
+is saved as ``models/explain_reference.json`` for ``predict.explain``. The test split
 (start 2017-2019) is scored only by ``evaluate.evaluate_saved``, after every
 model is saved.
 
 Usage:
-    python src/train.py        # about 5-10 minutes on 4 cores
+    python src/train.py                 # app models (feature set v1), ~5-10 min on 4 cores
+    python src/train.py --features v2   # GBM with condition categories, saved as
+                                        # gbm_v2 / gbm_uncalibrated_v2, app files untouched
 """
 
+import argparse
 import json
 import platform
 import sys
@@ -56,20 +62,34 @@ from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import evaluate  # noqa: E402
 from features import (BINARY_FEATURES, CATEGORICAL_FEATURES,  # noqa: E402
-                      FEATURE_COLUMNS, LABELS, NON_FEATURE_COLUMNS,
-                      NUMERIC_FEATURES)
+                      CONDITION_FEATURES, FEATURE_COLUMNS, LABELS,
+                      NON_FEATURE_COLUMNS, NUMERIC_FEATURES)
 from predict import to_model_frame  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "processed" / "trials.parquet"
 MODELS_DIR = ROOT / "models"
 SCORE_REFERENCE_PATH = MODELS_DIR / "score_reference.npy"
+EXPLAIN_REFERENCE_PATH = MODELS_DIR / "explain_reference.json"
 
 # Must match src/build_dataset.py; check_dataset() fails loudly if they drift.
 SPLITS = {
     "train": (pd.Timestamp("2008-01-01"), pd.Timestamp("2016-12-31")),
     "test": (pd.Timestamp("2017-01-01"), pd.Timestamp("2019-12-31")),
 }
+# v1: the 29 original design features. v2: plus the keyword condition categories
+# of features.condition_features. v2 was trained with this exact protocol on
+# 2026-11-05 and raised the calibrated GBM's test ROC-AUC by only 0.004 (CV
+# +0.004), below the +0.005 bar set for replacing the app model, so the app
+# keeps v1. FEATURE_COLUMNS (what build_features returns and the parquet
+# holds) is the superset; each model records its own inputs, see
+# predict.model_features.
+FEATURE_SETS = {
+    "v1": [c for c in FEATURE_COLUMNS if c not in CONDITION_FEATURES],
+    "v2": list(FEATURE_COLUMNS),
+}
+APP_FEATURE_SET = "v1"
+
 RANDOM_STATE = 42
 CV_FOLDS = 5
 REFIT_METRIC = "average_precision"  # PR-AUC: the metric that matters at ~11% positives
@@ -113,45 +133,61 @@ def check_dataset(df: pd.DataFrame) -> None:
                              f"..{end:%Y-%m-%d}; rebuild with src/build_dataset.py")
 
 
-def load_split(split: str, df: pd.DataFrame = None) -> tuple:
-    """Load one split as (X, y), with X holding only FEATURE_COLUMNS.
+def load_split(split: str, df: pd.DataFrame = None, features=None) -> tuple:
+    """Load one split as (X, y), with X holding only model input columns.
 
     Args:
         split: "train" or "test".
         df: the already loaded parquet; read (and checked) from disk if omitted.
+        features: the input columns; defaults to the app's feature set.
     """
     if df is None:
         df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
     part = df[df["split"] == split]
-    return to_model_frame(part), part["label"].to_numpy(dtype=int)
+    features = FEATURE_SETS[APP_FEATURE_SET] if features is None else features
+    return to_model_frame(part, features), part["label"].to_numpy(dtype=int)
 
 
-def build_lr_pipeline() -> Pipeline:
-    """Logistic regression with imputation, scaling and one-hot encoding."""
+def split_features(features) -> dict:
+    """The categorical / binary / numeric parts of a feature list, in FEATURE_COLUMNS order."""
+    return {"categorical": [c for c in CATEGORICAL_FEATURES if c in features],
+            "binary": [c for c in BINARY_FEATURES if c in features],
+            "numeric": [c for c in NUMERIC_FEATURES if c in features]}
+
+
+def build_lr_pipeline(features=None) -> Pipeline:
+    """Logistic regression with imputation, scaling and one-hot encoding.
+
+    Args:
+        features: input columns; defaults to the app's feature set.
+    """
+    parts = split_features(FEATURE_SETS[APP_FEATURE_SET] if features is None else features)
     numeric = Pipeline([("impute", SimpleImputer(strategy="median")),
                         ("scale", StandardScaler())])
     # Flags stay 0/1 (no scaling) so their coefficients read as "flag on vs off".
     binary = SimpleImputer(strategy="most_frequent")
     categorical = Pipeline([("impute", SimpleImputer(strategy="most_frequent")),
                             ("onehot", OneHotEncoder(handle_unknown="ignore"))])
-    prep = ColumnTransformer([("num", numeric, NUMERIC_FEATURES),
-                              ("bin", binary, BINARY_FEATURES),
-                              ("cat", categorical, CATEGORICAL_FEATURES)],
+    prep = ColumnTransformer([("num", numeric, parts["numeric"]),
+                              ("bin", binary, parts["binary"]),
+                              ("cat", categorical, parts["categorical"])],
                              verbose_feature_names_out=False)
     clf = LogisticRegression(class_weight="balanced", max_iter=2000)
     return Pipeline([("prep", prep), ("clf", clf)])
 
 
-def build_gbm_pipeline(drop=()) -> Pipeline:
+def build_gbm_pipeline(drop=(), features=None) -> Pipeline:
     """Histogram gradient boosting with native categorical splits.
 
     Args:
         drop: feature names to leave out (used by the ablations in
-            ``evaluate.py``); the default uses every feature.
+            ``evaluate.py``); the default uses every feature of the set.
+        features: input columns; defaults to the app's feature set.
     """
-    categorical = [c for c in CATEGORICAL_FEATURES if c not in drop]
-    other = [c for c in BINARY_FEATURES + NUMERIC_FEATURES if c not in drop]
+    parts = split_features(FEATURE_SETS[APP_FEATURE_SET] if features is None else features)
+    categorical = [c for c in parts["categorical"] if c not in drop]
+    other = [c for c in parts["binary"] + parts["numeric"] if c not in drop]
     # Unseen categories at scoring time (e.g. a new API enum value) become
     # missing instead of crashing the app.
     encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan,
@@ -164,6 +200,27 @@ def build_gbm_pipeline(drop=()) -> Pipeline:
         max_iter=1000, early_stopping=True, n_iter_no_change=20,
         random_state=RANDOM_STATE)
     return Pipeline([("prep", prep), ("clf", clf)])
+
+
+def explain_reference(X_train: pd.DataFrame) -> dict:
+    """The "typical training trial" that ``predict.explain`` compares a trial with.
+
+    Numbers and 0/1 flags take their train median (for a flag: the more common
+    value), categories their most common value. Missing values are ignored, so
+    the reference is always a complete, ordinary design.
+    """
+    values = {}
+    for col in FEATURE_COLUMNS:
+        if col in CATEGORICAL_FEATURES:
+            values[col] = str(X_train[col].mode(dropna=True).iloc[0])
+        else:
+            values[col] = float(X_train[col].median(skipna=True))
+    return {
+        "contents": "median (numbers, 0/1 flags) or most common value (categories) of "
+                    "every feature on the train split (start 2008-2016)",
+        "n_train": int(len(X_train)),
+        "values": values,
+    }
 
 
 def build_calibrated(base: Pipeline) -> CalibratedClassifierCV:
@@ -188,8 +245,11 @@ def make_cv() -> StratifiedKFold:
 
 
 def tune(name: str, X, y, cv) -> GridSearchCV:
-    """Grid-search one model with stratified CV on train and refit on all of train."""
-    search = GridSearchCV(BUILDERS[name](), PARAM_GRIDS[name], cv=cv,
+    """Grid-search one model with stratified CV on train and refit on all of train.
+
+    The model's inputs are the columns of ``X``.
+    """
+    search = GridSearchCV(BUILDERS[name](features=list(X.columns)), PARAM_GRIDS[name], cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
                           refit=REFIT_METRIC, n_jobs=-1)
     search.fit(X, y)
@@ -273,8 +333,9 @@ def model_details(model) -> dict:
 
 
 def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
-         extra: dict = None) -> None:
+         feature_set: str, extra: dict = None) -> None:
     """Write ``models/<name>.joblib`` and the training part of its metrics JSON."""
+    features = FEATURE_SETS[feature_set]
     joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
     report = {
         "model": name,
@@ -284,8 +345,8 @@ def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
         "python_version": platform.python_version(),
         "label": {"TERMINATED": 1, "COMPLETED": 0},
         "split": split_summary(df),
-        "features": {"all": FEATURE_COLUMNS, "categorical": CATEGORICAL_FEATURES,
-                     "binary": BINARY_FEATURES, "numeric": NUMERIC_FEATURES},
+        "feature_set": feature_set,
+        "features": {"all": features, **split_features(features)},
         **model_details(model),
         "cv": cv_info,
         "threshold": threshold,
@@ -295,21 +356,34 @@ def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
                                            encoding="utf-8")
 
 
-def main() -> None:
-    """Tune, fit and save all models, then evaluate them once on test."""
+def main(feature_set: str = APP_FEATURE_SET) -> None:
+    """Tune, fit and save the models of one feature set, then evaluate them once on test.
+
+    The app's feature set writes the usual files (``gbm.joblib`` and friends) and
+    trains the logistic regression baseline too; any other set trains only the
+    GBM and saves it with the set as suffix (``gbm_v2.joblib``,
+    ``gbm_uncalibrated_v2.joblib``, ``score_reference_v2.npy``), so a comparison
+    run never replaces the app model.
+    """
+    features = FEATURE_SETS[feature_set]
+    suffix = "" if feature_set == APP_FEATURE_SET else f"_{feature_set}"
+    builders = list(BUILDERS) if not suffix else ["gbm"]
     df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
-    X_train, y_train = load_split("train", df)
-    X_test, y_test = load_split("test", df)
+    X_train, y_train = load_split("train", df, features)
+    X_test, y_test = load_split("test", df, features)
     print(f"Train: {len(y_train)} trials ({y_train.mean():.2%} terminated); "
           f"test: {len(y_test)} trials ({y_test.mean():.2%} terminated)")
-    print(f"Features ({len(FEATURE_COLUMNS)}): {', '.join(FEATURE_COLUMNS)}")
+    print(f"Feature set {feature_set} ({len(features)}): {', '.join(features)}")
 
     cv = make_cv()
     MODELS_DIR.mkdir(exist_ok=True)
+    # Over every column build_features makes, so it serves any feature set.
+    reference = explain_reference(load_split("train", df, FEATURE_COLUMNS)[0])
+    EXPLAIN_REFERENCE_PATH.write_text(json.dumps(reference, indent=2) + "\n", encoding="utf-8")
 
     tuned = {}
-    for name in BUILDERS:
+    for name in builders:
         t0 = time.time()
         print(f"\n--- {name}: grid search ({len(ParameterGrid(PARAM_GRIDS[name]))} "
               f"settings x {CV_FOLDS}-fold CV on train) ---")
@@ -321,9 +395,10 @@ def main() -> None:
         _, threshold = out_of_fold(search.best_estimator_, X_train, y_train, cv)
         print(f"F1-max threshold on out-of-fold train predictions: {threshold['value']:.4f} "
               f"(OOF F1 {threshold['oof_f1']:.4f})")
-        save(SAVED_NAMES[name], search.best_estimator_, df, cv_info, threshold)
+        save(SAVED_NAMES[name] + suffix, search.best_estimator_, df, cv_info, threshold,
+             feature_set)
         tuned[name] = (search.best_estimator_, cv_info)
-        print(f"Saved models/{SAVED_NAMES[name]}.joblib ({time.time() - t0:.0f}s)")
+        print(f"Saved models/{SAVED_NAMES[name]}{suffix}.joblib ({time.time() - t0:.0f}s)")
 
     t0 = time.time()
     print(f"\n--- gbm: {CALIBRATION_METHOD} calibration (cv={CALIBRATION_CV}) of the tuned GBM ---")
@@ -334,27 +409,34 @@ def main() -> None:
           f"F1-max threshold {threshold['value']:.4f} (OOF F1 {threshold['oof_f1']:.4f})")
     calibrated.fit(X_train, y_train)
     # Sorted, so predict.percentile is a single binary search.
-    np.save(SCORE_REFERENCE_PATH, np.sort(oof))
-    save("gbm", calibrated, df,
-         {**base_cv_info, "note": "hyperparameters tuned on gbm_uncalibrated; "
+    reference_path = SCORE_REFERENCE_PATH.with_name(f"score_reference{suffix}.npy")
+    np.save(reference_path, np.sort(oof))
+    save(f"gbm{suffix}", calibrated, df,
+         {**base_cv_info, "note": f"hyperparameters tuned on gbm_uncalibrated{suffix}; "
                                   "calibration adds no tuned parameters"},
-         threshold,
+         threshold, feature_set,
          extra={"calibration": {
                     "method": CALIBRATION_METHOD,
                     "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split",
-                    "base_model": "gbm_uncalibrated"},
+                    "base_model": f"gbm_uncalibrated{suffix}"},
                 "score_reference": {
-                    "file": f"models/{SCORE_REFERENCE_PATH.name}",
+                    "file": f"models/{reference_path.name}",
                     "contents": "sorted out-of-fold calibrated P(TERMINATED) of every "
                                 "train trial (start 2008-2016)",
                     "n": int(len(oof)),
                     "quantiles": {f"p{q}": float(np.percentile(oof, q))
                                   for q in (10, 25, 50, 75, 90, 99)}}})
-    print(f"Saved models/gbm.joblib and models/{SCORE_REFERENCE_PATH.name} "
+    print(f"Saved models/gbm{suffix}.joblib and models/{reference_path.name} "
           f"({time.time() - t0:.0f}s)")
 
-    evaluate.evaluate_saved(X_test, y_test, X_train=X_train, y_train=y_train)
+    names = [f"{name}{suffix}" for name in evaluate.MODEL_NAMES
+             if name.startswith("gbm") or not suffix]
+    evaluate.evaluate_saved(X_test, y_test, names=names, X_train=X_train, y_train=y_train,
+                            suffix=suffix)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Train and save the models.")
+    parser.add_argument("--features", choices=sorted(FEATURE_SETS), default=APP_FEATURE_SET,
+                        help=f"feature set (default {APP_FEATURE_SET}, the app model's)")
+    main(parser.parse_args().features)

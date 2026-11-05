@@ -66,6 +66,17 @@ def markdown(at):
     return " ".join(m.value for m in at.markdown)
 
 
+def charts(at):
+    """The Plotly figure specs (JSON text) on the page."""
+    return [el.proto.spec for el in at.get("plotly_chart")]
+
+
+def has_drivers_chart(at):
+    """True if the page shows the 'what pushes the risk' chart with at least one bar."""
+    return any("What pushes this trial" in spec and '"orientation":"h"' in spec.replace(" ", "")
+               for spec in charts(at))
+
+
 def test_home():
     """Landing page: four cards and the colour legend."""
     at = open_page(None)
@@ -96,11 +107,41 @@ def test_check_your_trial():
     assert "risk-card" in markdown(at) and "compact" in markdown(at)
     table = " ".join(c for df in at.table for c in df.value.index.astype(str))
     assert table and not re.search(r"[A-Z]{4,}|_", table), table  # no PHASE2, NON_RANDOMIZED, ...
+    assert has_drivers_chart(at)
     assert at.selectbox(key="chk_phase").value == "PHASE2"
     at.selectbox(key="chk_phase").set_value("PHASE3").run()
     assert at.selectbox(key="chk_phase").value == "PHASE3"
     [b for b in at.button if b.label == "Reset to the example trial"][0].click().run()
     assert at.selectbox(key="chk_phase").value == "PHASE2" and not at.exception
+
+
+def test_check_levers_and_conditions():
+    """Check page: the table only suggests design levers, and typed conditions are recognised."""
+    at = open_page("pages/5_Check_Your_Trial.py")
+    # An open-label, single-arm design leaves room for blinding / arm changes.
+    at.selectbox(key="chk_masking").set_value("NONE").run()
+    rows = [str(r) for df in at.table for r in df.value.index]
+    allowed = ("Blinding", "Allocation", "Number of arms", "Length of eligibility", "Minimum age", "Maximum age",
+               "Has a data monitoring committee")
+    assert rows and all(r.startswith(allowed) for r in rows), rows
+    assert not any(r.startswith(("Phase", "Sponsor", "Primary purpose", "Intervention model")) for r in rows)
+    at.text_input(key="chk_conditions").set_value("Breast cancer, depression").run()
+    assert not at.exception
+    captions = " ".join(c.value for c in at.caption)
+    assert "Recognised condition areas: cancer, mental health and addiction" in captions, captions
+
+
+def test_check_model_mismatch_message():
+    """If the saved model expects an input the form lacks, the page explains it instead of crashing."""
+    import src.predict
+    real = src.predict.model_features
+    src.predict.model_features = lambda model: real(model) + ["a_future_feature"]
+    try:
+        at = open_page("pages/5_Check_Your_Trial.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("cannot be scored right now" in e.value for e in at.error)
+    finally:
+        src.predict.model_features = real
 
 
 def test_search_with_results_and_details():
@@ -113,6 +154,7 @@ def test_search_with_results_and_details():
         assert len(cards) == 2 and "% risk" in cards[0] and "% risk" not in cards[1]
         [b for b in at.button if b.label == "See details"][0].click().run()
         assert not at.exception and "risk-card" in markdown(at)
+        assert has_drivers_chart(at)
         [b for b in at.button if "Back to results" in b.label][0].click().run()
         assert len([m for m in at.markdown if 'class="card-title"' in m.value]) == 2
     finally:

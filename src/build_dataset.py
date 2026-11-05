@@ -5,9 +5,12 @@ COMPLETED/TERMINATED trials that started 2008-01-01 .. 2019-12-31, and adds a
 ``split`` column (train = start 2008-2016, test = start 2017-2019).
 
 Usage:
-    python src/build_dataset.py
+    python src/build_dataset.py              # full rebuild from data/raw/pages/
+    python src/build_dataset.py --backfill   # add new condition features to the
+                                             # existing parquet (no raw pages needed)
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -15,8 +18,9 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import (BINARY_FEATURES, EXTRA_DISPLAY_COLS, FEATURE_COLUMNS,  # noqa: E402
-                      META_COLUMNS, build_features)
+from features import (BINARY_FEATURES, CONDITION_FLAG_FEATURES,  # noqa: E402
+                      EXTRA_DISPLAY_COLS, FEATURE_COLUMNS, META_COLUMNS,
+                      build_features, condition_features)
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGES_DIR = ROOT / "data" / "raw" / "pages"
@@ -62,13 +66,36 @@ def build_dataset(rows: list) -> pd.DataFrame:
     df["split"] = (df["start_date"].dt.year >= TEST_FROM_YEAR).map(
         {False: "train", True: "test"})
     df["label"] = df["label"].astype("int8")
-    # Nullable ints keep real missing values instead of turning flags into floats.
+    return set_dtypes(df).reset_index(drop=True)
+
+
+def set_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """Nullable ints keep real missing values instead of turning flags into floats."""
     for col in BINARY_FEATURES:
         df[col] = df[col].astype("Int8")
     for col in ["n_arms", "n_primary_outcomes", "n_secondary_outcomes",
                 "n_conditions", "eligibility_text_len"]:
         df[col] = df[col].astype("Int32")
-    return df.reset_index(drop=True)
+    df["n_condition_categories"] = df["n_condition_categories"].astype("Int8")
+    return df
+
+
+def backfill_conditions(df: pd.DataFrame) -> pd.DataFrame:
+    """Recompute the condition-category features from the stored ``conditions`` column.
+
+    ``conditions`` holds the registered conditions joined with "; " (see
+    ``build_features``), so splitting it back gives the same list
+    ``condition_features`` sees on a raw record. This updates an existing
+    parquet when the condition features change, without re-downloading the
+    raw pages (which are not in git).
+    """
+    lists = df["conditions"].map(lambda text: text.split("; ") if isinstance(text, str) else None)
+    flags = pd.DataFrame(list(lists.map(condition_features)), index=df.index)
+    for col in flags.columns:
+        df[col] = flags[col]
+    # Keep the column order build_dataset writes: meta, display, features, split.
+    order = META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS + ["split"]
+    return set_dtypes(df[order + [c for c in df.columns if c not in order]].copy())
 
 
 def report(df: pd.DataFrame) -> None:
@@ -83,10 +110,32 @@ def report(df: pd.DataFrame) -> None:
     print((df[FEATURE_COLUMNS].isna().mean() * 100).round(2).to_string())
 
 
+def report_conditions(df: pd.DataFrame) -> None:
+    """Print trials and terminated rate per condition category (train and test)."""
+    rows = []
+    for col in CONDITION_FLAG_FEATURES + ["no category"]:
+        mask = df["n_condition_categories"] == 0 if col == "no category" else df[col] == 1
+        part = df[mask]
+        rows.append({"category": col.removeprefix("cond_"), "trials": len(part),
+                     "share": len(part) / len(df), "terminated_rate": part["label"].mean()})
+    print("\nCondition categories (multi-hot; a trial can be in several):")
+    print(pd.DataFrame(rows).round(4).to_string(index=False))
+
+
 def main() -> None:
-    """Build, report and save the dataset."""
+    """Build (or backfill), report and save the dataset."""
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--backfill", action="store_true",
+                        help="recompute condition features in the existing parquet")
+    if parser.parse_args().backfill:
+        df = backfill_conditions(pd.read_parquet(OUT_PATH))
+        report_conditions(df)
+        df.to_parquet(OUT_PATH, index=False)
+        print(f"\nBackfilled condition features into {OUT_PATH.relative_to(ROOT)} ({len(df)} rows)")
+        return
     df = build_dataset(load_rows())
     report(df)
+    report_conditions(df)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(OUT_PATH, index=False)
     print(f"\nSaved {len(df)} rows to {OUT_PATH.relative_to(ROOT)}")

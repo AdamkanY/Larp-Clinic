@@ -1,9 +1,9 @@
 {
   "model": "gbm_uncalibrated",
   "model_file": "models/gbm_uncalibrated.joblib",
-  "trained_on": "2026-11-03",
+  "trained_on": "2026-11-05",
   "sklearn_version": "1.9.1",
-  "python_version": "3.13.18",
+  "python_version": "3.12.16",
   "label": {
     "TERMINATED": 1,
     "COMPLETED": 0
@@ -29,6 +29,7 @@
       "terminated_rate": 0.11682721440959526
     }
   },
+  "feature_set": "v1",
   "features": {
     "all": [
       "phase",

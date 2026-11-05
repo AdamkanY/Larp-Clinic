@@ -1,9 +1,9 @@
 {
   "model": "gbm",
   "model_file": "models/gbm.joblib",
-  "trained_on": "2026-11-03",
+  "trained_on": "2026-11-05",
   "sklearn_version": "1.9.1",
-  "python_version": "3.13.18",
+  "python_version": "3.12.16",
   "label": {
     "TERMINATED": 1,
     "COMPLETED": 0
@@ -29,6 +29,7 @@
       "terminated_rate": 0.11682721440959526
     }
   },
+  "feature_set": "v1",
   "features": {
     "all": [
       "phase",
@@ -236,8 +237,8 @@
     "value": 0.1501305327291778,
     "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
     "oof_f1": 0.30658891346605,
-    "oof_roc_auc": 0.7131666452462198,
-    "oof_pr_auc": 0.22188192349410152,
+    "oof_roc_auc": 0.7131666402438699,
+    "oof_pr_auc": 0.22188192433922016,
     "oof_brier": 0.09323259582164718
   },
   "calibration": {
@@ -263,7 +264,7 @@
     "n": 114600,
     "quantiles": {
       "p10": 0.028932265667418255,
-      "p25": 0.051728589460035834,
+      "p25": 0.05172858946003585,
       "p50": 0.09696281897891038,
       "p75": 0.15886740593028598,
       "p90": 0.21860036707332467,
@@ -302,7 +303,7 @@
         "observed_rate": 0.055590386624869384
       },
       {
-        "mean_predicted": 0.055113131739044224,
+        "mean_predicted": 0.05511313173904421,
         "observed_rate": 0.06414542415378187
       },
       {

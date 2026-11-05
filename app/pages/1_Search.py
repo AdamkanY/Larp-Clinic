@@ -7,7 +7,8 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge and ui
-from risk_gauge import bar_caption, estimate_caption, risk_bar, risk_card, risk_chip  # noqa: E402
+from risk_gauge import (bar_caption, drivers_caption, drivers_chart, estimate_caption,  # noqa: E402
+                        risk_bar, risk_card, risk_chip)
 from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
 from src.labels import label  # noqa: E402
 from ui import chip, esc, page_header, require_router  # noqa: E402
@@ -40,6 +41,20 @@ def risk_for(nct_id, last_update, _study):
         if _study["protocolSection"]["designModule"].get("studyType") != "INTERVENTIONAL":
             return None  # the model only learned from interventional trials
         return score(build_features(_study))
+    except (ImportError, FileNotFoundError, KeyError, ValueError, TypeError):
+        return None
+
+
+@st.cache_data(show_spinner=False, max_entries=200)
+def drivers_for(nct_id, last_update, _study):
+    """What pushes this trial's risk up or down (src.predict.explain), or None if it cannot be worked out.
+
+    Cached like risk_for: per trial and record version, without hashing the record.
+    """
+    try:
+        from src.features import build_features
+        from src.predict import explain
+        return explain(build_features(_study))
     except (ImportError, FileNotFoundError, KeyError, ValueError, TypeError):
         return None
 
@@ -123,6 +138,10 @@ def detail_view(nct_id):
             with st.expander("How to read this"):
                 st.write(bar_caption())
                 st.write(estimate_caption(risk, ongoing=True))
+            chart = drivers_chart(drivers_for(nct_id, last_update(study), study) or [])
+            if chart is not None:
+                st.plotly_chart(chart, width="stretch", key="drivers_chart")
+                st.caption(drivers_caption())
     with right:
         st.markdown("##### At a glance")
         interventions = ", ".join(i.get("name", "") for i in p.get("armsInterventionsModule", {}).get("interventions", []))

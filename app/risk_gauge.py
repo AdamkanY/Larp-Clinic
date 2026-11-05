@@ -1,34 +1,29 @@
-"""Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from."""
+"""Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from,
+and the chart of what pushes one trial's risk up or down."""
 import json
 from pathlib import Path
 
-import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.viz import CHART_LAYOUT, INK, finish
+from src.predict import percentile, reference_size
+from src.viz import CHART_LAYOUT, INK, MUTED, finish
 
-REFERENCE = Path(__file__).resolve().parents[1] / "models" / "score_reference.npy"
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 GREEN, YELLOW, RED = "#C5DDD0", "#EBDDAE", "#E3B7B0"  # pale bands; ink text and the pink marker stay readable on them
 MARKER = "#C80F5A"
-
-
-@st.cache_data(show_spinner=False)
-def reference_scores():
-    """Sorted out-of-fold risk scores of the historical training trials, or None if the file is missing."""
-    try:
-        return np.sort(np.load(REFERENCE))
-    except (OSError, ValueError):
-        return None
+UP, DOWN = "#B8452E", "#17463A"  # the Explain page's "more stopped" / "fewer stopped" colours
 
 
 def percentile_of(risk):
-    """Share of historical trials (in percent) with a lower score than risk; None without the reference file."""
-    reference = reference_scores()
-    if reference is None:
+    """Share of historical trials (in percent) with a lower score than risk (src.predict.percentile).
+
+    None while models/score_reference.npy is missing, so the page can show the risk without a rank.
+    """
+    try:
+        return percentile(risk)
+    except (OSError, ValueError):
         return None
-    return float(100.0 * np.searchsorted(reference, risk, side="left") / len(reference))
 
 
 @st.cache_data(show_spinner=False)
@@ -127,7 +122,47 @@ def risk_bar(risk):
 
 def bar_caption():
     """One sentence explaining how to read the bar."""
-    reference = reference_scores()
-    count = f"{len(reference):,}" if reference is not None else "the"
+    try:
+        count = f"{reference_size():,}"
+    except (OSError, ValueError):
+        count = "the"
     return (f"The bar ranks this trial among {count} past trials (started 2008-2016): green = less risky than "
             "half of them, yellow = up to the riskiest 10%, red = the riskiest 10%.")
+
+
+def drivers_chart(drivers):
+    """Horizontal bars of what pushes one trial's risk up (right, orange) or down (left, green).
+
+    drivers is the list from src.predict.explain: (name, value, direction, size), largest first. Returns None for an
+    empty list, so callers can show a sentence instead.
+    """
+    if not drivers:
+        return None
+    ordered = drivers[::-1]  # Plotly draws the first bar at the bottom; the strongest belongs on top
+    signed = [size if direction == "up" else -size for _, _, direction, size in ordered]
+    widest = max(abs(v) for v in signed)
+    fig = go.Figure(go.Bar(
+        x=signed, y=[f"{name}: {value}" for name, value, _, _ in ordered], orientation="h",
+        marker_color=[UP if v > 0 else DOWN for v in signed],
+        text=["raises the risk" if v > 0 else "lowers the risk" for v in signed], textposition="outside",
+        cliponaxis=False, hovertemplate="%{y}<br>%{text}<extra></extra>",
+    ))
+    fig.add_vline(x=0, line={"color": INK, "width": 1})
+    fig.update_layout(
+        title={"text": "What pushes this trial's risk up / down", "x": 0, "xanchor": "left"},
+        showlegend=False, height=120 + 46 * len(drivers), margin={"l": 0, "r": 10, "t": 50, "b": 40},
+        xaxis={"range": [-widest * 1.9, widest * 1.9], "showticklabels": False, "showgrid": False, "zeroline": False,
+               "title": {"text": "← lowers the risk · compared with a typical past trial · raises the risk →",
+                         "font": {"color": MUTED, "size": 12}}},
+        yaxis={"automargin": True},
+        **CHART_LAYOUT,
+    )
+    return finish(fig)
+
+
+def drivers_caption():
+    """How to read the drivers chart, in plain words."""
+    return ("Each bar takes one factor of this trial and swaps it for the value a typical past trial has "
+            "(for example the most common blinding, or the median length of the eligibility criteria). The longer the "
+            "bar, the more the model's estimate moves. These are patterns in past trials, not causes, and the "
+            "factors are measured one at a time, so the bars do not add up to the total.")
