@@ -196,7 +196,9 @@ def test_search_offline():
         at = open_page("pages/1_Find_a_Trial.py")
         assert not at.exception
         assert any("Could not reach ClinicalTrials.gov" in e.value for e in at.error)
+        assert not any("ConnectionError" in e.value for e in at.error)  # no raw exception text in the message
         assert any(b.label == "Try again" for b in at.button)
+        assert [x.label for x in at.expander] == ["Technical details"]  # the reason is still there, folded away
     finally:
         src.api_client.EXAMPLES_PATH = saved
         undo()

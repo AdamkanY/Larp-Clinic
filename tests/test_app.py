@@ -150,7 +150,8 @@ def test_api_client():
     try:
         api_client._get_json.clear()
         failed = api_client.search_trials(query="asthma", phase="PHASE2", sponsor_class="NIH")
-        assert failed["error"].startswith("Could not reach ClinicalTrials.gov") and failed["studies"] == []
+        assert failed["error"] == api_client.OFFLINE_MESSAGE and failed["studies"] == []
+        assert "offline" in failed["detail"] and "offline" not in failed["error"]  # technical text kept apart
         ok = api_client.search_trials(query="asthma", phase="PHASE2", sponsor_class="NIH")  # retried, not served from cache
         assert ok["error"] is None and ok["total"] == 1 and len(sent) == 2
         again = api_client.search_trials(query="asthma", phase="PHASE2", sponsor_class="NIH")
