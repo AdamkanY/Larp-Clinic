@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from,
 and the chart of what pushes one trial's risk up or down."""
 import json
@@ -9,6 +11,7 @@ import streamlit as st
 from src.predict import percentile, reference_size
 from ui import PALETTE
 
+# The metrics file gives the under-prediction gap quoted in the captions.
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 INK = PALETTE["ink"]
 
@@ -39,6 +42,7 @@ def underestimate():
 
 def estimate_caption(risk, ongoing=False):
     """Honest one-paragraph reading of a risk score; ongoing=True adds the caveat for live (unfinished) trials."""
+    # Build the caption from parts: the basic reading, the measured gap, and the caveat for running trials.
     text = f"Rough estimate from design information only: read {risk:.0%} as a lower-end figure and mainly use it to compare trials. "
     gap = underestimate()
     if gap is not None and gap > 0:
@@ -56,6 +60,7 @@ def risk_tone(risk):
     Green below the median trial, yellow up to the riskiest 10%, red above. Without the reference file the
     tone is "gray" and the rank is None.
     """
+    # The colour follows the trial's rank among past trials (its percentile), not the raw percentage.
     pct = percentile_of(risk)
     if pct is None:
         return "gray", "Estimated risk of stopping early", None
@@ -77,6 +82,8 @@ def risk_card(risk, delta=None, compact=False):
 
     compact=True gives a one-line strip, for keeping the result in view while a form is edited.
     """
+    # Card parts: big number, coloured label, rank sentence, optional change and, in the compact strip, a tick
+    # meter.
     tone, label, pct = risk_tone(risk)
     sub = f"Riskier than {pct:.0f}% of historical trials (started 2008-2016)" if pct is not None else ""
     change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>' if delta is not None else ""
@@ -94,6 +101,7 @@ def risk_bar(risk):
 
     Returns None if the reference scores are missing, so callers can simply skip the bar.
     """
+    # The bar is drawn in percentile units (0-100), so its bands match the colours of the chips.
     pct = percentile_of(risk)
     if pct is None:
         return None
@@ -106,9 +114,11 @@ def risk_bar(risk):
                              textfont={"size": 13, "color": INK}, hoverinfo="skip"))
     # One pink line through the bar marks this trial; its label sits above the bar so it never covers a segment label.
     fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.45, y1=0.45, line={"color": PALETTE["accent_deep"], "width": 4})
+    # Keep the label inside the chart near the edges.
     anchor = "right" if pct > 80 else ("left" if pct < 20 else "center")
     fig.add_annotation(x=pct, y=0.45, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=False, yanchor="bottom",
                        xanchor=anchor, yshift=6, bgcolor=INK, font={"color": PALETTE["paper"], "size": 13}, borderpad=5)
+    # Fixed x range 0-100% with ticks only at the band borders.
     fig.update_layout(
         barmode="overlay", showlegend=False, height=190, margin={"l": 10, "r": 10, "t": 55, "b": 60},
         xaxis={"range": [0, 100], "tickvals": [0, 50, 90, 100], "ticktext": ["0%", "50%", "90%", "100%"],
@@ -137,6 +147,7 @@ def drivers_chart(drivers):
     if not drivers:
         return None
     ordered = drivers[::-1]  # Plotly draws the first bar at the bottom; the strongest belongs on top
+    # Signed sizes: raising factors point right, lowering ones left; the axis is symmetric around zero.
     signed = [size if direction == "up" else -size for _, _, direction, size in ordered]
     widest = max(abs(v) for v in signed)
     fig = go.Figure(go.Bar(
@@ -145,6 +156,7 @@ def drivers_chart(drivers):
         text=["raises the risk" if v > 0 else "lowers the risk" for v in signed], textposition="outside",
         cliponaxis=False, hovertemplate="%{y}<br>%{text}<extra></extra>",
     ))
+    # Zero line: the typical past trial.
     fig.add_vline(x=0, line={"color": INK, "width": 1})
     fig.update_layout(
         title={"text": "What pushes this trial's risk up / down", "x": 0, "xanchor": "left"},

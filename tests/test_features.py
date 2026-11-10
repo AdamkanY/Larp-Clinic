@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Offline checks for build_features using a hand-written (synthetic) record.
 
 Run with ``python tests/test_features.py`` (or pytest). No network needed.

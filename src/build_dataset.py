@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Turn raw API pages into the model-ready table ``data/processed/trials.parquet``.
 
 Runs ``build_features`` over every study in ``data/raw/pages/``, keeps
@@ -26,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PAGES_DIR = ROOT / "data" / "raw" / "pages"
 OUT_PATH = ROOT / "data" / "processed" / "trials.parquet"
 
+# The study window and the split year (root CLAUDE.md, rule 3); train.py checks the parquet against the same dates.
 WINDOW_START = pd.Timestamp("2008-01-01")
 WINDOW_END = pd.Timestamp("2019-12-31")
 TEST_FROM_YEAR = 2017  # train: 2008-2016, test: 2017-2019
@@ -33,6 +36,7 @@ TEST_FROM_YEAR = 2017  # train: 2008-2016, test: 2017-2019
 
 def load_rows() -> list:
     """Run build_features on every study in every raw page."""
+    # Every raw page holds up to 1,000 studies; each study goes through the one feature function.
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if not pages:
         raise SystemExit(f"No pages in {PAGES_DIR}; run src/fetch_data.py first.")
@@ -46,6 +50,7 @@ def load_rows() -> list:
 
 def build_dataset(rows: list) -> pd.DataFrame:
     """Dedupe, apply label/date filters and add the train/test split column."""
+    # One row per study; a study can appear on two pages if the registry changed during the download.
     df = pd.DataFrame(rows, columns=META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS)
     n_dupes = df.duplicated("nct_id").sum()
     df = df.drop_duplicates("nct_id")
@@ -53,6 +58,7 @@ def build_dataset(rows: list) -> pd.DataFrame:
     print("\nRows per status (before filtering):")
     print(df["overall_status"].value_counts(dropna=False).to_string())
 
+    # Drop rows without a label (other statuses), with an unreadable start date, or outside the window.
     df["start_date"] = pd.to_datetime(df["start_date"])
     no_label = df["label"].isna()
     invalid = df["start_date"].isna()
@@ -63,6 +69,7 @@ def build_dataset(rows: list) -> pd.DataFrame:
           f"start >= 2020 {too_new.sum()} (counts can overlap)")
     df = df[~no_label & ~invalid & ~too_old & ~too_new].copy()
 
+    # Split by start year, never at random: the test trials started after every training trial.
     df["split"] = (df["start_date"].dt.year >= TEST_FROM_YEAR).map(
         {False: "train", True: "test"})
     df["label"] = df["label"].astype("int8")
@@ -71,6 +78,7 @@ def build_dataset(rows: list) -> pd.DataFrame:
 
 def set_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     """Nullable ints keep real missing values instead of turning flags into floats."""
+    # Nullable integer types keep missing values (pd.NA) instead of turning the columns into floats.
     for col in BINARY_FEATURES:
         df[col] = df[col].astype("Int8")
     for col in ["n_arms", "n_primary_outcomes", "n_secondary_outcomes",
@@ -89,6 +97,7 @@ def backfill_conditions(df: pd.DataFrame) -> pd.DataFrame:
     parquet when the condition features change, without re-downloading the
     raw pages (which are not in git).
     """
+    # Recompute the flags from the stored text and overwrite the old columns.
     lists = df["conditions"].map(lambda text: text.split("; ") if isinstance(text, str) else None)
     flags = pd.DataFrame(list(lists.map(condition_features)), index=df.index)
     for col in flags.columns:
@@ -103,6 +112,7 @@ def report(df: pd.DataFrame) -> None:
     print("\nRows per status (in window):")
     print(df["overall_status"].value_counts().to_string())
     print("\nPer split:")
+    # Size and terminated rate of each split, then the share of missing values per feature.
     summary = df.groupby("split")["label"].agg(rows="size", terminated="sum",
                                                 terminated_rate="mean")
     print(summary.round(4).to_string())
@@ -113,6 +123,7 @@ def report(df: pd.DataFrame) -> None:
 def report_conditions(df: pd.DataFrame) -> None:
     """Print trials and terminated rate per condition category (train and test)."""
     rows = []
+    # One row per condition category, plus the trials that match none.
     for col in CONDITION_FLAG_FEATURES + ["no category"]:
         mask = df["n_condition_categories"] == 0 if col == "no category" else df[col] == 1
         part = df[mask]
@@ -124,6 +135,7 @@ def report_conditions(df: pd.DataFrame) -> None:
 
 def main() -> None:
     """Build (or backfill), report and save the dataset."""
+    # --backfill updates the existing parquet; without it the dataset is rebuilt from the raw pages.
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backfill", action="store_true",
                         help="recompute condition features in the existing parquet")
@@ -133,6 +145,7 @@ def main() -> None:
         df.to_parquet(OUT_PATH, index=False)
         print(f"\nBackfilled condition features into {OUT_PATH.relative_to(ROOT)} ({len(df)} rows)")
         return
+    # Full rebuild: raw pages -> features -> filtered table -> parquet.
     df = build_dataset(load_rows())
     report(df)
     report_conditions(df)

@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.
 
 Raw API pages are written unchanged to ``data/raw/pages/page_NNNNN.json``.
@@ -45,6 +47,7 @@ FIELDS = [
 
 def base_params(full: bool) -> dict:
     """Query parameters shared by every page of the download."""
+    # Every interventional trial that is completed or terminated, 1,000 per page.
     params = {
         "format": "json",
         "pageSize": PAGE_SIZE,
@@ -59,6 +62,7 @@ def base_params(full: bool) -> dict:
 
 def get_with_retry(session: requests.Session, params: dict) -> dict:
     """GET one page, retrying 429/5xx/network errors with exponential backoff."""
+    # Exponential back-off: 2, 4, 8, ... seconds between attempts.
     for attempt in range(MAX_RETRIES + 1):
         wait = 2 ** (attempt + 1)
         try:
@@ -82,6 +86,7 @@ def get_with_retry(session: requests.Session, params: dict) -> dict:
 
 def write_json_atomic(path: Path, payload: dict) -> None:
     """Write via a temp file so an interrupted run never leaves a half page."""
+    # Write to a temporary file first and rename it, so an interrupted run never leaves half a page behind.
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload), encoding="utf-8")
     tmp.replace(path)
@@ -89,6 +94,7 @@ def write_json_atomic(path: Path, payload: dict) -> None:
 
 def resume_state(params: dict, restart: bool):
     """Return (next page number, next page token) from what is already on disk."""
+    # Resume logic: count the pages already on disk and continue from the token stored in the last one.
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if restart:
@@ -96,6 +102,7 @@ def resume_state(params: dict, restart: bool):
             page.unlink()
         MANIFEST.unlink(missing_ok=True)
         pages = []
+    # A resume must use the same query, otherwise the pages would mix two different downloads.
     if MANIFEST.exists():
         old = json.loads(MANIFEST.read_text())
         if old.get("params") != params:
@@ -116,6 +123,7 @@ def main() -> None:
     parser.add_argument("--full", action="store_true", help="download whole records")
     args = parser.parse_args()
 
+    # Where to start: page 1 with no token, or the next page after the last one on disk.
     params = base_params(args.full)
     number, token = resume_state(params, args.restart)
     if number > 1 and token is None:
@@ -129,6 +137,7 @@ def main() -> None:
     session.headers["User-Agent"] = "trial-radar-student-project/0.1"
     fetched, total, start = 0, None, time.time()
 
+    # Page loop: fetch, save, print progress with an estimate of the time left, follow the next token.
     while True:
         query = dict(params)
         if token:

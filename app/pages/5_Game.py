@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Game: two past trials of the same phase, one stopped early. Guess which, then see whether the model agrees."""
 import sys
 from pathlib import Path
@@ -14,6 +16,7 @@ from ui import chip, esc, page_header, require_router  # noqa: E402
 
 require_router("pages/5_Game.py")
 
+# Ten rounds per game; the two cards are called A and B; the chips used when the outcome is revealed.
 ROUNDS = 10
 SIDES = ("A", "B")
 OUTCOME_CHIP = {"terminated": ("Stopped early", "red"), "completed": ("Completed", "green")}
@@ -31,6 +34,7 @@ def get_trials():
 @st.cache_data(show_spinner="Checking the model on 2,000 pairs ...")
 def model_accuracy():
     """The model's pairwise accuracy on a fixed sample of 2,000 test pairs, computed once per server."""
+    # A fixed seed, so every visitor sees the same headline accuracy.
     trials = get_trials()
     pairs = game.sample_pairs(trials, game.ACCURACY_PAIRS, seed=0)
     return game.pairwise_accuracy(trials, pairs)
@@ -43,6 +47,7 @@ def flag(value):
 
 def age_range(row):
     """Eligible ages in words, for example '18 to 65 years' or '18 years and older'."""
+    # Missing values are possible on both ends; 'no maximum age' is stored as a flag plus a stand-in value.
     low, high = row["min_age_years"], row["max_age_years"]
     has_low, has_high = pd.notna(low), flag(row["has_max_age"]) and pd.notna(high)
     if has_low and has_high:
@@ -54,6 +59,7 @@ def age_range(row):
 
 def card_html(row, name, outcome=None):
     """HTML of one trial card. Only design facts; the outcome chip appears once `outcome` is given (after the guess)."""
+    # The facts a player sees: the same design information the model gets, in plain words, plus title and sponsor.
     facts = [
         ("Conditions", row["conditions"] if pd.notna(row["conditions"]) and row["conditions"] else "Not stated"),
         ("Sponsor", row["lead_sponsor_name"] if pd.notna(row["lead_sponsor_name"]) else "Not stated"),
@@ -63,6 +69,7 @@ def card_html(row, name, outcome=None):
         ("Healthy volunteers", "Accepted" if flag(row["healthy_volunteers"]) else "Not accepted"),
         ("Eligible ages", age_range(row)),
     ]
+    # The outcome chip is added only after the guess.
     chips = chip(f"Trial {name}") + chip(label("phase", row["phase_label"]))
     if outcome:
         chips += chip(*OUTCOME_CHIP[outcome])
@@ -92,15 +99,18 @@ def next_round():
 
 def scores():
     """(user points, model points) over the finished rounds."""
+    # Both scores count only the rounds already played.
     rounds, picks = st.session_state.game_rounds, st.session_state.game_picks
     return (sum(p == "terminated" for p in picks),
             sum(r["model_pick"] == "terminated" for r in rounds[:len(picks)]))
 
 
+# ---- Page ----
 page_header("Play the game",
             "Guess the stopped trial: two past trials from the same phase. One was stopped early, one was "
             "completed. Which was which?")
 
+# Load the test trials and the model's accuracy, or explain which file is missing.
 trials = get_trials()
 if trials is None:
     st.error("The trial data is missing. Run `python src/fetch_data.py` and `python src/build_dataset.py`, then reload.")
@@ -111,6 +121,7 @@ except FileNotFoundError:
     st.error("The trained model is missing (`models/gbm.joblib`). Run `python src/train.py`, then reload.")
     st.stop()
 
+# A new visitor gets a new game; the state lives in st.session_state.
 if "game_rounds" not in st.session_state:
     start_game()
 rounds = st.session_state.game_rounds
@@ -145,10 +156,12 @@ if index >= len(rounds):  # ---- final scoreboard
 # ---- one round
 current = rounds[index]
 revealed = st.session_state.game_revealed
+# Which outcome sits on the left was decided at random in game.new_game; the other one goes right.
 order = [current["left"], "completed" if current["left"] == "terminated" else "terminated"]
 st.markdown(f"**Round {index + 1} of {len(rounds)}** &nbsp;·&nbsp; You {you} &nbsp;·&nbsp; Model {model_points}",
             unsafe_allow_html=True)
 
+# Two cards side by side; before the guess each has a button, after it a link to the real record.
 columns = st.columns(2)
 for column, name, outcome in zip(columns, SIDES, order):
     row = trials.loc[current[outcome]]
@@ -161,6 +174,7 @@ for column, name, outcome in zip(columns, SIDES, order):
             st.button(f"Trial {name} was stopped early", key=f"pick_{index}_{name}", on_click=pick, args=(outcome,),
                       type="primary", use_container_width=True)
 
+# After the guess: the true answer, the user's pick and the model's pick in one sentence.
 if revealed:
     truth = SIDES[order.index("terminated")]
     user_side = SIDES[order.index(st.session_state.game_picks[-1])]

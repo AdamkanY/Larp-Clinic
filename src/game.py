@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Logic of the "guess the stopped trial" game: pair sampling, model picks and the model's pairwise accuracy.
 
 Pure pandas/numpy plus the saved model: no Streamlit. Only the test split (start 2017-2019) is used, so the model has
@@ -23,8 +25,10 @@ def load_test_trials(path=TRIALS_PATH) -> pd.DataFrame:
 
     Only the display columns, the model features, the label and the split are read, to keep the page light.
     """
+    # dict.fromkeys removes duplicate column names while keeping the order.
     columns = list(dict.fromkeys(DISPLAY_COLS + FEATURE_COLUMNS + ["label", "split"]))
     trials = pd.read_parquet(path, columns=columns)
+    # Only test trials (the model never saw them) with a known phase, because pairs are matched by phase.
     trials = trials[(trials["split"] == "test") & trials["phase_label"].notna()]
     return trials.reset_index(drop=True)
 
@@ -44,6 +48,7 @@ def sample_pairs(trials: pd.DataFrame, n: int, seed=None) -> pd.DataFrame:
     Returns:
         DataFrame with columns `terminated` and `completed`: row positions in `trials`, one pair per row.
     """
+    # A completed partner is drawn from a shuffled pool of the same phase.
     rng = np.random.default_rng(seed)
     terminated = trials[trials["label"] == 1]
     completed = trials[trials["label"] == 0]
@@ -52,6 +57,7 @@ def sample_pairs(trials: pd.DataFrame, n: int, seed=None) -> pd.DataFrame:
     usable = terminated[terminated["phase_label"].isin(completed_pool)]
     chosen = rng.choice(usable.index.to_numpy(), size=min(n, len(usable)), replace=False)
 
+    # Hand out partners from each phase's pool in turn.
     taken = {phase: 0 for phase in completed_pool}
     partners = []
     for idx in chosen:
@@ -85,9 +91,11 @@ def pairwise_accuracy(trials: pd.DataFrame, pairs: pd.DataFrame, model=None) -> 
 
     This is the number a user is playing against. It is the ROC-AUC on phase-matched pairs.
     """
+    # Score every trial once, then compare the two scores of each pair.
     scores = score_rows(trials, model)
     term = scores[pairs["terminated"].to_numpy()]
     comp = scores[pairs["completed"].to_numpy()]
+    # A win counts 1, a tie counts half, as in the ROC-AUC.
     return float(((term > comp) + 0.5 * (term == comp)).mean())
 
 
@@ -97,8 +105,10 @@ def new_game(trials: pd.DataFrame, rounds: int, model=None, seed=None) -> list:
     Returns a list of dicts with `terminated` and `completed` (row positions in `trials`), `left` (which outcome is
     shown as trial A) and `model_pick` ("terminated" or "completed").
     """
+    # One generator for the pairs and the display order, so a seed reproduces a whole game.
     rng = np.random.default_rng(seed)
     pairs = sample_pairs(trials, rounds, seed=rng)
+    # Score both trials of every pair, then record which side is shown left and which one the model picks.
     term_scores = score_rows(trials.loc[pairs["terminated"]], model)
     comp_scores = score_rows(trials.loc[pairs["completed"]], model)
     game = []

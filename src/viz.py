@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Aggregations and Plotly figures for the Explore dashboard.
 
 Pure functions on the `trials.parquet` DataFrame: no Streamlit and no model code, so they can be
@@ -180,6 +182,82 @@ def conditions_bar(df, k=15, name_width=34) -> go.Figure:
                      range=[0, stats["rate"].max() * 2.1], zeroline=False)  # room for the label right of the longest bar
     fig.update_yaxes(title=None)
     return fig
+
+
+def rate_matrix(df, rows, cols, row_order=None, col_order=None) -> tuple:
+    """Share stopped early and trial count for every combination of two traits.
+
+    Returns (rate, n): two DataFrames with the `rows` values as index and the `cols` values as columns, in the
+    given orders (values missing from an order go last, in order of size). Combinations without trials are NaN
+    in `rate` and 0 in `n`.
+    """
+    stats = df.groupby([rows, cols], observed=True)["label"].agg(n="size", rate="mean").reset_index()
+    rate = stats.pivot(index=rows, columns=cols, values="rate")
+    n = stats.pivot(index=rows, columns=cols, values="n").fillna(0).astype(int)
+
+    def ordered(present, order, sizes):
+        """Known values in the given order, then the rest by how many trials they hold."""
+        known = [v for v in (order or []) if v in present]
+        rest = sorted((v for v in present if v not in known), key=lambda v: -sizes[v])
+        return known + rest
+
+    row_keys = ordered(list(rate.index), row_order, n.sum(axis=1))
+    col_keys = ordered(list(rate.columns), col_order, n.sum(axis=0))
+    return rate.loc[row_keys, col_keys], n.loc[row_keys, col_keys]
+
+
+def rate_heatmap(df, rows, cols, row_order=None, col_order=None, x_title="", y_title="") -> go.Figure:
+    """Heatmap of the share stopped early for each combination of two traits (for example phase x sponsor).
+
+    Two traits at once show what single bar charts hide: a combination can be risky even when neither trait is.
+    Cells with fewer than MIN_GROUP_N trials stay empty instead of showing a noisy rate; the hover always gives the
+    number of trials. Rows and columns without one readable cell are dropped. The colour scale comes from the app's
+    Plotly template (no colours here). Returns None if no cell has enough trials.
+    """
+    rate, n = rate_matrix(df, rows, cols, row_order, col_order)
+    shown = rate.where(n >= MIN_GROUP_N)  # too few trials: leave the cell blank
+    # Rows and columns without a single readable cell (tiny sponsor classes, "Not stated") would only add empty stripes.
+    keep_rows, keep_cols = shown.notna().any(axis=1), shown.notna().any(axis=0)
+    shown, n = shown.loc[keep_rows, keep_cols], n.loc[keep_rows, keep_cols]
+    if shown.empty:  # the filters left no combination with enough trials; the page says so instead
+        return None
+    text = [[f"{value:.0%}" if pd.notna(value) else "" for value in row] for row in shown.to_numpy()]
+    fig = go.Figure(go.Heatmap(
+        z=shown.to_numpy(), x=[str(c) for c in shown.columns], y=[str(r) for r in shown.index],
+        text=text, texttemplate="%{text}", customdata=n.to_numpy(), hoverongaps=False, xgap=3, ygap=3,
+        colorbar={"title": {"text": "Stopped<br>early"}, "tickformat": ".0%", "thickness": 14},
+        hovertemplate="<b>%{y} · %{x}</b><br>Stopped early: %{z:.1%}<br>%{customdata:,} trials<extra></extra>",
+    ))
+    fig.update_xaxes(title=x_title, type="category", showgrid=False, side="bottom")
+    # Reversed so the first row of the order (for example Early Phase 1) sits on top, as in a table.
+    fig.update_yaxes(title=y_title, type="category", showgrid=False, autorange="reversed")
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=40), height=max(320, 52 * len(shown.index) + 90))
+    return fig
+
+
+def gain_curve(labels, risks, points=101) -> pd.DataFrame:
+    """Cumulative gain: if you review the riskiest x% of trials first, which share of all stopped trials do you find?
+
+    Args:
+        labels: 1 for stopped early, 0 for completed.
+        risks: the model's score for each trial (higher = riskier).
+        points: how many evenly spaced review shares (0% to 100%) to return; the chart needs no more.
+
+    Returns:
+        DataFrame with `reviewed` (share of trials looked at, riskiest first), `caught` (share of all stopped trials
+        among them) and `precision` (share of the reviewed trials that were stopped). Picking trials at random would
+        give caught = reviewed, the diagonal of the chart.
+    """
+    frame = pd.DataFrame({"y": list(labels), "p": list(risks)}).sort_values("p", ascending=False, kind="mergesort")
+    total, stopped = len(frame), frame["y"].sum()
+    hits = frame["y"].cumsum().to_numpy()
+    rows = []
+    for share in [i / (points - 1) for i in range(points)]:
+        k = int(round(share * total))  # number of trials reviewed at this share
+        found = hits[k - 1] if k > 0 else 0
+        rows.append({"reviewed": share, "caught": found / stopped if stopped else 0.0,
+                     "precision": found / k if k else float("nan")})
+    return pd.DataFrame(rows)
 
 
 def eligibility_stats(df) -> pd.DataFrame:

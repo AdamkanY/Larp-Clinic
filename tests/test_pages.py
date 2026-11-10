@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Smoke tests that open every page of the app in Streamlit's test runner and click through the main paths.
 
 Run with ``python tests/test_pages.py``. No network: ClinicalTrials.gov is replaced by an invented
@@ -6,8 +8,10 @@ as downloaded; the tests print "skipped" if those files are missing.
 """
 
 import copy
+import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -18,6 +22,7 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 from test_features import STUDY  # noqa: E402
+import src.api_client  # noqa: E402  (the offline tests point its snapshot path elsewhere)
 
 HOME = str(ROOT / "app" / "Home.py")
 # The five pages in navigation order, with the title they carry in the navigation, the Home card and the header.
@@ -111,6 +116,16 @@ def test_explore():
     assert int(at.metric[0].value.replace(",", "")) == total
 
 
+def test_explore_heatmap():
+    """Explore: the two-trait heatmap is shown and the pair control switches the traits."""
+    at = open_page("pages/3_Explore_Data.py")
+    assert not at.exception
+    assert any('"type":"heatmap"' in spec.replace(" ", "") and "Lead sponsor" in spec for spec in charts(at))
+    at.get("button_group")[0].set_value("Phase × blinding").run()
+    assert not at.exception
+    assert any('"type":"heatmap"' in spec.replace(" ", "") and "Blinding" in spec for spec in charts(at))
+
+
 def test_check_your_trial():
     """Check page: raw API codes stay out of the text, the result strip is there, and Reset restores the example."""
     at = open_page("pages/2_Check_Your_Trial.py")
@@ -173,15 +188,40 @@ def test_search_with_results_and_details():
 
 
 def test_search_offline():
-    """Search: no connection gives a plain message and a retry button, not a crash."""
+    """Search: no connection and no saved examples gives a plain message and a retry button, not a crash."""
     undo = stub_api(None)
+    saved = src.api_client.EXAMPLES_PATH
+    src.api_client.EXAMPLES_PATH = ROOT / "no_such_folder" / "ongoing_trials.json"  # as if no snapshot was saved
     try:
         at = open_page("pages/1_Find_a_Trial.py")
         assert not at.exception
         assert any("Could not reach ClinicalTrials.gov" in e.value for e in at.error)
         assert any(b.label == "Try again" for b in at.button)
     finally:
+        src.api_client.EXAMPLES_PATH = saved
         undo()
+
+
+def test_search_offline_examples():
+    """Search: no connection but a saved snapshot shows the examples, labelled as such, scored, with working details."""
+    undo = stub_api(None)
+    saved = src.api_client.EXAMPLES_PATH
+    with tempfile.TemporaryDirectory() as tmp:
+        snapshot = Path(tmp) / "ongoing_trials.json"
+        snapshot.write_text(json.dumps({"saved_on": "2026-12-01",
+                                        "studies": [ongoing_study(), ongoing_study(nct_id="NCT00000003")]}))
+        src.api_client.EXAMPLES_PATH = snapshot
+        try:
+            at = open_page("pages/1_Find_a_Trial.py")
+            assert not at.exception, [e.value for e in at.exception]
+            assert any("saved example trials" in w.value and "2026-12-01" in w.value for w in at.warning)
+            cards = [m.value for m in at.markdown if 'class="card-title"' in m.value]
+            assert len(cards) == 2 and all("% risk" in c for c in cards)
+            [b for b in at.button if b.label == "See details"][0].click().run()
+            assert not at.exception and "risk-card" in markdown(at)  # get_trial found it in the snapshot
+        finally:
+            src.api_client.EXAMPLES_PATH = saved
+            undo()
 
 
 def test_how_the_model_works():
@@ -195,6 +235,13 @@ def test_how_the_model_works():
                                           "Can you trust it?", "Versions and checks"]
     assert [m.label for m in at.metric] == ["ROC-AUC", "PR-AUC", "Brier score"]
     assert any(c.proto.id and "calibration_chart" in c.proto.id for c in at.get("plotly_chart"))
+    assert any(c.proto.id and "score_violin" in c.proto.id for c in at.get("plotly_chart"))
+    # The review-budget slider moves the marked point and the sentence above the gain chart.
+    found = [m.value for m in at.markdown if "Reviewing the riskiest" in m.value]
+    assert found and "**20%**" in found[0]
+    at.slider(key="gain_share").set_value(40).run()
+    assert not at.exception
+    assert any("**40%**" in m.value for m in at.markdown if "Reviewing the riskiest" in m.value)
     tables = [df.value for df in at.dataframe]
     versions = [t for t in tables if "Status" in t.columns][0]
     assert list(versions["Status"]) == ["Used in the app", "Tested, not used"]

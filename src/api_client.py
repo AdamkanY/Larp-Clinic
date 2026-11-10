@@ -1,8 +1,19 @@
-"""Thin client for the ClinicalTrials.gov API v2 (search and single-trial lookup)."""
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+"""Thin client for the ClinicalTrials.gov API v2 (search and single-trial lookup), with an offline fallback.
+
+The fallback is a small snapshot of real ongoing trials in `data/examples/ongoing_trials.json`, written by
+`python src/save_examples.py`. When the API cannot be reached (no internet in the exercise room, an outage during
+the demo), the search page can still show and score those trials, clearly labelled as saved examples.
+"""
+import json
+from pathlib import Path
+
 import requests
 import streamlit as st
 
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
+EXAMPLES_PATH = Path(__file__).resolve().parents[1] / "data" / "examples" / "ongoing_trials.json"
 ONGOING = ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING", "ENROLLING_BY_INVITATION"]
 PHASES = ["EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4", "NA"]
 SPONSOR_CLASSES = ["INDUSTRY", "NIH", "FED", "OTHER_GOV", "INDIV", "NETWORK", "OTHER"]
@@ -49,11 +60,54 @@ def search_trials(query="", status=None, page_size=20, phase=None, condition="",
 
 
 def get_trial(nct_id):
-    """Fetch the full record of one trial; returns the study dict or None if not found or unreachable."""
+    """Fetch the full record of one trial; returns the study dict or None if not found or unreachable.
+
+    If the API cannot be reached, a trial from the saved examples is returned instead, so a result opened from
+    the offline list still has its detail view.
+    """
     try:
         return _get_json(f"{BASE_URL}/{nct_id}")
     except (requests.RequestException, ValueError):
+        snapshot = load_examples() or {"studies": []}
+        return next((s for s in snapshot["studies"] if summarize(s)["NCT ID"] == nct_id), None)
+
+
+def load_examples(path=None):
+    """The saved example trials as {"saved_on": "YYYY-MM-DD", "studies": [...]}, or None if there is no snapshot.
+
+    Read on every call (it is small) so a test can point `path` at its own file.
+    """
+    try:
+        data = json.loads(Path(path or EXAMPLES_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
+    studies = data.get("studies") if isinstance(data, dict) else None
+    return {"saved_on": data.get("saved_on", "unknown"), "studies": studies} if studies else None
+
+
+def search_examples(query="", phase=None, sponsor_class=None, page_size=20, path=None):
+    """Search the saved example trials the way `search_trials` searches the API, as far as the snapshot allows.
+
+    Same return shape as `search_trials`, plus "saved_on". The keyword is a plain case-insensitive match on title
+    and conditions (the API's full-text search is not available offline); phase and sponsor class match exactly.
+    Returns None if there is no snapshot.
+    """
+    snapshot = load_examples(path)
+    if snapshot is None:
+        return None
+    words = query.strip().lower()
+    matches = []
+    for study in snapshot["studies"]:
+        row = summarize(study)
+        if words and words not in f"{row['Title']} {row['Conditions']}".lower():
+            continue
+        phases = study.get("protocolSection", {}).get("designModule", {}).get("phases") or ["NA"]
+        if phase and phase not in phases:
+            continue
+        if sponsor_class and row["Sponsor type"] != sponsor_class:
+            continue
+        matches.append(study)
+    return {"studies": matches[:page_size], "total": len(matches), "error": None, "saved_on": snapshot["saved_on"]}
 
 
 def summarize(study):
@@ -64,9 +118,10 @@ def summarize(study):
         "NCT ID": ident.get("nctId", ""),
         "Title": ident.get("briefTitle", ""),
         # Raw API codes joined by commas (for example "PHASE1, PHASE2"); a missing phase is "NA", like the API's own.
-        "Phase": ", ".join(p.get("designModule", {}).get("phases", [])) or "NA",
+        # `or []`: a record may carry an explicit null instead of leaving the key out.
+        "Phase": ", ".join(p.get("designModule", {}).get("phases") or []) or "NA",
         "Status": p.get("statusModule", {}).get("overallStatus", ""),
         "Sponsor": p.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("name", ""),
         "Sponsor type": p.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("class", ""),
-        "Conditions": ", ".join(p.get("conditionsModule", {}).get("conditions", [])),
+        "Conditions": ", ".join(p.get("conditionsModule", {}).get("conditions") or []),
     }

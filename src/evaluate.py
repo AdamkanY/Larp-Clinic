@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Test-set evaluation of the saved models: metrics, calibration, importance, ablations.
 
 Everything that scores the test split (start 2017-2019) lives here, so there is
@@ -85,6 +87,7 @@ def best_f1_threshold(y_true, proba) -> tuple:
     Meant for out-of-fold *train* predictions; applying the result to test
     keeps the test split out of every decision.
     """
+    # F1 for every candidate threshold on the precision-recall curve, then the threshold with the best F1.
     precision, recall, thresholds = precision_recall_curve(y_true, proba)
     # The last precision/recall pair has no threshold (it is the "predict
     # nothing positive" end of the curve), so drop it before aligning.
@@ -113,6 +116,8 @@ def ranking_metrics(y_true, proba) -> dict:
 
 def classification_metrics(y_true, proba, threshold: float) -> dict:
     """Ranking metrics plus thresholded metrics for one model on one split."""
+    # Turn probabilities into yes/no at the stored threshold for the confusion matrix; ranking metrics need no
+    # threshold.
     y_pred = (proba >= threshold).astype(int)
     return {
         **ranking_metrics(y_true, proba),
@@ -170,12 +175,14 @@ def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> Non
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    # Two panels: the calibration curve on top, the histogram of predictions below, sharing the x axis.
     fig, (ax_cal, ax_hist) = plt.subplots(
         2, 1, figsize=(7, 7.4), sharex=True,
         gridspec_kw={"height_ratios": [3, 1.1], "hspace": 0.08})
     fig.patch.set_facecolor(SURFACE)
     base_rate = float(np.mean(y_true))
 
+    # Reference lines: the diagonal (perfect calibration) and the real terminated rate of the test trials.
     ax_cal.plot([0, 1], [0, 1], color=MUTED, linewidth=1)
     ax_cal.text(0.97, 0.93, "perfectly calibrated", color=MUTED, fontsize=8.5,
                 ha="right", va="bottom")
@@ -183,6 +190,7 @@ def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> Non
     ax_cal.text(0.99, base_rate + 0.012, f"test terminated rate {base_rate:.1%}",
                 color=INK_2, fontsize=8.5, va="bottom", ha="right")
 
+    # One curve and one histogram per model.
     bins = np.linspace(0, 1, 41)
     ends = {}
     for name, proba in probas.items():
@@ -205,6 +213,7 @@ def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> Non
                         xytext=(8, 9 if name == top else -9), textcoords="offset points",
                         color=INK, fontsize=9, va="center")
 
+    # Axis titles, title and legend.
     ax_cal.set_ylim(0, 1)
     ax_cal.set_ylabel("Observed share terminated", color=INK_2)
     ax_cal.set_title("Gradient boosting calibration on test trials (start 2017-2019)",
@@ -218,6 +227,7 @@ def plot_calibration(y_true, probas: dict, path: Path = CALIBRATION_PATH) -> Non
     ax_hist.set_xlabel("Predicted probability of TERMINATED", color=INK_2)
     ax_hist.set_ylabel("% of trials", color=INK_2)
 
+    # Shared styling of both panels.
     for ax in (ax_cal, ax_hist):
         ax.set_facecolor(SURFACE)
         ax.grid(True, color=GRID, linewidth=0.6)
@@ -239,6 +249,7 @@ def permutation_importance_table(models: dict, X, y) -> pd.DataFrame:
     (not one per one-hot column) and the models are directly comparable.
     """
     frames = []
+    # Shuffle one feature at a time (10 repeats) and record how much ROC-AUC and PR-AUC drop.
     for name, model in models.items():
         result = permutation_importance(
             model, X, y, scoring=["roc_auc", "average_precision"],
@@ -278,9 +289,11 @@ def run_ablations(X_train, y_train, X_test, y_test, params: dict, reference: dic
     # Imported here, not at the top, because train.py imports this module.
     from train import build_gbm_pipeline, make_cv
 
+    # Reference row: the full-feature GBM, against which each ablation's change is measured.
     n_features = X_train.shape[1]
     runs = [{"name": "all_features", "dropped": [], "n_features": n_features,
              **reference, "delta_test_roc_auc": 0.0, "delta_test_pr_auc": 0.0}]
+    # Refit the GBM without the dropped features on train (CV for comparison), then score the test split once.
     for name, dropped in ABLATIONS.items():
         model = build_gbm_pipeline(drop=dropped, features=list(X_train.columns)).set_params(
             **{f"clf__{k}": v for k, v in params.items()})
@@ -314,6 +327,8 @@ def lr_coefficients(pipeline) -> pd.DataFrame:
     units). Flags and one-hot columns are 0/1, so theirs is the change when the
     flag switches on.
     """
+    # Map each coefficient back to its feature, with the standard deviation for numbers so the size can be read in
+    # real units.
     prep, clf = pipeline.named_steps["prep"], pipeline.named_steps["clf"]
     scaler = prep.named_transformers_["num"].named_steps["scale"]
     numeric = [c for c in NUMERIC_FEATURES if c in prep.feature_names_in_]
@@ -332,6 +347,7 @@ def lr_coefficients(pipeline) -> pd.DataFrame:
 
 def print_metrics_table(reports: dict) -> None:
     """Print OOF train and test metrics of every model plus the majority baseline."""
+    # One row per model with the main test metrics and the confusion counts, plus the majority baseline.
     rows = []
     for name, rep in reports.items():
         test, at = rep["test"], rep["test"]["at_threshold"]
@@ -380,6 +396,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
     Returns:
         {model name: full metrics dict}, as written to the JSON files.
     """
+    # Load the splits only if the caller did not pass them (train.py passes them; the CLI does not).
     if X_test is None or X_train is None:
         # Imported here, not at the top, because train.py imports this module.
         from train import load_split
@@ -389,6 +406,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
             X_train, y_train = load_split("train")
     y_test, y_train = np.asarray(y_test), np.asarray(y_train)
 
+    # Score every saved model on the test split once and store test metrics, calibration bins and the baseline.
     models, reports, probas = {}, {}, {}
     for name in names:
         models[name] = load_model(MODELS_DIR / f"{name}.joblib")
@@ -402,6 +420,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
     print("\n=== Metrics (OOF = out-of-fold on train; test = start 2017-2019) ===")
     print_metrics_table(reports)
 
+    # Brier score before and after calibration, for the README and the model page.
     gbm, uncalibrated = f"gbm{suffix}", f"gbm_uncalibrated{suffix}"
     if {gbm, uncalibrated} <= set(reports):
         reports[gbm].setdefault("calibration", {}).update({
@@ -413,6 +432,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
               f"{cal['test_after']['brier']:.4f} (constant base rate: "
               f"{reports[gbm]['majority_baseline']['brier_constant_rate']:.4f}); "
               f"ROC-AUC {cal['test_before']['roc_auc']:.4f} -> {cal['test_after']['roc_auc']:.4f}")
+    # Only for the app model: the calibration plot and the ablations.
     if not suffix and {"gbm", "gbm_uncalibrated"} <= set(reports):
         plot_calibration(y_test, {n: probas[n] for n in CALIBRATION_PLOT_MODELS})
         print(f"Saved {CALIBRATION_PATH.relative_to(ROOT)}")
@@ -429,10 +449,12 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
         table["dropped"] = table["dropped"].map(lambda d: ", ".join(d) or "-")
         print(table.drop(columns="name").round(4).to_string(index=False))
 
+    # Write the metrics back into each model's JSON file (train.py wrote the training parts).
     for name in names:
         metrics_path(name).write_text(json.dumps(reports[name], indent=2) + "\n",
                                       encoding="utf-8")
 
+    # Permutation importance on the test split for the models people look at.
     importance_models = {n + suffix: models[n + suffix] for n in IMPORTANCE_MODELS
                          if n + suffix in models}
     print(f"\nPermutation importance on test ({N_PERMUTATION_REPEATS} repeats per feature)...")
@@ -452,6 +474,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES,
         print(top[["rank", "feature", "roc_auc_drop_mean", "roc_auc_drop_std",
                    "pr_auc_drop_mean"]].round(4).to_string(index=False))
 
+    # Logistic regression coefficients, printed for the report.
     if "baseline_lr" in models:
         print("\nLogistic regression coefficients (log-odds of TERMINATED), largest |coef| first:")
         with pd.option_context("display.max_rows", 500, "display.width", 200):

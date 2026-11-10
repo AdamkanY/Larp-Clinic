@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Explore: interactive charts of historical COMPLETED vs TERMINATED trials (2008-2019).
 
 Descriptive only: no model is loaded here. Aggregations and figures live in `src/viz.py`.
@@ -19,6 +21,7 @@ from ui import chart as show_chart, page_header, require_router  # noqa: E402
 
 require_router("pages/3_Explore_Data.py")
 
+# The trial table shows at most this many rows (the browser gets slow beyond that); filters narrow the rest.
 MAX_ROWS = 5000
 FILTER_KEYS = {"explore_phases": [], "explore_sponsors": [], "explore_condition": ""}
 
@@ -41,6 +44,7 @@ def chart(fig, caption):
     st.caption(caption)
 
 
+# Load the data once; without the file the page explains what is missing instead of failing.
 try:
     df = get_trials()
 except (FileNotFoundError, OSError):
@@ -48,12 +52,14 @@ except (FileNotFoundError, OSError):
     st.info("The trial data (data/processed/trials.parquet) is not available here, so there is nothing to chart yet.")
     st.stop()
 
+# The overall rate is the reference for every comparison on the page.
 overall = df["label"].mean()
 page_header("Explore the data",
             f"{len(df):,} past trials that started {df['start_year'].min()}-{df['start_year'].max()} and have ended. "
             f"{overall:.1%} of them were stopped early. Each bar shows how that share changes with one trait.")
 
 # ---- Filters ----
+# Filters live in st.session_state so 'Clear filters' can reset them and they survive reruns.
 for key, default in FILTER_KEYS.items():
     st.session_state.setdefault(key, default)
 with st.container(key="panel_filters"):
@@ -68,6 +74,7 @@ with st.container(key="panel_filters"):
     narrowed = bool(phases or sponsors or condition_kw.strip() or years != (y_min, y_max))
     st.button("Clear filters", on_click=reset_filters, disabled=not narrowed)
 
+# Every chart below uses the filtered trials.
 filtered = viz.filter_trials(df, phases, sponsors, years, condition_kw)
 
 # ---- Key numbers ----
@@ -85,6 +92,7 @@ k3.metric("All trials", f"{overall:.1%}", help=f"Share stopped early across all 
 if filtered.empty:
     st.warning("No trials match these filters. Widen the year range or clear a filter.")
     st.stop()
+# The dashed average line in the bar charts is the average of the trials shown, not of all trials.
 average = filtered["label"].mean()
 
 # ---- Design factors ----
@@ -111,6 +119,26 @@ with c4:
     chart(viz.rate_bar(stats, "allocation", "Allocation", average),
           f"By how participants were assigned to groups. {viz.extremes(stats, 'allocation')}")
 
+# ---- Two traits at once ----
+# A heatmap of two traits shows combinations that single bars hide. The user picks the pair; phase x sponsor is the
+# default because it is the question a sponsor or investor asks first ("industry phase 2 trials: how risky?").
+st.subheader("Which combinations are riskiest?")
+PAIRS = {
+    "Phase × lead sponsor": ("phase_label", "sponsor_class", viz.PHASE_ORDER, None, "Lead sponsor", "Phase"),
+    "Phase × blinding": ("phase_label", "masking", viz.PHASE_ORDER, viz.MASKING_ORDER, "Blinding", "Phase"),
+    "Lead sponsor × allocation": ("sponsor_class", "allocation", None, viz.ALLOCATION_ORDER, "Allocation",
+                                  "Lead sponsor"),
+}
+pair = st.segmented_control("Compare", list(PAIRS), default=list(PAIRS)[0], key="explore_pair")
+rows, cols, row_order, col_order, x_title, y_title = PAIRS[pair or list(PAIRS)[0]]  # None if the pill is unselected
+heatmap = viz.rate_heatmap(filtered, rows, cols, row_order, col_order, x_title, y_title)
+if heatmap is None:
+    st.info(f"No combination has at least {viz.MIN_GROUP_N} trials with these filters. Widen them to see the heatmap.")
+else:
+    chart(heatmap, f"Each cell is the share stopped early for one combination; darker means stopped more often. "
+                   f"Empty cells rest on fewer than {viz.MIN_GROUP_N} trials. Hover a cell for the number of trials. "
+                   "The filters above apply here too.")
+
 # ---- Time ----
 st.subheader("Has it changed over the years?")
 chart(viz.rate_over_time(filtered, average),
@@ -133,6 +161,7 @@ with c6:
 # ---- Trial table ----
 st.subheader("Browse the trials")
 search = st.text_input("Search title, sponsor or NCT id", placeholder="e.g. NCT01234567 or Pfizer")
+# Free-text search on top of the filters, as plain substrings (no regex), so any input is safe.
 table = filtered
 if search.strip():
     s = search.strip()

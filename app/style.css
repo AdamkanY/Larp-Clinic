@@ -1,3 +1,5 @@
+/* AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the
+   share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md. */
 /* Trial-Radar look. One idea: the app is a measuring instrument, so every screen is a reading on a tick scale.
    Rules in short: ink and paper bands alternate; the pink accent marks only "this trial" and the one main action;
    depth comes from band contrast, never from shadows; one corner scale (pill, 28, 14, 8); one spacing scale. */
@@ -88,9 +90,14 @@ a { color: var(--accent-text); text-underline-offset: 3px; }
 .st-key-band_hero { padding-top: calc(var(--nav-h) + var(--s7)); padding-bottom: var(--s9); }
 [class*="st-key-band_ink"], [class*="st-key-band_paper"] { padding-block: clamp(var(--s8), 11vw, 9rem); }
 [class*="st-key-band_paper"] { background: var(--paper); }
-/* The closing "how to read a result" band follows a paper band (five pages alternate from paper), so it is set
-   apart by the lighter paper and a hairline. */
-.stApp .st-key-band_paper_read { background: var(--paper-2); border-top: 1px solid var(--line); }
+/* The "who it is for" band (before the first, paper page band) and the closing "how to read a result" band (after
+   the last, paper page band) both touch a paper band, so they are set apart by the lighter paper and a hairline. */
+.stApp .st-key-band_paper_who, .stApp .st-key-band_paper_read {
+  background: var(--paper-2); border-top: 1px solid var(--line);
+}
+.stApp .st-key-band_paper_who { border-bottom: 1px solid var(--line); }
+.stApp .st-key-band_paper_who .band-sentence { max-width: 46ch; }
+.stApp .st-key-band_paper_who [data-testid="stPageLink"] { margin-top: var(--s4); }  /* air between text and link */
 [data-testid="stLayoutWrapper"]:has(> .st-key-band_hero, > [class*="st-key-band_"]) { width: 100%; }
 [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"]:has([class*="st-key-band_"]) { gap: 0; }
 
