@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Offline checks for src/predict.py: model inputs, explain() and the shared feature names.
 
 Run with ``python tests/test_predict.py`` (or pytest). No network. The main explain() tests fit a small model on an

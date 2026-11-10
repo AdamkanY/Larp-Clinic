@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Find an ongoing trial, see its predicted risk of stopping early in the list and open its details."""
 import sys
 from pathlib import Path
@@ -9,12 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge and ui
 from risk_gauge import (bar_caption, drivers_caption, drivers_chart, estimate_caption,  # noqa: E402
                         risk_bar, risk_card, risk_chip)
-from src.api_client import PHASES, SPONSOR_CLASSES, get_trial, search_trials, summarize  # noqa: E402
+from src.api_client import (PHASES, SPONSOR_CLASSES, get_trial, search_examples,  # noqa: E402
+                            search_trials, summarize)
 from src.labels import label  # noqa: E402
 from ui import chart, chip, esc, page_header, require_router  # noqa: E402
 
 require_router("pages/1_Find_a_Trial.py")
 
+# Results per 'page' of the list; 'Show more' asks the API for the next ten.
 PAGE = 10
 EXAMPLES = ["breast cancer", "diabetes", "asthma", "depression", "COVID-19"]
 
@@ -35,6 +39,7 @@ def risk_for(nct_id, last_update, _study):
 
     Cached per trial and record version (`last_update`); the record itself is not hashed, hence the underscore.
     """
+    # Any failure (missing model, odd record) becomes None, so one bad record never breaks the result list.
     try:
         from src.features import build_features
         from src.predict import score
@@ -108,11 +113,13 @@ def chips_for(row, risk=None):
 
 def detail_view(nct_id):
     """Full page for one trial: risk card first, key design facts beside it."""
+    # Detail view: load the full record again (cached), then risk on the left and key facts on the right.
     st.button("← Back to results", on_click=close_trial)
     study = get_trial(nct_id)
     if study is None:
         st.error("Could not load this trial. Check your connection, then go back and open it again.")
         st.stop()
+    # Header: title, chips and a link to the record on ClinicalTrials.gov.
     row = summarize(study)
     p = study.get("protocolSection", {})
     design = p.get("designModule", {})
@@ -124,6 +131,7 @@ def detail_view(nct_id):
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.markdown("##### Risk of stopping early")
+        # Risk card, comparison bar and drivers chart, or a plain message if the risk cannot be estimated.
         risk = risk_for(nct_id, last_update(study), study) if get_model() is not None else None
         if get_model() is None:
             st.info("The risk estimate is not available here yet: the model file is missing.")
@@ -143,6 +151,7 @@ def detail_view(nct_id):
                 chart(drivers_fig, key="drivers_chart")
                 st.caption(drivers_caption())
     with right:
+        # Key design facts from the record, in plain words.
         st.markdown("##### At a glance")
         interventions = ", ".join(i.get("name", "") for i in p.get("armsInterventionsModule", {}).get("interventions", []))
         facts = {
@@ -157,14 +166,18 @@ def detail_view(nct_id):
         st.write(p.get("descriptionModule", {}).get("briefSummary", "No summary available."))
 
 
+# ---- Page ----
+# Session defaults: empty search, no filters, first page of results, no trial opened.
 for key, default in {"q": "", "phase_filter": "", "sponsor_filter": "", "shown": PAGE, "selected": None}.items():
     st.session_state.setdefault(key, default)
 
+# A trial was opened: show only its detail view.
 if st.session_state["selected"]:
     page_header("Find a trial")
     detail_view(st.session_state["selected"])
     st.stop()
 
+# Search box, two filters and the example pills.
 page_header("Find a trial", "Search ongoing interventional trials (treatments, devices, behaviour changes) on ClinicalTrials.gov and see how likely each one is to stop early.")
 st.text_input("Search", key="q", on_change=new_search, label_visibility="collapsed",
               placeholder="Condition, drug or keyword, for example breast cancer")
@@ -179,19 +192,31 @@ if not st.session_state.q:
     st.caption("Try an example:")
     st.pills("Examples", EXAMPLES, key="example", on_change=pick_example, label_visibility="collapsed")
 
+# Ask the API (cached for an hour; errors are returned as a value, never raised).
 with st.spinner("Searching ClinicalTrials.gov..."):
     result = search_trials(query=st.session_state.q.strip(), phase=st.session_state.phase_filter or None,
                            sponsor_class=st.session_state.sponsor_filter or None, page_size=st.session_state.shown)
 
 if result["error"]:
-    st.error(f"{result['error']} Check your connection, then try again.")
-    st.button("Try again")
-    st.stop()
+    # Offline: fall back to the saved snapshot of real ongoing trials if there is one, so the page (and a demo)
+    # keeps working. The banner makes clear these are not live results.
+    offline = search_examples(query=st.session_state.q.strip(), phase=st.session_state.phase_filter or None,
+                              sponsor_class=st.session_state.sponsor_filter or None, page_size=st.session_state.shown)
+    if offline is None:
+        st.error(f"{result['error']} Check your connection, then try again.")
+        st.button("Try again")
+        st.stop()
+    st.warning(f"ClinicalTrials.gov cannot be reached right now, so you see saved example trials (downloaded "
+               f"{offline['saved_on']}), not live results. Their status may have changed since.")
+    st.button("Try the live search again")
+    result = offline
+# Nothing found: say so and offer a way back.
 if not result["studies"]:
     st.info("No ongoing trials match this search. Try a broader keyword or remove a filter.")
     st.button("Clear filters", on_click=reset_filters)
     st.stop()
 
+# Result list: one card per trial with its risk chip; observational studies get no risk.
 total = result["total"]
 searching = st.session_state.q.strip() or st.session_state.phase_filter or st.session_state.sponsor_filter
 st.markdown(f"**{total:,}** ongoing trials match" if searching else f"**{total:,}** ongoing trials. Search or filter to narrow them down.")
@@ -207,5 +232,6 @@ for i, study in enumerate(result["studies"]):
                     f'<div class="card-sub">{esc(row["Sponsor"])}</div>', unsafe_allow_html=True)
         st.button("See details", key=f"open_{i}", on_click=open_trial, args=(row["NCT ID"],), type="primary",
                   icon=":material/arrow_forward:")
+# More results on the server than shown: offer the next page.
 if total > len(result["studies"]):
     st.button(f"Show {min(PAGE, total - len(result['studies']))} more", on_click=show_more)

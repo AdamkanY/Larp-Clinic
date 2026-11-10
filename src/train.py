@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Train the models on the train split and save them to ``models/``.
 
 Models (every preprocessing step is fitted inside a Pipeline, so on train folds
@@ -141,6 +143,7 @@ def load_split(split: str, df: pd.DataFrame = None, features=None) -> tuple:
         df: the already loaded parquet; read (and checked) from disk if omitted.
         features: the input columns; defaults to the app's feature set.
     """
+    # Every load goes through check_dataset, so a stale or hand-edited parquet stops the training run.
     if df is None:
         df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
@@ -162,6 +165,7 @@ def build_lr_pipeline(features=None) -> Pipeline:
     Args:
         features: input columns; defaults to the app's feature set.
     """
+    # Logistic regression needs numbers only: impute and scale numbers, impute flags, one-hot encode categories.
     parts = split_features(FEATURE_SETS[APP_FEATURE_SET] if features is None else features)
     numeric = Pipeline([("impute", SimpleImputer(strategy="median")),
                         ("scale", StandardScaler())])
@@ -186,6 +190,7 @@ def build_gbm_pipeline(drop=(), features=None) -> Pipeline:
         features: input columns; defaults to the app's feature set.
     """
     parts = split_features(FEATURE_SETS[APP_FEATURE_SET] if features is None else features)
+    # Gradient boosting reads categories natively, so they are only ordinal-coded; numbers pass through unchanged.
     categorical = [c for c in parts["categorical"] if c not in drop]
     other = [c for c in parts["binary"] + parts["numeric"] if c not in drop]
     # Unseen categories at scoring time (e.g. a new API enum value) become
@@ -209,6 +214,7 @@ def explain_reference(X_train: pd.DataFrame) -> dict:
     value), categories their most common value. Missing values are ignored, so
     the reference is always a complete, ordinary design.
     """
+    # The typical training trial, used by predict.explain as the point every factor is compared with.
     values = {}
     for col in FEATURE_COLUMNS:
         if col in CATEGORICAL_FEATURES:
@@ -249,6 +255,7 @@ def tune(name: str, X, y, cv) -> GridSearchCV:
 
     The model's inputs are the columns of ``X``.
     """
+    # Grid search with 5-fold CV on the training trials only; both metrics are recorded, PR-AUC picks the winner.
     search = GridSearchCV(BUILDERS[name](features=list(X.columns)), PARAM_GRIDS[name], cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
                           refit=REFIT_METRIC, n_jobs=-1)
@@ -284,6 +291,7 @@ def out_of_fold(estimator, X, y, cv) -> tuple:
     own data. For the calibrated model this is nested: 5 outer folds, each
     running its own 5-fold calibration inside.
     """
+    # Out-of-fold scores on the training trials give an honest threshold without touching the test years.
     oof = cross_val_predict(clone(estimator), X, y, cv=cv, method="predict_proba",
                             n_jobs=-1)[:, 1]
     threshold, oof_f1 = evaluate.best_f1_threshold(y, oof)
@@ -335,6 +343,7 @@ def model_details(model) -> dict:
 def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
          feature_set: str, extra: dict = None) -> None:
     """Write ``models/<name>.joblib`` and the training part of its metrics JSON."""
+    # Save the fitted model and a metrics file that records how it was made (split, features, CV, threshold).
     features = FEATURE_SETS[feature_set]
     joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
     report = {
@@ -365,23 +374,28 @@ def main(feature_set: str = APP_FEATURE_SET) -> None:
     ``gbm_uncalibrated_v2.joblib``, ``score_reference_v2.npy``), so a comparison
     run never replaces the app model.
     """
+    # Which models this run trains, and under which file names (a non-app feature set gets a suffix).
     features = FEATURE_SETS[feature_set]
     suffix = "" if feature_set == APP_FEATURE_SET else f"_{feature_set}"
     builders = list(BUILDERS) if not suffix else ["gbm"]
     df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
+    # The test split is loaded here but only passed to evaluate.evaluate_saved at the very end, after every model is
+    # saved.
     X_train, y_train = load_split("train", df, features)
     X_test, y_test = load_split("test", df, features)
     print(f"Train: {len(y_train)} trials ({y_train.mean():.2%} terminated); "
           f"test: {len(y_test)} trials ({y_test.mean():.2%} terminated)")
     print(f"Feature set {feature_set} ({len(features)}): {', '.join(features)}")
 
+    # The same CV folds for every model, so their CV numbers are comparable.
     cv = make_cv()
     MODELS_DIR.mkdir(exist_ok=True)
     # Over every column build_features makes, so it serves any feature set.
     reference = explain_reference(load_split("train", df, FEATURE_COLUMNS)[0])
     EXPLAIN_REFERENCE_PATH.write_text(json.dumps(reference, indent=2) + "\n", encoding="utf-8")
 
+    # Step 1: tune and save the uncalibrated models (baseline LR and GBM).
     tuned = {}
     for name in builders:
         t0 = time.time()
@@ -400,6 +414,8 @@ def main(feature_set: str = APP_FEATURE_SET) -> None:
         tuned[name] = (search.best_estimator_, cv_info)
         print(f"Saved models/{SAVED_NAMES[name]}{suffix}.joblib ({time.time() - t0:.0f}s)")
 
+    # Step 2: wrap the tuned GBM in isotonic calibration, get honest out-of-fold scores for the threshold and the
+    # percentile reference, then fit it on all training trials.
     t0 = time.time()
     print(f"\n--- gbm: {CALIBRATION_METHOD} calibration (cv={CALIBRATION_CV}) of the tuned GBM ---")
     base, base_cv_info = tuned["gbm"]
@@ -429,6 +445,7 @@ def main(feature_set: str = APP_FEATURE_SET) -> None:
     print(f"Saved models/gbm{suffix}.joblib and models/{reference_path.name} "
           f"({time.time() - t0:.0f}s)")
 
+    # Step 3: score the saved models once on the test years (the only place the test split is used).
     names = [f"{name}{suffix}" for name in evaluate.MODEL_NAMES
              if name.startswith("gbm") or not suffix]
     evaluate.evaluate_saved(X_test, y_test, names=names, X_train=X_train, y_train=y_train,

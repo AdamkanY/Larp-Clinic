@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Shared look of the Trial-Radar pages: the one colour palette, the Plotly template built from it, one stylesheet
 (style.css), full-width bands, the tick scale and the page header."""
 import functools
@@ -45,12 +47,17 @@ def alpha(colour, opacity):
 
 def plotly_template():
     """The chart look as a Plotly template: transparent so the paper shows through, hairline grid, ink tooltips,
-    muted axis text, the palette's series colours and dashed reference lines in the muted colour."""
+    muted axis text, the palette's series colours, a paper-to-orange heatmap scale and dashed reference lines in
+    the muted colour."""
     font = {"family": FONT_FAMILY, "size": 13, "color": PALETTE["ink"]}
     small = {"family": FONT_FAMILY, "size": 12, "color": PALETTE["muted"]}
     axis = {"tickfont": small, "title": {"font": small}, "gridcolor": alpha(PALETTE["ink"], 0.12),
             "linecolor": PALETTE["ink"], "zeroline": False, "automargin": True}
-    return go.layout.Template(layout={
+    # Heatmaps (src/viz.py rate_heatmap) shade from the light paper through the pale yellow risk band to the
+    # "raises the risk" orange, so darker always means "stopped more often". Plotly picks dark or light cell text
+    # for contrast on its own.
+    risk_scale = [[0.0, PALETTE["paper_2"]], [0.5, PALETTE["mid_band"]], [1.0, PALETTE["up"]]]
+    return go.layout.Template(data={"heatmap": [go.Heatmap(colorscale=risk_scale)]}, layout={
         "font": font, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)",
         "colorway": [PALETTE["bar"], PALETTE["up"], PALETTE["neutral"], PALETTE["accent_deep"]],
         "hoverlabel": {"bgcolor": PALETTE["ink"], "bordercolor": PALETTE["ink"], "align": "left",

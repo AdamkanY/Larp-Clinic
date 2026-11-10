@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Plain-English names for the codes the ClinicalTrials.gov API and the processed data use, and for the model's
 input columns.
 

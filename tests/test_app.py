@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Offline checks for the app's helper code: labels, chart data, API client and risk colours.
 
 Run with ``python tests/test_app.py`` (or pytest). No network needed: the API is replaced by a stub and the chart
@@ -5,6 +7,7 @@ data is a small invented table, not real trial data. The risk-colour check uses 
 is skipped when that file is missing.
 """
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -86,6 +89,37 @@ def test_viz():
     assert list(viz.trials_table(df.head(1)).columns)[0] == "link"
 
 
+def test_viz_heatmap():
+    """The two-trait matrix counts and orders correctly; thin cells stay empty and empty rows/columns are dropped."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "trials.parquet"
+        make_trials(path)
+        df = viz.load_trials(path)
+    rate, n = viz.rate_matrix(df, "phase_label", "sponsor_class", viz.PHASE_ORDER)
+    assert list(rate.index) == ["Phase 2", "No phase", "Not stated"]  # clinical order
+    assert n.loc["Phase 2", "Industry"] == 60 and n.to_numpy().sum() == len(df)
+    assert rate.loc["Phase 2", "Industry"] == df[df["phase_label"] == "Phase 2"]["label"].mean()
+    fig = viz.rate_heatmap(df, "phase_label", "sponsor_class", viz.PHASE_ORDER)
+    heat = fig.data[0]
+    # "Not stated" has 5 trials, below MIN_GROUP_N in every column, so its row disappears.
+    assert list(heat.y) == ["Phase 2", "No phase"]
+    for row, cells in zip(heat.z, heat.text):
+        for value, text in zip(row, cells):
+            assert (text == "") == (value is None or np.isnan(value))  # a blank cell has no label
+    # Nothing readable left: None, so the page can show a sentence instead.
+    assert viz.rate_heatmap(df.head(10), "phase_label", "sponsor_class") is None
+
+
+def test_gain_curve():
+    """Cumulative gain: riskiest first, from 0% to 100% found, and equal to picking at random for a useless score."""
+    curve = viz.gain_curve([1, 0, 1, 0, 0], [0.9, 0.8, 0.7, 0.1, 0.2], points=6)
+    assert list(curve["reviewed"]) == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    assert list(curve["caught"]) == [0.0, 0.5, 0.5, 1.0, 1.0, 1.0]
+    assert curve["precision"].iloc[1] == 1.0 and curve["precision"].iloc[-1] == 0.4
+    flat = viz.gain_curve([1, 0] * 50, [0.5] * 100, points=11)  # ties keep the input order: no head start
+    assert np.allclose(flat["caught"], flat["reviewed"], atol=0.02)
+
+
 class Response:
     """Minimal stand-in for requests.Response."""
 
@@ -132,6 +166,38 @@ def test_api_client():
     row = api_client.summarize({"protocolSection": {"designModule": {"phases": ["PHASE1", "PHASE2"]}}})
     assert row["Phase"] == "PHASE1, PHASE2"
     assert api_client.summarize({})["Phase"] == "NA"  # a missing phase reads like the API's own "not applicable"
+
+
+def example_study(nct_id, title, conditions, phases, sponsor_class):
+    """A minimal ongoing-trial record with just the fields the offline search reads."""
+    return {"protocolSection": {
+        "identificationModule": {"nctId": nct_id, "briefTitle": title},
+        "statusModule": {"overallStatus": "RECRUITING"},
+        "designModule": {"phases": phases, "studyType": "INTERVENTIONAL"},
+        "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Acme", "class": sponsor_class}},
+        "conditionsModule": {"conditions": conditions},
+    }}
+
+
+def test_offline_examples():
+    """The saved snapshot is searched like the API (keyword, phase, sponsor), and a broken or missing file is None."""
+    studies = [example_study("NCT1", "Drug A in adults", ["Asthma"], ["PHASE2"], "INDUSTRY"),
+               example_study("NCT2", "Walking study", ["Depression"], None, "OTHER"),
+               example_study("NCT3", "Asthma app", ["Breathing"], ["PHASE3"], "OTHER")]
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "ongoing_trials.json"
+        path.write_text(json.dumps({"saved_on": "2026-12-01", "studies": studies}))
+        everything = api_client.search_examples(path=path)
+        assert everything["total"] == 3 and everything["saved_on"] == "2026-12-01" and everything["error"] is None
+        # The keyword matches the title or the conditions, ignoring case.
+        assert [api_client.summarize(s)["NCT ID"] for s in api_client.search_examples("ASTHMA", path=path)["studies"]] \
+            == ["NCT1", "NCT3"]
+        assert api_client.search_examples(phase="NA", path=path)["total"] == 1  # a missing phase counts as "NA"
+        assert api_client.search_examples(sponsor_class="OTHER", page_size=1, path=path)["total"] == 2
+        assert len(api_client.search_examples(sponsor_class="OTHER", page_size=1, path=path)["studies"]) == 1
+        path.write_text("not json")
+        assert api_client.load_examples(path) is None
+    assert api_client.search_examples(path=Path(tmp) / "missing.json") is None
 
 
 def test_risk_colours():
@@ -245,6 +311,12 @@ def test_one_palette():
     fig = viz.rate_bar(viz.rate_by(df, "phase_label"), "phase_label", "Phase", 0.1)
     assert fig.data[0].marker.color == ui.PALETTE["bar"]  # viz.py has no colours of its own
 
+def test_ai_headers():
+    """Every source file cites the AI use in its first lines (HSG rule: AI-generated code is cited in the code)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import ai_provenance
+    assert ai_provenance.missing_headers() == []
+
 
 if __name__ == "__main__":
     test_labels()
@@ -254,4 +326,8 @@ if __name__ == "__main__":
     test_game_pairs()
     test_game_scoring()
     test_game_score_matches_predict()
+    test_viz_heatmap()
+    test_gain_curve()
+    test_offline_examples()
+    test_ai_headers()
     print("all ok")

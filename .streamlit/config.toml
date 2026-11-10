@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 # One light theme for every page: cool bone paper, deep green-black ink, rounded pills.
 # The pink accent is not a theme colour: app/style.css uses it only for "this trial" and the main action.
 [server]

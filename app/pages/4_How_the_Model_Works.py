@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """How the model works: what it predicts, how to read a score, how well it works on unseen trials, which factors
 matter, how far to trust the percentages (calibration), and which model versions and checks were run."""
 import json
@@ -10,14 +12,17 @@ import plotly.graph_objects as go
 import streamlit as st
 from sklearn.metrics import roc_auc_score
 
+# Paths: the page runs as a script from app/pages/, so the repo root and app/ are added to sys.path by hand.
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))  # repo root, for src/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for ui
 from src.labels import PHASE_ORDER, feature_name, label  # noqa: E402
-from ui import PALETTE, chart, chip, page_header, require_router  # noqa: E402
+from src.viz import gain_curve  # noqa: E402
+from ui import PALETTE, alpha, chart, chip, page_header, require_router  # noqa: E402
 
 require_router("pages/4_How_the_Model_Works.py")
 
+# Tuning constants of this page (not of the model).
 MODELS = ROOT / "models"
 TOP_FEATURES = 12
 MIN_GROUP = 1000  # smaller groups give ROC-AUC values too noisy to read
@@ -42,17 +47,21 @@ def load_directions(features):
     Returns {feature: text}; None if the data file is missing. Numbers and yes/no flags use a rank correlation with
     the outcome; categories have no single direction. This describes the data on its own, not the model's reasoning.
     """
+    # Read only the training split and the requested columns: the direction describes the data the model learned
+    # from.
     try:
         from src.features import BINARY_FEATURES, CATEGORICAL_FEATURES
         data = pd.read_parquet(ROOT / "data" / "processed" / "trials.parquet",
                                columns=list(features) + ["split", "label"], filters=[("split", "==", "train")])
     except (ImportError, FileNotFoundError, OSError, ValueError, KeyError):
         return None
+    # One plain-words direction per feature. Categories (phase, blinding, ...) have no single 'higher' direction.
     out = {}
     for feature in features:
         if feature in CATEGORICAL_FEATURES:
             out[feature] = "depends on the category"
             continue
+        # Spearman (rank) correlation with the 0/1 label: robust to skewed numbers such as the eligibility length.
         rho = pd.to_numeric(data[feature], errors="coerce").corr(data["label"].astype(float), method="spearman")
         word = "yes" if feature in BINARY_FEATURES else "higher"
         if rho >= MIN_DIRECTION:
@@ -67,6 +76,7 @@ def load_directions(features):
 @st.cache_data(show_spinner=False)
 def load_importance():
     """Permutation importance of the app model, strongest first, with a direction text, or None if the file is missing."""
+    # Read the permutation importance computed by src/evaluate.py; keep the app model's rows, strongest first.
     try:
         table = pd.read_csv(MODELS / "feature_importance.csv")
     except (OSError, ValueError):
@@ -85,6 +95,7 @@ def load_test_scores():
     Scoring them here instead of storing a table keeps the phase and year numbers in step with whatever model
     is deployed.
     """
+    # Score every test trial with the saved app model (calibrated probabilities).
     try:
         from src.features import FEATURE_COLUMNS
         from src.predict import load_model, score_frame
@@ -102,6 +113,7 @@ def load_test_scores():
         raw = score_frame(test, load_model(f"models/{base}.joblib"))
     except (FileNotFoundError, OSError, ValueError, KeyError):
         raw = None
+    # One row per test trial: outcome, calibrated and raw score, start year and phase for the breakdowns.
     return pd.DataFrame({
         "label": test["label"].astype(int).to_numpy(),
         "risk": risk,
@@ -113,6 +125,7 @@ def load_test_scores():
 
 def phase_table(scores):
     """One row per phase with at least MIN_GROUP test trials: size, real rate, mean prediction, ROC-AUC inside the phase."""
+    # ROC-AUC needs both outcomes in a group; small groups are skipped because their ROC-AUC is too noisy.
     rows = []
     for phase, group in scores.groupby("phase"):
         if len(group) >= MIN_GROUP and group["label"].nunique() == 2:
@@ -121,6 +134,7 @@ def phase_table(scores):
                 "Model predicted": group["risk"].mean(), "Really stopped": group["label"].mean(),
                 "ROC-AUC inside the phase": roc_auc_score(group["label"], group["risk"]),
             })
+    # Sort the phases in clinical order (Early Phase 1 ... Phase 4) instead of alphabetically.
     table = pd.DataFrame(rows)
     rank = {name: i for i, name in enumerate(PHASE_ORDER)}
     return table.sort_values("Phase", key=lambda names: names.map(rank)).reset_index(drop=True)
@@ -128,6 +142,8 @@ def phase_table(scores):
 
 def year_table(scores):
     """One row per start year of the test trials: size, real rate, mean prediction and how far the prediction is too low."""
+    # Mean outcome = real share stopped; mean risk = average prediction; their ratio shows how far the model runs
+    # low.
     table = scores.groupby("year").agg(
         trials=("label", "size"), real=("label", "mean"), predicted=("risk", "mean")
     ).reset_index()
@@ -137,6 +153,7 @@ def year_table(scores):
 
 def risk_group_chart(bins, average):
     """Bars per risk group (10% of the test trials each): what the model predicted vs what really happened."""
+    # One bar pair per tenth of the test trials (the bins come precomputed from gbm_metrics.json).
     groups = [str(i) for i in range(1, len(bins) + 1)]
     fig = go.Figure([
         # Pale with a dark outline, so predicted and real bars differ in lightness and not only in hue.
@@ -145,6 +162,7 @@ def risk_group_chart(bins, average):
         go.Bar(x=groups, y=[b["observed_rate"] for b in bins], name="Really stopped early",
                marker_color=PALETTE["bar"]),
     ])
+    # Dashed line: the average of all test trials, so each pair reads as above or below average.
     fig.add_hline(y=average, line_dash="dash",
                   annotation_text=f"Average of all test trials: {average:.1%}", annotation_position="top left")
     fig.update_layout(
@@ -159,6 +177,7 @@ def risk_group_chart(bins, average):
 
 def calibration_curve(predicted, observed, groups=10):
     """Mean prediction and real share stopped early per group of equally many trials, lowest predictions first."""
+    # Equal-count groups: rank first, so ties in the calibrated scores (isotonic steps) cannot make groups uneven.
     frame = pd.DataFrame({"p": predicted, "y": observed}).dropna()
     frame["group"] = pd.qcut(frame["p"].rank(method="first"), groups, labels=False)
     return frame.groupby("group").agg(mean_predicted=("p", "mean"), observed_rate=("y", "mean")).reset_index(drop=True)
@@ -170,20 +189,24 @@ def calibration_chart(after, before=None):
     A model whose percentages can be taken literally sits on the diagonal. `after` is the app model, `before` the
     same GBM before isotonic calibration (both DataFrames with mean_predicted and observed_rate).
     """
+    # Common axis range for both curves, with a little headroom, so the diagonal is a true 45-degree line.
     top = max(after["mean_predicted"].max(), after["observed_rate"].max())
     if before is not None:
         top = max(top, before["mean_predicted"].max(), before["observed_rate"].max())
     top = min(1.0, top * 1.08)
     fig = go.Figure()
+    # Dotted diagonal: where a perfectly calibrated model would sit.
     fig.add_shape(type="line", x0=0, y0=0, x1=top, y1=top, line={"dash": "dot", "width": 1.5})
     fig.add_annotation(x=top * 0.97, y=top * 0.97, text="Percentages exactly right", showarrow=False,
                        xanchor="right", yanchor="bottom", textangle=0)
+    # Before calibration (optional): dashed and grey, so the app model stays the main line.
     if before is not None:
         fig.add_trace(go.Scatter(
             x=before["mean_predicted"], y=before["observed_rate"], mode="lines+markers",
             name="Before calibration", line={"color": PALETTE["neutral"], "width": 2, "dash": "dash"},
             marker={"size": 8, "symbol": "circle-open"},
             hovertemplate="Predicted %{x:.1%}<br>Really stopped %{y:.1%}<extra>Before calibration</extra>"))
+    # After calibration: the app model, in the main data colour.
     fig.add_trace(go.Scatter(
         x=after["mean_predicted"], y=after["observed_rate"], mode="lines+markers",
         name="After calibration (the app model)", line={"color": PALETTE["bar"], "width": 3}, marker={"size": 9},
@@ -196,9 +219,63 @@ def calibration_chart(after, before=None):
     return fig
 
 
+def gain_chart(curve, share):
+    """Cumulative gain curve: share of all stopped test trials found when the riskiest `share` of trials is reviewed.
+
+    The model's curve against the diagonal of picking at random, with the point the user chose on the slider
+    marked in the accent colour (the one "this choice" mark of the app).
+    """
+    point = curve.iloc[(curve["reviewed"] - share).abs().argmin()]  # the curve row closest to the slider value
+    fig = go.Figure()
+    # The area between model and diagonal is the model's head start; shading it makes the gap readable at a glance.
+    fig.add_trace(go.Scatter(x=curve["reviewed"], y=curve["reviewed"], mode="lines", name="Picking trials at random",
+                             line={"color": PALETTE["neutral"], "dash": "dash", "width": 1.5}, hoverinfo="skip"))
+    fig.add_trace(go.Scatter(
+        x=curve["reviewed"], y=curve["caught"], mode="lines", name="Riskiest first (the model)", fill="tonexty",
+        fillcolor=alpha(PALETTE["bar"], 0.12), line={"color": PALETTE["bar"], "width": 3},
+        hovertemplate="Review the riskiest %{x:.0%}<br>Find %{y:.0%} of the stopped trials<extra></extra>"))
+    fig.add_trace(go.Scatter(x=[point["reviewed"]], y=[point["caught"]], mode="markers", name="Your choice",
+                             marker={"color": PALETTE["accent"], "size": 14, "line": {"color": PALETTE["ink"], "width": 2}},
+                             hoverinfo="skip"))
+    fig.add_annotation(x=point["reviewed"], y=point["caught"], text=f"<b>{point['caught']:.0%}</b> found",
+                       showarrow=False, xanchor="left", xshift=12, yanchor="top", bgcolor=PALETTE["ink"],
+                       font={"color": PALETTE["paper"], "size": 13}, borderpad=5)
+    fig.update_layout(height=420, margin={"l": 70, "r": 10, "t": 30, "b": 70}, legend={"orientation": "h", "y": 1.1, "x": 0})
+    fig.update_xaxes(title="Share of test trials reviewed, riskiest first", tickformat=".0%", range=[0, 1])
+    fig.update_yaxes(title="Share of all stopped trials found", tickformat=".0%", range=[0, 1.02])
+    return fig
+
+
+def score_violin(scores):
+    """Distribution of the predicted risk for test trials that completed vs were stopped early.
+
+    Violins (with a box for the middle half) show the whole spread, so the overlap between the two groups is
+    visible: the honest picture behind a single ROC-AUC number.
+    """
+    # One half-violin per outcome, completed first so the stopped trials sit on top.
+    fig = go.Figure()
+    for outcome, value, colour in [("Completed", 0, PALETTE["neutral"]), ("Stopped early", 1, PALETTE["up"])]:
+        risks = scores.loc[scores["label"] == value, "risk"]
+        fig.add_trace(go.Violin(
+            x=risks, y=[outcome] * len(risks), name=outcome, orientation="h", side="positive", width=1.2,
+            line={"color": colour}, fillcolor=alpha(colour, 0.35), points=False, spanmode="hard",
+            box={"visible": True, "fillcolor": PALETTE["paper_2"], "line": {"color": colour}},
+            meanline={"visible": True, "color": PALETTE["ink"]},
+            hoveron="kde", hovertemplate="%{y}: risk %{x:.1%}<extra></extra>"))
+    fig.update_layout(height=360, showlegend=False, margin={"l": 10, "r": 10, "t": 20, "b": 70},
+                      violingap=0.1)
+    # The long right tail holds few trials; cutting the axis at the 99th percentile keeps the bulk readable.
+    fig.update_xaxes(title="Predicted risk of stopping early", tickformat=".0%",
+                     range=[0, float(scores["risk"].quantile(0.99))])
+    fig.update_yaxes(title=None)
+    return fig
+
+
 def importance_chart(importance):
     """Horizontal bars of how much the model relies on each factor; colour and the words on the bar say which way it goes."""
+    # Plotly draws the first row at the bottom; reversed, the strongest factor ends up on top.
     ordered = importance.iloc[::-1]
+    # Turn the direction text into one of three colour groups.
     kind = ordered["Direction"].map(
         lambda d: "More stopped" if "more often" in d else ("Fewer stopped" if "less often" in d else "No single direction"))
     fig = px.bar(
@@ -208,6 +285,7 @@ def importance_chart(importance):
         text=ordered["Direction"],
         labels={"roc_auc_drop_mean": "How much the model relies on it", "color": ""},
     )
+    # Labels outside the bars, and extra x-range so the longest label still fits.
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(yaxis_title=None, margin={"l": 0, "r": 0, "t": 10, "b": 0}, height=540,
                       legend={"orientation": "h", "y": -0.18, "x": 0})
@@ -217,6 +295,7 @@ def importance_chart(importance):
 
 def tab_predicted(metrics):
     """What the model predicts and what is in the data."""
+    # Totals over both splits: the size of the whole dataset the model page talks about.
     train, test = metrics["split"]["train"], metrics["split"]["test"]
     total = train["n_trials"] + test["n_trials"]
     terminated = train["n_terminated"] + test["n_terminated"]
@@ -230,14 +309,18 @@ def tab_predicted(metrics):
         "- Trials with other statuses are not in the data, for example withdrawn trials (nobody was enrolled) and "
         "trials that are still running. So the model has never seen a running trial; scoring one in the search is "
         "an extrapolation. Observational studies are not in the data either, so the search lists only interventional ones.\n"
-        "- Trials from 2017-2019 that are still running today are missing as well. We have not checked whether "
-        "that makes the recent years look worse than they are."
+        "- Trials from 2017-2019 that are still running today are missing as well, and that tilts the test trials "
+        "towards stopped ones: a stopped trial ends early by definition, so it is already in the data, while a "
+        "long trial that will complete is not yet. The later the start year, the stronger this pull (see "
+        "\"Can you trust it?\")."
     )
 
 
-def tab_quality(metrics, phases):
-    """Headline numbers in plain words, then the phase breakdown."""
+def tab_quality(metrics, phases, scores=None):
+    """Headline numbers in plain words, the review-budget slider, the two score distributions, then the phase
+    breakdown. `scores` are the scored test trials (None if data or model is missing; those parts then say so)."""
     train, test = metrics["split"]["train"], metrics["split"]["test"]
+    # Headline numbers on the test split, each next to what guessing would score.
     result, baseline = metrics["test"], metrics["majority_baseline"]
     st.write(
         f"The model learned from trials that started {train['start_from'][:4]}-{train['start_to'][:4]} "
@@ -245,6 +328,7 @@ def tab_quality(metrics, phases):
         f"{test['start_from'][:4]}-{test['start_to'][:4]} ({test['n_trials']:,} trials). "
         f"{test['terminated_rate']:.1%} of them were stopped early."
     )
+    # Three metric tiles with a plain-words reading under each.
     c1, c2, c3 = st.columns(3)
     c1.metric("ROC-AUC", f"{result['roc_auc']:.2f}", help="0.5 = guessing, 1.0 = perfect.")
     c1.caption(
@@ -258,6 +342,7 @@ def tab_quality(metrics, phases):
         f"{result['pr_auc']:.2f}, about {result['pr_auc'] / baseline['pr_auc']:.1f}x that."
     )
     c3.metric("Brier score", f"{result['brier']:.3f}", help="Lower is better; measures how honest the percentages are.")
+    # Brier skill: how much better than always predicting the average rate.
     gain = 1 - result["brier"] / baseline["brier_constant_rate"]
     c3.caption(
         f"Always guessing the average rate scores {baseline['brier_constant_rate']:.3f}. The model is only about "
@@ -268,6 +353,7 @@ def tab_quality(metrics, phases):
         f"{baseline['accuracy']:.0%} of the time."
     )
 
+    # The riskiest and safest tenth, and the F1 threshold chosen on the training folds, in plain words.
     bins = result["calibration_bins"]
     flagged = result["at_threshold"]
     st.markdown(
@@ -285,10 +371,41 @@ def tab_quality(metrics, phases):
         "such as funding, recruitment problems or safety findings."
     )
 
+    # The decision an investor or sponsor actually faces: "I can look closely at only so many trials. If I start
+    # with the riskiest ones, how many of the trials that will be stopped do I find?"
+    st.markdown("##### If you can only check some trials, which ones?")
+    if scores is None:
+        st.info("This part needs the trial data and the model file, which are not available here.")
+    else:
+        # Slider in whole percent; the chart helpers work with shares (0.2 = 20%).
+        share = st.slider("Share of trials you have time to review", 5, 50, 20, step=5, format="%d%%",
+                          key="gain_share") / 100
+        # Gain curve over all test trials, then the row that matches the slider for the sentence.
+        curve = gain_curve(scores["label"], scores["risk"])
+        point = curve.iloc[(curve["reviewed"] - share).abs().argmin()]
+        reviewed = int(round(share * len(scores)))
+        st.write(
+            f"Reviewing the riskiest **{share:.0%}** of the {len(scores):,} test trials ({reviewed:,} trials) finds "
+            f"**{point['caught']:.0%}** of all trials that were really stopped. Picking {share:.0%} at random would "
+            f"find {share:.0%}. Of the trials you would review, {point['precision']:.0%} were really stopped "
+            f"(the average is {scores['label'].mean():.0%})."
+        )
+        chart(gain_chart(curve, share), key="gain_chart")
+        st.caption("Move the slider to set your review budget. The further the green line runs above the dashed "
+                   "one, the more the ranking saves you work. The curve uses the 2017-2019 test trials only.")
+
+        st.markdown("##### How far apart are stopped and completed trials?")
+        st.write("Each shape shows how the predicted risks of one group are spread; the box marks the middle half "
+                 "and the dark line the average. Stopped trials sit further right, but the two shapes overlap a "
+                 "lot. That overlap is why a single score is never a verdict.")
+        chart(score_violin(scores), key="score_violin")
+
+    # Ranking quality inside each phase: comparing trials of one phase is harder than comparing across phases.
     st.markdown("##### Is it equally good in every phase?")
     if phases is None:
         st.info("The breakdown by phase needs the trial data and the model file, which are not available here.")
         return
+    # Name the best and worst phase and the phase where the model runs lowest.
     aucs = phases["ROC-AUC inside the phase"]
     best, worst = phases.loc[aucs.idxmax()], phases.loc[aucs.idxmin()]
     gap = phases.loc[(phases["Really stopped"] / phases["Model predicted"]).idxmax()]
@@ -300,6 +417,7 @@ def tab_quality(metrics, phases):
         f"The predictions are also too low in every phase, most clearly in {gap['Phase']}: "
         f"{gap['Model predicted']:.1%} predicted against {gap['Really stopped']:.1%} really stopped."
     )
+    # Format the numbers for display only; the table keeps its row order (clinical phase order).
     shown = phases.assign(**{
         "Test trials": phases["Test trials"].map("{:,}".format),
         "Model predicted": phases["Model predicted"].map("{:.1%}".format),
@@ -312,6 +430,7 @@ def tab_quality(metrics, phases):
 
 def tab_factors():
     """Which factors the model relies on, and which way each one goes."""
+    # Permutation importance from models/feature_importance.csv; the page says so if the file is missing.
     importance = load_importance()
     if importance is None or importance.empty:
         st.info("Feature importance is not available yet (models/feature_importance.csv is missing).")
@@ -331,6 +450,7 @@ def tab_factors():
 
 def tab_trust(metrics, scores):
     """How far the percentages can be trusted: the gap between predicted and real, overall, per risk group and per year."""
+    # Average prediction before and after calibration against the real rate of the test trials.
     test = metrics["split"]["test"]
     before = metrics["calibration"]["test_before"]["mean_predicted"]
     after = metrics["calibration"]["test_after"]["mean_predicted"]
@@ -347,6 +467,7 @@ def tab_trust(metrics, scores):
         "The ranking is more reliable than the exact percentage."
     )
 
+    # Calibration curve: the app model from the stored bins; the raw model needs its file and fresh scores.
     st.markdown("##### Calibration plot: before and after")
     after = pd.DataFrame(metrics["test"]["calibration_bins"])
     before = None
@@ -361,6 +482,7 @@ def tab_trust(metrics, scores):
         "which is the \"slightly too low\" described above."
         + ("" if before is not None else " (The curve before calibration needs the uncalibrated model file.)")
     )
+    # Per start year: shows that the gap grows towards 2019.
     if scores is not None:
         years = year_table(scores)
         st.write("The gap also grew from year to year, so trials from today may be underestimated even more:")
@@ -372,10 +494,14 @@ def tab_trust(metrics, scores):
             "Real rate higher by": years["too_low"].map("{:+.0%}".format),
         }), hide_index=True, width="stretch")
     st.write(
-        "One hint about the cause: on paper the 2017-2019 trials look lower-risk (more trials without a phase, "
-        "behavioral studies and studies with healthy volunteers than in 2008-2016), yet they were stopped slightly "
-        "more often. We have not found out why. Until then, read a percentage as a lower estimate and use it "
-        "mainly to compare trials."
+        "Why the gap? On paper the 2017-2019 trials look lower-risk (more trials without a phase, behavioral studies "
+        "and studies with healthy volunteers than in 2008-2016), yet more of them were stopped. The most likely "
+        "reason is in the data, not the model: only trials that have already ended are included. A stopped trial "
+        "ends early by definition, so it is already in the data; a long trial that will complete is often still "
+        "running and missing. The later the start year, the more completions are still missing, which matches the "
+        "gap growing from 2017 to 2019. So part of the gap is a tilt in the test data. We have not yet counted the 2017-2019 trials that are still running, "
+        "so it is a well-supported explanation, not a proof. Either way: read a percentage as a lower estimate and "
+        "use it mainly to compare trials."
     )
 
 
@@ -386,6 +512,7 @@ def before_mean_text(metrics):
 
 def read_a_score_box(metrics):
     """Plain-English box: what the percentage, the colour and the rank of a risk score mean, and what they do not."""
+    # Numbers for the reading box, all from the metrics file so the text follows a retrained model.
     test = metrics["split"]["test"]
     predicted = metrics["calibration"]["test_after"]["mean_predicted"]
     gap = test["terminated_rate"] / predicted - 1
@@ -412,6 +539,7 @@ def read_a_score_box(metrics):
 
 def version_table(v1, v2):
     """v1 (the app model) against v2 (plus condition categories): features, CV and test numbers, which one is used."""
+    # One row per model version that has a metrics file.
     rows = []
     for name, metrics, status in [("v1: design features", v1, "Used in the app"),
                                   ("v2: plus condition areas", v2, "Tested, not used")]:
@@ -428,6 +556,7 @@ def version_table(v1, v2):
 
 def ablation_table(ablations):
     """One row per ablation run: which inputs were left out and what that cost on the test trials."""
+    # One row per ablation run stored in gbm_metrics.json by src/evaluate.py.
     rows = []
     for run in ablations["runs"]:
         dropped = run["dropped"]
@@ -444,11 +573,13 @@ def ablation_table(ablations):
 
 def tab_versions(metrics):
     """Model v1 vs v2 and the ablations: why the app uses the model it uses, and that it does not hang on edited fields."""
+    # Version 1 vs 2: show the comparison only if the v2 metrics file exists.
     v2 = load_metrics("gbm_v2")
     st.markdown("##### Version 1 or version 2?")
     if v2 is None:
         st.info("The comparison needs models/gbm_v2_metrics.json, which is not available here.")
     else:
+        # Gains of v2 over v1 on the test split and in cross-validation, checked against the rule fixed in advance.
         gain = v2["test"]["roc_auc"] - metrics["test"]["roc_auc"]
         cv_gain = v2["cv"]["best_roc_auc_mean"] - metrics["cv"]["best_roc_auc_mean"]
         st.write(
@@ -466,6 +597,7 @@ def tab_versions(metrics):
             "The PR-AUC gain is a little larger, mostly from cancer trials, "
             "which are stopped about twice as often as average."
         )
+    # Ablations: does the model lean on fields a sponsor can edit after the start?
     st.markdown("##### Does it rely on fields that can be edited later?")
     ablations = metrics.get("ablations")
     if not ablations:
@@ -486,6 +618,8 @@ def tab_versions(metrics):
     )
 
 
+# ---- Page ----
+# Header: the intro sentence uses the real split sizes when the metrics file exists.
 metrics = load_metrics()
 if metrics:
     split = metrics["split"]
@@ -497,9 +631,11 @@ else:
 page_header("How the model works", intro)
 st.page_link("pages/2_Check_Your_Trial.py", label="Try it yourself: check your own trial")
 
+# Score the test trials once (cached) and derive the phase table from them.
 scores = load_test_scores() if metrics else None
 phases = phase_table(scores) if scores is not None else None
 
+# "In short" box: three or four findings the whole page then explains.
 if metrics:
     test = metrics["split"]["test"]
     top_group = metrics["test"]["calibration_bins"][-1]["observed_rate"]
@@ -524,18 +660,20 @@ if metrics:
             "- **It cannot see why trials stop**, such as funding, recruitment or safety problems."
         )
     read_a_score_box(metrics)
+    # Five tabs, one question each, in the order a reader asks them.
     predicted_tab, quality_tab, factors_tab, trust_tab, versions_tab = st.tabs(
         ["What is predicted", "How good is it?", "What matters most", "Can you trust it?", "Versions and checks"])
     with predicted_tab:
         tab_predicted(metrics)
     with quality_tab:
-        tab_quality(metrics, phases)
+        tab_quality(metrics, phases, scores)
     with factors_tab:
         tab_factors()
     with trust_tab:
         tab_trust(metrics, scores)
     with versions_tab:
         tab_versions(metrics)
+# Without metrics only the factor chart can be shown (it reads its own file).
 else:
     st.info("Model metrics are not available yet (models/gbm_metrics.json is missing).")
     tab_factors()

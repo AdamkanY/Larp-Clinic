@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """The single feature-building function shared by training and the app.
 
 ``build_features`` takes ONE ClinicalTrials.gov API v2 study record (the dict
@@ -219,6 +221,7 @@ def build_features(study_json: dict) -> dict:
     status = _get(proto, "statusModule", "overallStatus")
     start = parse_start_date(_get(proto, "statusModule", "startDateStruct", "date"))
 
+    # Pull every module this function needs once; each later read goes through an explicit path (the leakage rule).
     design = _get(proto, "designModule", "designInfo") or {}
     phases = _get(proto, "designModule", "phases")
     interventions = _get(proto, "armsInterventionsModule", "interventions")
@@ -229,6 +232,7 @@ def build_features(study_json: dict) -> dict:
     max_age = parse_age_years(_get(proto, "eligibilityModule", "maximumAge"))
     conditions = _get(proto, "conditionsModule", "conditions")
 
+    # The row: meta columns (never model inputs), the design-time features, then display-only columns.
     row = {
         "nct_id": _get(proto, "identificationModule", "nctId"),
         "overall_status": status,
@@ -265,6 +269,7 @@ def build_features(study_json: dict) -> dict:
         "phase_label": phase_label(phases),
     }
 
+    # Multi-hot intervention flags and the keyword condition flags are added after the plain fields.
     present = {i.get("type") for i in interventions or [] if isinstance(i, dict)}
     for kind in INTERVENTION_TYPES:
         # Unknown intervention list -> None, otherwise a clean 0/1.
@@ -306,6 +311,7 @@ def study_from_design(design: dict) -> dict:
         """A list of n empty entries: build_features only counts these lists."""
         return [{}] * int(n or 0)
 
+    # Rebuild the API's nested shape from the flat form values, field by field, using the API's own key names.
     info = {
         "allocation": design.get("allocation"),
         "interventionModel": design.get("intervention_model"),

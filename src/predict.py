@@ -1,3 +1,5 @@
+# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
+# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Score trials with a saved model. This is the module the Streamlit app imports.
 
 Typical use in the app::
@@ -95,12 +97,15 @@ def to_model_frame(records, columns=None) -> pd.DataFrame:
         ValueError: if any feature key is absent. A silently missing column
             would be imputed and give a plausible but wrong score.
     """
+    # Accept both a list of dicts (the app) and a DataFrame (training, whole tables); refuse silently missing
+    # inputs.
     columns = list(FEATURE_COLUMNS if columns is None else columns)
     frame = records if isinstance(records, pd.DataFrame) else pd.DataFrame(list(records))
     missing = [col for col in columns if col not in frame.columns]
     if missing:
         raise ValueError(f"Missing feature keys: {missing}")
 
+    # Convert column by column to the dtypes the model was fitted on.
     out = {}
     for col in columns:
         if col in CATEGORICAL_FEATURES:
@@ -243,12 +248,15 @@ def explain(features: dict, top_n=5, model=None, reference=None) -> list:
         raises the risk compared with the typical trial or ``"down"`` if it
         lowers it, and the size of that change in log-odds (always >= 0).
     """
+    # Load the explanation model and the typical training trial unless the caller passes its own (tests do).
     model = model if model is not None else load_model(EXPLAIN_MODEL_PATH)
     if reference is None:
         reference = _explain_reference(str(_resolve(EXPLAIN_REFERENCE_PATH)))
     columns = model_features(model)
     base = to_model_frame([features], columns)
 
+    # Build one perturbed copy of this trial per factor: that factor (and its linked columns) set to the typical
+    # value.
     linked = {c for group in LINKED_FEATURES.values() for c in group[1:]}
     factors, rows = [], []
     for col in columns:
@@ -262,8 +270,10 @@ def explain(features: dict, top_n=5, model=None, reference=None) -> list:
         rows.append(row)
     perturbed = to_model_frame(pd.DataFrame(rows).reset_index(drop=True), columns)
 
+    # Score the trial and all its copies in one call; the difference in log-odds is each factor's push.
     log_odds = model.decision_function(pd.concat([base, perturbed], ignore_index=True))
     effects = log_odds[0] - log_odds[1:]  # > 0: this trial's value raises the risk
+    # Strongest pushes first, in either direction.
     order = np.argsort(-np.abs(effects), kind="stable")
     out = []
     for i in order[:top_n]:
