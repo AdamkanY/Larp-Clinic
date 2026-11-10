@@ -22,7 +22,8 @@ part, often without producing an answer.
 | Investors and business analysts | When weighing a company's pipeline: which of its ongoing trials look riskier than comparable past trials and deserve a closer look? | Find a trial |
 
 **What is new.** Termination has been predicted before, with reported ROC-AUCs of about 0.73 [2] and up to 0.80 [3].
-Those are papers: none of them offers a tool to search live trials or to change a design and see the risk move.
+Those are papers: none of the studies we found comes with a tool to search live trials or to change a design and see
+the risk move (commercial pipeline-risk products exist, but they are closed and not built on registration data alone).
 Trial-Radar does both. It also takes a strict line on leakage: [3] uses the number of sites and a random train/test
 split, and a recent leakage audit [4] shows how much such choices can inflate results (ROC-AUC 0.70 rising to 0.85
 once actual enrollment is allowed). Our model only sees what is known at registration and is tested on trials that

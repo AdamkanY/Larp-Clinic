@@ -39,7 +39,7 @@ AUDIENCES = [
      "before they weigh the pipeline.", "Find a trial"),
 ]
 # Why an app and not just another paper: what the published models do not offer. Sources are in the README.
-NOVELTY = ("Published models predict early termination well on paper, but none of them lets you search live trials "
+NOVELTY = ("Published models predict early termination well on paper, but the ones we found do not let you search live trials "
            "or change a design and watch the risk move. Trial-Radar does both, with a model that only sees what is "
            "known at registration and is tested on later trials than it learned from.")
 

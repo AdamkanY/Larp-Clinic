@@ -122,7 +122,7 @@ risk"), Explore the data (filters, bar charts, a heatmap of two traits), How the
 slider, calibration, versions), Play the game (guess which of two trials was stopped, against the model).
 
 **20. How do you know the app works?**
-40 offline tests (`pytest tests`): the feature function, the predictions, the chart helpers and every page clicked
+41 offline tests (`pytest tests`): the feature function, the predictions, the chart helpers and every page clicked
 through in Streamlit's test runner with the API mocked.
 
 ## Game questions (Raphael leads)
