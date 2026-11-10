@@ -203,8 +203,13 @@ if result["error"]:
     offline = search_examples(query=st.session_state.q.strip(), phase=st.session_state.phase_filter or None,
                               sponsor_class=st.session_state.sponsor_filter or None, page_size=st.session_state.shown)
     if offline is None:
-        st.error(f"{result['error']} Check your connection, then try again.")
+        st.error(f"{result['error']} Check your internet connection, then try again. Every other page works "
+                 "without it.")
         st.button("Try again")
+        # The technical reason stays available for debugging, folded away so it does not alarm users.
+        if result.get("detail"):
+            with st.expander("Technical details"):
+                st.code(result["detail"], language=None, wrap_lines=True)
         st.stop()
     st.warning(f"ClinicalTrials.gov cannot be reached right now, so you see saved example trials (downloaded "
                f"{offline['saved_on']}), not live results. Their status may have changed since.")

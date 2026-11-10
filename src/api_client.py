@@ -14,6 +14,8 @@ import streamlit as st
 
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
 EXAMPLES_PATH = Path(__file__).resolve().parents[1] / "data" / "examples" / "ongoing_trials.json"
+# What the search page tells users when the API cannot be reached, whatever the technical reason.
+OFFLINE_MESSAGE = "Could not reach ClinicalTrials.gov right now."
 ONGOING = ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING", "ENROLLING_BY_INVITATION"]
 PHASES = ["EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4", "NA"]
 SPONSOR_CLASSES = ["INDUSTRY", "NIH", "FED", "OTHER_GOV", "INDIV", "NETWORK", "OTHER"]
@@ -32,7 +34,9 @@ def search_trials(query="", status=None, page_size=20, phase=None, condition="",
     """Search ongoing interventional trials; returns {"studies": [...], "total": int, "error": str | None}.
 
     Never raises: network problems and empty results come back as a value so the page can show a message.
-    Successful responses are cached for an hour, failures are not.
+    On a failure "error" is one plain sentence for users and "detail" holds the technical reason (exception and
+    URL) for debugging; the page keeps the detail out of sight. Successful responses are cached for an hour,
+    failures are not.
     """
     status = list(status) if status else ONGOING
     params = {
@@ -55,7 +59,8 @@ def search_trials(query="", status=None, page_size=20, phase=None, condition="",
     try:
         data = _get_json(BASE_URL, params)
     except (requests.RequestException, ValueError) as exc:
-        return {"studies": [], "total": 0, "error": f"Could not reach ClinicalTrials.gov: {exc}"}
+        # The exception text (a long URL, proxy and SSL messages) means nothing to a user, so it goes to "detail".
+        return {"studies": [], "total": 0, "error": OFFLINE_MESSAGE, "detail": f"{type(exc).__name__}: {exc}"}
     return {"studies": data.get("studies", []), "total": data.get("totalCount", 0), "error": None}
 
 
