@@ -56,7 +56,7 @@ Then switch off Wi-Fi and open "Find a trial": the saved example trials must app
 - [ ] **Contribution matrix complete** (`docs/CONTRIBUTIONS.md`, no **?** left) and shown in the video.
 - [ ] **Saved example trials** for the offline fallback: run `python src/save_examples.py` once while online and
       commit `data/examples/ongoing_trials.json`. Re-run it shortly before the Q&A.
-- [ ] **Numbers in the README, the app and the video agree** (162,457 trials, 11.3%, ROC-AUC 0.71, 43% at 20%).
+- [ ] **Numbers in the README, the app and the video agree** (162,457 trials, 11.3%, ROC-AUC 0.71, 42% at 20%).
 - [ ] **Deployed app (optional, not graded):** redeploy on Streamlit Community Cloud from `main` (README, "Deploy").
       A private repository works too.
 
