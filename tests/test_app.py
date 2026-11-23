@@ -19,9 +19,9 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
-from src import api_client, database, game, viz  # noqa: E402
-from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS  # noqa: E402
-from src.labels import label  # noqa: E402
+from src import api_client, database, game, viz
+from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS
+from src.labels import label
 
 
 def test_labels():
@@ -120,7 +120,6 @@ def test_gain_curve():
     assert np.allclose(flat["caught"], flat["reviewed"], atol=0.02)
 
 
-
 def test_database():
     """The SQLite database gives the same numbers as the pandas helpers, splits conditions into rows and treats
     filter text as data, never as SQL."""
@@ -184,7 +183,9 @@ def test_api_client():
             raise outcome
         return outcome
 
-    real_get, api_client.requests.get = api_client.requests.get, fake_get
+    # Swap the real requests.get for the fake one, and put it back at the end whatever happens.
+    real_get = api_client.requests.get
+    api_client.requests.get = fake_get
     try:
         api_client._get_json.clear()
         failed = api_client.search_trials(query="asthma", phase="PHASE2", sponsor_class="NIH")
@@ -350,6 +351,7 @@ def test_one_palette():
     fig = viz.rate_bar(viz.rate_by(df, "phase_label"), "phase_label", "Phase", 0.1)
     assert fig.data[0].marker.color == ui.PALETTE["bar"]  # viz.py has no colours of its own
 
+
 def test_ai_headers():
     """Every source file cites the AI use in its first lines (HSG rule: AI-generated code is cited in the code)."""
     sys.path.insert(0, str(ROOT / "tools"))
@@ -358,15 +360,8 @@ def test_ai_headers():
 
 
 if __name__ == "__main__":
-    test_labels()
-    test_viz()
-    test_api_client()
-    test_risk_colours()
-    test_game_pairs()
-    test_game_scoring()
-    test_game_score_matches_predict()
-    test_viz_heatmap()
-    test_gain_curve()
-    test_offline_examples()
-    test_ai_headers()
+    for name, test in sorted(globals().items()):
+        if name.startswith("test_"):
+            test()
+            print("ok", name)
     print("all ok")
