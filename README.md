@@ -127,7 +127,7 @@ so we report ranking and precision-recall metrics, not accuracy.
 **How the model was chosen.** Six models ran a fair race on the same time-ordered folds with the same metric
 (PR-AUC), each with its standard settings and a small tuned grid (the "horse race" of the Data Science Fundamentals
 course): always the average rate, logistic regression, a decision tree, a random forest, k-nearest neighbours and
-gradient boosting. @@RACE_SENTENCE@@ The ten questions of the course's prediction protocol are answered one by
+gradient boosting. Gradient boosting scored best (validation PR-AUC 0.211), but the random forest is practically tied (0.210, within the spread across the folds); logistic regression (0.192), KNN (0.190) and a single tree (0.187) are behind, and all beat the baseline (0.109). We keep boosting, which also carries the calibration and the per-trial explanations. The race is on the model page ("Which model won?"). The ten questions of the course's prediction protocol are answered one by
 one in [`docs/PREDICTION_PROTOCOL.md`](docs/PREDICTION_PROTOCOL.md).
 
 ## Project layout

@@ -54,8 +54,10 @@ stopped trials (random picking: 20%). But most "red" trials still finish.
 **8. Which model, and why that one?**
 Gradient boosting (`HistGradientBoostingClassifier` from scikit-learn): many small decision trees, each one
 correcting the errors of the ones before. It handles missing values and categories (phase, blinding) natively and
-finds combinations of features without us writing them. We compared it with a logistic regression baseline
-(ROC-AUC 0.69); boosting reached 0.71 with honest probabilities.
+finds combinations of features without us writing them. We did not just pick it: six models ran a fair race on the
+same time-ordered folds (question 24). Boosting scored best, the random forest was practically tied, logistic
+regression (test ROC-AUC 0.69), KNN and a single tree were behind. On the test trials boosting reached 0.71 with
+honest probabilities.
 
 **9. How did you tune it without touching the test set?**
 Time-ordered cross-validation on the training trials only (2008-2016), `TimeSeriesSplit` in scikit-learn: the
@@ -127,7 +129,7 @@ a review-budget slider, a cost slider with the confusion matrix, the model race,
 (guess which of two trials was stopped, against the model).
 
 **20. How do you know the app works?**
-41 offline tests (`pytest tests`): the feature function, the predictions, the chart helpers and every page clicked
+46 offline tests (`pytest tests`): the feature function, the predictions, the model protocol, the chart helpers and every page clicked
 through in Streamlit's test runner with the API mocked.
 
 ## Game questions (Raphael leads)
@@ -146,3 +148,38 @@ Answer from `docs/CONTRIBUTIONS.md`, for your own rows. Be ready to show one fil
 **23. How did you use AI?**
 Answer from `docs/AI_USE.md`: which tool, for what, how we checked its output (tests, reviews, the rules in the
 `CLAUDE.md` files), what worked, what did not, and what we would do differently.
+
+## Course questions (everyone)
+
+These connect the project to what we learned: the CS course (Ecoreps summary chapters) and Data Science Fundamentals
+(DSF). The full list of DSF's ten "prediction protocol" questions, answered for our project, is in
+`docs/PREDICTION_PROTOCOL.md`.
+
+**24. How did you choose between models?**
+With a "horse race" (DSF deck 16): baseline, logistic regression, decision tree, random forest, k-nearest neighbours
+(the classifier of the CS course, with min-max scaling) and gradient boosting, all on the same training trials, the
+same five time-ordered checks and the same score (PR-AUC), each with standard and with tuned settings. Boosting
+0.211, forest 0.210, logistic regression 0.192, KNN 0.190, tree 0.187, baseline 0.109. Boosting's lead over the
+forest (0.001) is smaller than the spread across the checks (0.005), so they are practically tied; we keep boosting
+(best score, handles missing values and categories, calibration and explanations are built on it). The test set was
+not used for this choice. Nice detail: a tree without limits learns the training trials by heart (0.116, barely
+better than guessing), and KNN with k = 5 is too noisy (0.137, k = 201 gives 0.190): overfitting and the
+bias-variance trade-off in action.
+
+**25. How do you turn a probability into a yes/no?**
+With a threshold, and the threshold comes from the costs of the two errors, not from the model (DSF deck 11): flag a
+trial if its risk is above c_FP / (c_FP + c_FN). If a missed stopped trial costs 5 false alarms, the line is
+1/6 = 17%. The model page has a slider for this ratio and shows the confusion matrix on the test trials (CS course
+6.4.2). This only works because the percentages are calibrated. F1, which we also report, is a compromise when you
+do not know the costs.
+
+**26. Does "which single change lowers the estimate" mean the change lowers the risk?**
+No. The model learned which designs went with more stopped trials in the past (prediction), not what a change would
+cause. A setting can simply go with other things (money, experience, the kind of drug) that make the real
+difference. That is why the heading speaks of the estimate and the caption says "a pattern, not proof of cause".
+Umbrellas predict rain; handing out umbrellas does not make it rain (DSF deck 01).
+
+**27. Which parts of the project are not from the courses?**
+Gradient boosting with native categories, `class_weight="balanced"`, isotonic calibration, permutation importance
+and the per-trial drivers. Each one has a one-sentence explanation in `docs/PREDICTION_PROTOCOL.md`; the team assigns
+one person per method who can explain it on the spot.

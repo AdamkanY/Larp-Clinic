@@ -360,9 +360,9 @@ def horse_race_chart(race):
         hovertemplate="%{y}<br>Tuned PR-AUC %{x:.3f}<extra></extra>"))
     fig.add_trace(go.Scatter(
         y=[horses[n]["label"] for n in order], x=[horses[n]["default"]["cv_pr_auc"] for n in order], mode="markers",
-        name="Default settings", marker={"symbol": "circle-open", "size": 11, "color": PALETTE["up"],
+        name="Standard settings", marker={"symbol": "circle-open", "size": 11, "color": PALETTE["up"],
                                          "line": {"width": 2}},
-        hovertemplate="%{y}<br>Default PR-AUC %{x:.3f}<extra></extra>"))
+        hovertemplate="%{y}<br>Standard settings PR-AUC %{x:.3f}<extra></extra>"))
     base = horses["baseline"]["tuned"]["cv_pr_auc"]
     fig.add_vline(x=base, line_dash="dash", annotation_text=f"Guessing: {base:.2f}", annotation_position="top")
     fig.update_layout(height=380, margin={"l": 10, "r": 10, "t": 30, "b": 60},
@@ -406,8 +406,11 @@ def tab_race():
     else:
         simplest = horses[v["simplest_tied"]]["label"].lower()
         lead_text = (f"Its lead over {second['label'].lower()} ({v['lead']:.3f}) is smaller than the spread across "
-                     f"the five checks ({v['winner_spread']:.3f}), so the two are practically tied; the simplest model "
-                     f"in that tie is {simplest}.")
+                     f"the five checks ({v['winner_spread']:.3f}), so the two are practically tied. By the race rules "
+                     f"either may be chosen (the best score, or {simplest} as the one that needs less tuning).")
+        if v["winner"] == "gbm":
+            lead_text += (" The app keeps gradient boosting: it scored best, handles missing values and categories "
+                          "without extra steps, and its calibration and per-trial explanations are built on it.")
     st.write(f"**Winner: {win['label']}.** {lead_text}")
     st.caption(
         "± is the spread (standard deviation) across the five checks: how much a score depends on which later trials "
