@@ -22,8 +22,8 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # for src, when the file is run directly instead of through pytest
 sys.path.insert(0, str(ROOT / "tests"))
-from test_features import STUDY  # noqa: E402
-import src.api_client  # noqa: E402  (the offline tests point its snapshot path elsewhere)
+from test_features import STUDY
+import src.api_client  # the offline tests point its snapshot path somewhere else
 
 HOME = str(ROOT / "app" / "Home.py")
 # The five pages in navigation order, with the title they carry in the navigation, the Home card and the header.
@@ -68,8 +68,12 @@ def stub_api(studies):
 
         return Resp()
 
+    def undo():
+        """Put the real requests.get back."""
+        requests.get = real
+
     requests.get = fake_get
-    return lambda: setattr(requests, "get", real)
+    return undo
 
 
 def markdown(at):
