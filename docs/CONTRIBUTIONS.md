@@ -57,6 +57,8 @@ able to talk about their own rows.
 | AI use record and reflection | ? | ? | ? | ? | ? | `docs/AI_USE.md` |
 | Video: script, recording, editing | ? | ? | ? | ? | **Lead** | `docs/VIDEO_SCRIPT.md` |
 | Q&A preparation | ? | ? | ? | ? | ? | `docs/QA_PREP.md` |
+| Course alignment: CS and DSF course material compared with the project; time-ordered cross-validation, model race, cost-based yes/no line, "prediction, not cause" wording (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/train.py`, `src/horse_race.py`, `app/pages/4_How_the_Model_Works.py`, `docs/PREDICTION_PROTOCOL.md` |
+| SQL database for the Explore page (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/database.py`, `app/pages/3_Explore_Data.py` |
 
 ## What the git history shows
 
@@ -68,15 +70,21 @@ commits, and an AI session can commit for the person who ran it.
 | `matteo-kaufmann` (Matteo) | 95 | 71 |
 | `AdamkanY` (Adam) | 20 | 12 |
 | `Claude` (AI agent, run by a team member) | 7 | 7 |
+| `simonbse` (Simon) | 4 (2026-11-23, branch `course-alignment`) | 4 (Claude session run by Simon, see `docs/AI_USE.md` 3.4) |
 
-Simon, Dominic and Raphael have no commits under their own accounts. **[team]** If they worked through someone else's
+Until 2026-11-23 Simon, Dominic and Raphael had no commits under their own accounts; Simon's first ones are the
+course-alignment branch. **[team]** If they worked through someone else's
 account or session, or outside git (for example in calls, on the video, on reviews), say so here, per person, with one
 concrete example each. The tutor will ask.
 
 ## Per person, in one or two sentences **[team]**
 
 - **Adam Kanouni:**
-- **Simon Seidl:**
+- **Simon Seidl:** Data pipeline lead. On 2026-11-23 went through the CS course (Ecoreps summary) and the Data
+  Science Fundamentals material, compared it with the project and, in a Claude session he directed, brought the model
+  and the app in line with it: time-ordered cross-validation, the model race, the cost-based yes/no line with the
+  confusion matrix, the "prediction, not cause" wording and the SQLite database of the Explore page (branch
+  `course-alignment`). **[Simon]** Check this sentence and add what else you did.
 - **Dominic Haibach:**
 - **Matteo Kaufmann:**
 - **Raphael Schmid:**
