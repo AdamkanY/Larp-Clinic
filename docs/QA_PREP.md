@@ -156,7 +156,10 @@ Answer from `docs/AI_USE.md`: which tool, for what, how we checked its output (t
 ## Course questions (everyone)
 
 These connect the project to what we learned: the CS course (Ecoreps summary chapters) and Data Science Fundamentals
-(DSF). The full list of DSF's ten "prediction protocol" questions, answered for our project, is in
+(DSF). DSF = *Data Science Fundamentals*, an additional HSG course outside Computer Science. Simon attended most of its lectures and brought its methods into the project where they solve a concrete problem of ours; the rest of the team learned them from him and from this file. If asked why we use material from another course: the CS course gives the basics (KNN,
+confusion matrix, cross-validation); a real prediction model needs more, and each DSF method we use answers a problem
+of our data (time-ordered split: the app scores newer trials; PR-AUC: stopped trials are rare; cost line: a missed
+stop costs more than a false alarm; model race: a justified choice of model). The full list of DSF's ten "prediction protocol" questions, answered for our project, is in
 `docs/PREDICTION_PROTOCOL.md`.
 
 **24. How did you choose between models?**

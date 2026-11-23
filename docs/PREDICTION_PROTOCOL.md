@@ -1,5 +1,8 @@
 # Trial-Radar and the prediction protocol
 
+> **Where this comes from.** DSF = *Data Science Fundamentals*, an additional HSG course outside Computer Science. Simon attended most of its lectures and brought its methods into the project where they solve a concrete problem of ours; the rest of the team learned them from him and from this file. Our project is graded in Computer Science; DSF is the source of the
+> methods below, not a second course the project belongs to.
+
 The Data Science Fundamentals course (DSF, deck P1 "Prediction in Practice") lists ten questions that every
 predictive model must answer before anyone relies on it. This file answers them for Trial-Radar, one by one, with
 the place in the code where each answer is implemented. Use it for the video and the Q&A: almost every model
