@@ -70,7 +70,7 @@ commits, and an AI session can commit for the person who ran it.
 | `matteo-kaufmann` (Matteo) | 95 | 71 |
 | `AdamkanY` (Adam) | 20 | 12 |
 | `Claude` (AI agent, run by a team member) | 7 | 7 |
-| `simonbse` (Simon) | 4 (2026-11-23, branch `course-alignment`) | 4 (Claude session run by Simon, see `docs/AI_USE.md` 3.4) |
+| `simonbse` (Simon) | 4 (2026-11-23, branch `course-alignment`) | 4 |
 
 Until 2026-11-23 Simon, Dominic and Raphael had no commits under their own accounts; Simon's first ones are the
 course-alignment branch. **[team]** If they worked through someone else's
