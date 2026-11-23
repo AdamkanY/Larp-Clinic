@@ -17,9 +17,9 @@ INK = PALETTE["ink"]
 
 
 def percentile_of(risk):
-    """Share of historical trials (in percent) with a lower score than risk (src.predict.percentile).
+    """How many percent of the historical trials have a lower score than risk (from src.predict.percentile).
 
-    None while models/score_reference.npy is missing, so the page can show the risk without a rank.
+    Returns None while models/score_reference.npy is missing, so the page can still show the risk without a rank.
     """
     try:
         return percentile(risk)
@@ -29,21 +29,24 @@ def percentile_of(risk):
 
 @st.cache_data(show_spinner=False)
 def underestimate():
-    """How much higher the real share stopped early on the newer test trials was than the model's average prediction.
+    """How much higher the real share stopped early was than the model's average prediction, on the test trials.
 
-    0.18 means 18% higher. None if the metrics file is missing or incomplete.
+    0.18 means 18% higher. Returns None if the metrics file is missing or incomplete.
     """
     try:
         metrics = json.loads(METRICS.read_text())
-        return metrics["split"]["test"]["terminated_rate"] / metrics["test"]["mean_predicted"] - 1
+        real_share = metrics["split"]["test"]["terminated_rate"]
+        predicted_share = metrics["test"]["mean_predicted"]
+        return real_share / predicted_share - 1
     except (OSError, ValueError, KeyError, ZeroDivisionError):
         return None
 
 
 def estimate_caption(risk, ongoing=False):
-    """Honest one-paragraph reading of a risk score; ongoing=True adds the caveat for live (unfinished) trials."""
-    # Build the caption from parts: the basic reading, the measured gap, and the caveat for running trials.
-    text = f"Rough estimate from design information only: read {risk:.0%} as a lower-end figure and mainly use it to compare trials. "
+    """An honest paragraph on how to read a risk score. ongoing=True adds the warning for trials still running."""
+    # The caption is built from parts: the basic reading, the measured gap and the warning for running trials.
+    text = (f"Rough estimate from design information only: read {risk:.0%} as a lower-end figure and mainly use "
+            "it to compare trials. ")
     gap = underestimate()
     if gap is not None and gap > 0:
         text += (f"On newer trials (the test set) the real share stopped early was about {gap:.0%} higher "
@@ -55,12 +58,11 @@ def estimate_caption(risk, ongoing=False):
 
 
 def risk_tone(risk):
-    """Colour and words for a risk, chosen by its rank among past trials: (tone, label, percent rank).
+    """Colour and words for a risk: (tone, label, percent rank).
 
-    Green below the median trial, yellow up to the riskiest 10%, red above. Without the reference file the
-    tone is "gray" and the rank is None.
+    The colour follows the trial's rank among past trials, not the raw percentage: green below the median trial,
+    yellow up to the riskiest 10%, red above. Without the reference file the tone is "gray" and the rank is None.
     """
-    # The colour follows the trial's rank among past trials (its percentile), not the raw percentage.
     pct = percentile_of(risk)
     if pct is None:
         return "gray", "Estimated risk of stopping early", None
@@ -72,52 +74,82 @@ def risk_tone(risk):
 
 
 def risk_chip(risk):
-    """HTML for a small coloured label with the risk and its rank wording, for result lists."""
-    tone, label, _ = risk_tone(risk)
+    """HTML for a small coloured label with the risk and its rank in words, for result lists."""
+    tone, label, pct = risk_tone(risk)
     return f'<span class="chip {tone}">{risk:.1%} risk · {label.lower()}</span>'
 
 
 def risk_card(risk, delta=None, compact=False):
-    """HTML for a coloured card: the risk number, how it ranks among past trials, and an optional change.
+    """HTML for a coloured card: the risk number, how it ranks among past trials and an optional change.
 
-    compact=True gives a one-line strip, for keeping the result in view while a form is edited.
+    delta is the change against the previous input. compact=True gives a one-line strip, which keeps the result
+    in view while a form is edited.
     """
-    # Card parts: big number, coloured label, rank sentence, optional change and, in the compact strip, a tick
-    # meter.
     tone, label, pct = risk_tone(risk)
-    sub = f"Riskier than {pct:.0f}% of historical trials (started 2009-2016)" if pct is not None else ""
-    change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>' if delta is not None else ""
-    size = " compact" if compact else ""
+
+    # The rank sentence needs the reference file, the change is only shown when there is one.
+    sub = ""
+    if pct is not None:
+        sub = f"Riskier than {pct:.0f}% of historical trials (started 2009-2016)"
+    change = ""
+    if delta is not None:
+        change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>'
+    size = ""
+    if compact:
+        size = " compact"
+
+    # The strip also carries a small scale of 100 ticks. The one pink tick ("me") is this trial.
     meter = ""
-    if compact and pct is not None:  # the strip carries a small instrument scale: one pink tick = this trial
-        ticks = "".join(f'<i class="{"me" if i == min(int(pct), 99) else ""}"></i>' for i in range(100))
+    if compact and pct is not None:
+        my_tick = min(int(pct), 99)
+        ticks = ""
+        for i in range(100):
+            if i == my_tick:
+                ticks += '<i class="me"></i>'
+            else:
+                ticks += '<i class=""></i>'
         meter = f'<div class="meter" aria-hidden="true">{ticks}</div>'
+
     return (f'<div class="risk-card {tone}{size}"><div class="num">{risk:.1%}</div><div class="lab">{label}</div>'
             f'<div class="sub">{sub}</div>{change}{meter}</div>')
 
 
 def risk_bar(risk):
-    """Horizontal bar from the least to the riskiest historical trials with a marker for this trial.
+    """Horizontal bar from the least risky to the riskiest historical trials, with a marker for this trial.
 
-    Returns None if the reference scores are missing, so callers can simply skip the bar.
+    Returns None if the reference scores are missing, so the pages can simply skip the bar.
     """
-    # The bar is drawn in percentile units (0-100), so its bands match the colours of the chips.
+    # The bar is drawn in percent of past trials (0-100), so its bands match the colours of the chips.
     pct = percentile_of(risk)
     if pct is None:
         return None
     fig = go.Figure()
-    # Pale bands, so ink text and the pink marker stay readable on them.
-    for start, end, colour, name in [(0, 50, PALETTE["low_band"], "Less risky than half"),
-                                     (50, 90, PALETTE["mid_band"], "Higher"), (90, 100, PALETTE["high_band"], "")]:  # too narrow for a label
+
+    # Three pale bands, so the ink text and the pink marker stay readable on them.
+    bands = [
+        (0, 50, PALETTE["low_band"], "Less risky than half"),
+        (50, 90, PALETTE["mid_band"], "Higher"),
+        (90, 100, PALETTE["high_band"], ""),  # too narrow for a label
+    ]
+    for start, end, colour, name in bands:
         fig.add_trace(go.Bar(x=[end - start], y=[""], base=[start], orientation="h", marker_color=colour,
                              width=0.7, text=name, textposition="inside", insidetextanchor="middle",
                              textfont={"size": 13, "color": INK}, hoverinfo="skip"))
-    # One pink line through the bar marks this trial; its label sits above the bar so it never covers a segment label.
+
+    # One pink line through the bar marks this trial.
     fig.add_shape(type="line", x0=pct, x1=pct, y0=-0.45, y1=0.45, line={"color": PALETTE["accent_deep"], "width": 4})
-    # Keep the label inside the chart near the edges.
-    anchor = "right" if pct > 80 else ("left" if pct < 20 else "center")
+
+    # Its label sits above the bar, so it never covers a band label. Near the edges it is turned inwards, so it
+    # stays inside the chart.
+    if pct > 80:
+        anchor = "right"
+    elif pct < 20:
+        anchor = "left"
+    else:
+        anchor = "center"
     fig.add_annotation(x=pct, y=0.45, text=f"<b>This trial</b> ({pct:.0f}%)", showarrow=False, yanchor="bottom",
                        xanchor=anchor, yshift=6, bgcolor=INK, font={"color": PALETTE["paper"], "size": 13}, borderpad=5)
+
     # Fixed x range 0-100% with ticks only at the band borders.
     fig.update_layout(
         barmode="overlay", showlegend=False, height=190, margin={"l": 10, "r": 10, "t": 55, "b": 60},
@@ -130,6 +162,7 @@ def risk_bar(risk):
 
 def bar_caption():
     """One sentence explaining how to read the bar."""
+    # Without the reference file the sentence still works: "among the past trials".
     try:
         count = f"{reference_size():,}"
     except (OSError, ValueError):
@@ -139,25 +172,43 @@ def bar_caption():
 
 
 def drivers_chart(drivers):
-    """Horizontal bars of what pushes one trial's risk up (right, orange) or down (left, green).
+    """Horizontal bars of what pushes one trial's risk up (to the right, orange) or down (to the left, green).
 
-    drivers is the list from src.predict.explain: (name, value, direction, size), largest first. Returns None for an
-    empty list, so callers can show a sentence instead.
+    drivers is the list from src.predict.explain: (name, value, direction, size), largest first. Returns None for
+    an empty list, so the pages can show a sentence instead.
     """
     if not drivers:
         return None
-    ordered = drivers[::-1]  # Plotly draws the first bar at the bottom; the strongest belongs on top
-    # Signed sizes: raising factors point right, lowering ones left; the axis is symmetric around zero.
-    signed = [size if direction == "up" else -size for _, _, direction, size in ordered]
-    widest = max(abs(v) for v in signed)
+
+    # One bar per factor. Plotly draws the first bar at the bottom, so we go through the list backwards and the
+    # strongest factor ends up on top. Factors that raise the risk point right, the others left.
+    lengths = []
+    names = []
+    colours = []
+    texts = []
+    for name, value, direction, size in drivers[::-1]:
+        if direction == "up":
+            length = size
+        else:
+            length = -size
+        lengths.append(length)
+        names.append(f"{name}: {value}")
+        if length > 0:
+            colours.append(PALETTE["up"])
+            texts.append("raises the risk")
+        else:
+            colours.append(PALETTE["down"])
+            texts.append("lowers the risk")
+
     fig = go.Figure(go.Bar(
-        x=signed, y=[f"{name}: {value}" for name, value, _, _ in ordered], orientation="h",
-        marker_color=[PALETTE["up"] if v > 0 else PALETTE["down"] for v in signed],
-        text=["raises the risk" if v > 0 else "lowers the risk" for v in signed], textposition="outside",
+        x=lengths, y=names, orientation="h", marker_color=colours, text=texts, textposition="outside",
         cliponaxis=False, hovertemplate="%{y}<br>%{text}<extra></extra>",
     ))
     # Zero line: the typical past trial.
     fig.add_vline(x=0, line={"color": INK, "width": 1})
+
+    # The axis is the same width on both sides of zero, with room for the text next to the longest bar.
+    widest = max(abs(length) for length in lengths)
     fig.update_layout(
         title={"text": "What pushes this trial's risk up / down", "x": 0, "xanchor": "left"},
         showlegend=False, height=140 + 46 * len(drivers), margin={"l": 0, "r": 10, "t": 50, "b": 60},
