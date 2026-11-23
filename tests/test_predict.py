@@ -16,28 +16,39 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
-from features import (CATEGORICAL_FEATURES, FEATURE_COLUMNS, MAX_AGE_FILL,  # noqa: E402
-                      build_features)
-from labels import FEATURE_NAMES, NO_MAX_AGE, feature_name  # noqa: E402
-from predict import explain, model_features, score, score_frame, to_model_frame  # noqa: E402
-from test_features import STUDY  # noqa: E402
-from train import build_gbm_pipeline  # noqa: E402
+from features import CATEGORICAL_FEATURES, FEATURE_COLUMNS, MAX_AGE_FILL, build_features
+from labels import FEATURE_NAMES, NO_MAX_AGE, feature_name
+from predict import explain, model_features, score, score_frame, to_model_frame
+from test_features import STUDY
+from train import build_gbm_pipeline
 
-_FITTED = {}
+# The small model is fitted once and then reused by all tests (fitting takes a few seconds).
+FITTED = {}
 
 
 def typical():
     """An invented 'typical trial': the reference explain() compares with."""
-    ref = {c: 0.0 for c in FEATURE_COLUMNS}
-    ref.update({c: None for c in CATEGORICAL_FEATURES})
-    ref.update(phase="PHASE2", allocation="RANDOMIZED", masking="NONE", n_arms=2.0, min_age_years=18.0,
-               max_age_years=80.0, has_max_age=1.0, eligibility_text_len=1000.0)
+    ref = {}
+    for column in FEATURE_COLUMNS:
+        if column in CATEGORICAL_FEATURES:
+            ref[column] = None
+        else:
+            ref[column] = 0.0
+    ref.update({"phase": "PHASE2", "allocation": "RANDOMIZED", "masking": "NONE", "n_arms": 2.0,
+                "min_age_years": 18.0, "max_age_years": 80.0, "has_max_age": 1.0, "eligibility_text_len": 1000.0})
     return ref
+
+
+def typical_with(changes):
+    """The typical trial with a few values changed."""
+    trial = typical()
+    trial.update(changes)
+    return trial
 
 
 def toy_model():
     """GBM pipeline fitted on invented trials whose risk depends only on has_dmc (up) and double blinding (down)."""
-    if "model" not in _FITTED:
+    if "model" not in FITTED:
         rng = np.random.default_rng(0)
         n = 4000
         rows = pd.DataFrame([typical()] * n)
@@ -46,13 +57,15 @@ def toy_model():
         rows["eligibility_text_len"] = rng.integers(200, 4000, n).astype(float)  # noise, no effect
         logit = -2 + 2.0 * rows["has_dmc"] - 1.5 * (rows["masking"] == "DOUBLE")
         y = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
-        _FITTED["model"] = build_gbm_pipeline(features=FEATURE_COLUMNS).fit(to_model_frame(rows), y)
-    return _FITTED["model"]
+        model = build_gbm_pipeline(features=FEATURE_COLUMNS)
+        model.fit(to_model_frame(rows), y)
+        FITTED["model"] = model
+    return FITTED["model"]
 
 
 def test_explain_finds_known_drivers():
     """The two factors that drive the invented outcome come first, with the right direction and plain names."""
-    trial = {**typical(), "has_dmc": 1.0, "masking": "DOUBLE"}
+    trial = typical_with({"has_dmc": 1.0, "masking": "DOUBLE"})
     drivers = explain(trial, model=toy_model(), reference=typical())
     assert len(drivers) <= 5 and all(len(d) == 4 for d in drivers)
     names = [d[0] for d in drivers]
@@ -68,13 +81,13 @@ def test_explain_typical_trial_has_no_drivers():
     """A trial equal to the reference pushes nothing; top_n caps the list."""
     model = toy_model()
     assert explain(typical(), model=model, reference=typical()) == []
-    trial = {**typical(), "has_dmc": 1.0, "masking": "DOUBLE"}
+    trial = typical_with({"has_dmc": 1.0, "masking": "DOUBLE"})
     assert len(explain(trial, top_n=1, model=model, reference=typical())) == 1
 
 
 def test_explain_moves_linked_age_columns_together():
     """No maximum age (120 + flag 0) is one factor, 'Maximum age: No upper limit', never 'Has a maximum age'."""
-    trial = {**typical(), "has_dmc": 1.0, "max_age_years": MAX_AGE_FILL, "has_max_age": 0.0}
+    trial = typical_with({"has_dmc": 1.0, "max_age_years": MAX_AGE_FILL, "has_max_age": 0.0})
     drivers = explain(trial, top_n=40, model=toy_model(), reference=typical())
     names = [d[0] for d in drivers]
     assert "Has a maximum age" not in names
