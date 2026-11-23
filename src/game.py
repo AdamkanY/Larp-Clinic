@@ -1,9 +1,11 @@
 # AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Logic of the "guess the stopped trial" game: pair sampling, model picks and the model's pairwise accuracy.
+"""The logic of the game "guess the stopped trial": draw pairs of trials, let the model pick, count how often
+the model is right.
 
-Pure pandas/numpy plus the saved model: no Streamlit. Only the test split (start 2017-2019) is used, so the model has
-never seen these trials and its picks are as honest as a live score.
+There is no Streamlit code in this file, the page app/pages/5_Game.py only calls these functions. The game uses
+only the test split (trials that started 2017-2019). The model has never seen these trials, so its picks are as
+honest as a score for a new trial.
 """
 import sys
 from pathlib import Path
@@ -11,111 +13,137 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+# The other files of src/ are imported by their plain name, so this works from the app and from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import DISPLAY_COLS, FEATURE_COLUMNS  # noqa: E402
-from predict import score_frame  # noqa: E402
+from features import DISPLAY_COLS, FEATURE_COLUMNS
+from predict import score_frame
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]  # the project folder
 TRIALS_PATH = ROOT / "data" / "processed" / "trials.parquet"
-ACCURACY_PAIRS = 2000  # pairs in the sample behind the "model gets it right x% of the time" line
+# How many pairs the page draws for the line "the model gets it right x% of the time".
+ACCURACY_PAIRS = 2000
 
 
-def load_test_trials(path=TRIALS_PATH) -> pd.DataFrame:
-    """Test-split trials that can be paired: label 0/1 and a phase label, with a fresh 0..n-1 index.
+def load_test_trials(path=TRIALS_PATH):
+    """The trials the game can use: the test split, only trials with a phase, numbered from 0.
 
-    Only the display columns, the model features, the label and the split are read, to keep the page light.
+    We read only the columns the game needs (what is shown, the model inputs, the label and the split), so the
+    page stays fast.
     """
-    # dict.fromkeys removes duplicate column names while keeping the order.
-    columns = list(dict.fromkeys(DISPLAY_COLS + FEATURE_COLUMNS + ["label", "split"]))
+    columns = DISPLAY_COLS + FEATURE_COLUMNS + ["label", "split"]
     trials = pd.read_parquet(path, columns=columns)
-    # Only test trials (the model never saw them) with a known phase, because pairs are matched by phase.
+    # A trial without a phase cannot be used, because the two trials of a pair must have the same phase.
     trials = trials[(trials["split"] == "test") & trials["phase_label"].notna()]
     return trials.reset_index(drop=True)
 
 
-def sample_pairs(trials: pd.DataFrame, n: int, seed=None) -> pd.DataFrame:
-    """Draw `n` pairs of one TERMINATED and one COMPLETED trial that share the same `phase_label`.
+def sample_pairs(trials, n, seed=None):
+    """Draw n pairs: one TERMINATED and one COMPLETED trial with the same phase_label.
 
-    The phase is matched so the user cannot win by knowing that, say, early-phase trials stop more often; the
-    comparison has to come from the design. Terminated trials are drawn without replacement and the completed ones
-    are taken from a shuffled pool per phase, so no trial appears twice unless a phase runs out of completed trials.
+    Both trials have the same phase on purpose. Otherwise a player could win just by knowing that early phases
+    are stopped more often, and would not have to look at the design at all.
 
-    Args:
-        trials: output of `load_test_trials` (needs `label` 0/1 and `phase_label`, index 0..n-1).
-        n: number of pairs wanted; fewer come back if there are not enough terminated trials.
-        seed: int or numpy Generator for reproducible draws.
-
-    Returns:
-        DataFrame with columns `terminated` and `completed`: row positions in `trials`, one pair per row.
+    trials is the table from load_test_trials(). The same seed gives the same pairs again. The result is a table
+    with the columns "terminated" and "completed", one pair per row. The values are row numbers of trials. If
+    there are fewer than n terminated trials that can be paired, fewer pairs come back.
     """
-    # A completed partner is drawn from a shuffled pool of the same phase.
     rng = np.random.default_rng(seed)
     terminated = trials[trials["label"] == 1]
     completed = trials[trials["label"] == 0]
-    completed_pool = {phase: list(rng.permutation(group.index.to_numpy()))
-                      for phase, group in completed.groupby("phase_label")}
-    usable = terminated[terminated["phase_label"].isin(completed_pool)]
-    chosen = rng.choice(usable.index.to_numpy(), size=min(n, len(usable)), replace=False)
 
-    # Hand out partners from each phase's pool in turn.
-    taken = {phase: 0 for phase in completed_pool}
+    # For every phase: the completed trials in a random order. The partners are taken from these lists.
+    completed_pool = {}
+    for phase, group in completed.groupby("phase_label"):
+        completed_pool[phase] = list(rng.permutation(group.index.to_numpy()))
+
+    # Draw the terminated trials, each one only once. A phase without completed trials cannot be used.
+    usable = terminated[terminated["phase_label"].isin(list(completed_pool))]
+    n_pairs = min(n, len(usable))
+    chosen = rng.choice(usable.index.to_numpy(), size=n_pairs, replace=False)
+
+    # Give every terminated trial the next completed trial from the list of its phase, so no completed trial
+    # comes twice. Only if a phase has fewer completed than terminated trials, its list starts again from the
+    # beginning (this is what the "%" does).
+    taken = {}
+    for phase in completed_pool:
+        taken[phase] = 0
     partners = []
-    for idx in chosen:
-        phase = trials.at[idx, "phase_label"]
+    for row_number in chosen:
+        phase = trials.at[row_number, "phase_label"]
         pool = completed_pool[phase]
-        partners.append(pool[taken[phase] % len(pool)])  # wraps around only if a phase has fewer completed trials
+        partners.append(pool[taken[phase] % len(pool)])
         taken[phase] += 1
     return pd.DataFrame({"terminated": chosen, "completed": partners})
 
 
-def score_rows(trials: pd.DataFrame, model=None) -> np.ndarray:
-    """Calibrated P(TERMINATED) for every row: `predict.score_frame`, which feeds the model only its own inputs.
+def score_rows(trials, model=None):
+    """The model's risk of stopping early for every row of trials (without a model: the calibrated app model).
 
-    Kept as a name of its own so the game's tests and callers read naturally; the scoring rules live in predict.
+    This only calls score_frame() from predict.py, which gives the model nothing but its own input columns.
+    The game and its tests use this name.
     """
     return score_frame(trials, model)
 
 
-def model_pick(terminated_score: float, completed_score: float, rng=None) -> str:
-    """Which trial the model says was terminated: "terminated" or "completed" (the true outcome of the pick).
+def model_pick(terminated_score, completed_score, rng=None):
+    """Which trial of a pair the model thinks was stopped: "terminated" (model is right) or "completed" (wrong).
 
-    The higher risk score wins. An exact tie (rare, the calibration is a step function) is a coin flip.
+    The trial with the higher risk score wins. With exactly the same score we flip a coin. This is rare, but it
+    happens, because the calibrated scores come in steps.
     """
     if terminated_score != completed_score:
-        return "terminated" if terminated_score > completed_score else "completed"
-    return "terminated" if np.random.default_rng(rng).random() < 0.5 else "completed"
+        if terminated_score > completed_score:
+            return "terminated"
+        return "completed"
+
+    # The coin flip. rng can be a seed or a random generator, so a whole game can be repeated.
+    if np.random.default_rng(rng).random() < 0.5:
+        return "terminated"
+    return "completed"
 
 
-def pairwise_accuracy(trials: pd.DataFrame, pairs: pd.DataFrame, model=None) -> float:
-    """Share of pairs in which the model gives the terminated trial the higher score; a tie counts as half.
+def pairwise_accuracy(trials, pairs, model=None):
+    """In which share of the pairs does the model give the terminated trial the higher score?
 
-    This is the number a user is playing against. It is the ROC-AUC on phase-matched pairs.
+    This is the number the player plays against. A tie counts as half a point. (It is the same as the ROC-AUC,
+    measured on pairs with the same phase.)
     """
-    # Score every trial once, then compare the two scores of each pair.
+    # Score every trial once, then pick out the two scores of every pair.
     scores = score_rows(trials, model)
-    term = scores[pairs["terminated"].to_numpy()]
-    comp = scores[pairs["completed"].to_numpy()]
-    # A win counts 1, a tie counts half, as in the ROC-AUC.
-    return float(((term > comp) + 0.5 * (term == comp)).mean())
+    terminated_scores = scores[pairs["terminated"].to_numpy()]
+    completed_scores = scores[pairs["completed"].to_numpy()]
+
+    # 1 point if the model is right, half a point for a tie, 0 if it is wrong.
+    points = (terminated_scores > completed_scores) + 0.5 * (terminated_scores == completed_scores)
+    return float(points.mean())
 
 
-def new_game(trials: pd.DataFrame, rounds: int, model=None, seed=None) -> list:
-    """Everything a game needs, decided up front: `rounds` pairs with display order and the model's pick.
+def new_game(trials, rounds, model=None, seed=None):
+    """Decide everything for one game in advance: the pairs, which trial is shown left, and the model's picks.
 
-    Returns a list of dicts with `terminated` and `completed` (row positions in `trials`), `left` (which outcome is
-    shown as trial A) and `model_pick` ("terminated" or "completed").
+    Returns a list with one dictionary per round: "terminated" and "completed" (row numbers in trials), "left"
+    (which of the two is shown as trial A) and "model_pick" ("terminated" or "completed").
     """
-    # One generator for the pairs and the display order, so a seed reproduces a whole game.
+    # One random generator for everything, so the same seed gives exactly the same game.
     rng = np.random.default_rng(seed)
     pairs = sample_pairs(trials, rounds, seed=rng)
-    # Score both trials of every pair, then record which side is shown left and which one the model picks.
-    term_scores = score_rows(trials.loc[pairs["terminated"]], model)
-    comp_scores = score_rows(trials.loc[pairs["completed"]], model)
+
+    # Score both trials of every pair.
+    terminated_scores = score_rows(trials.loc[pairs["terminated"]], model)
+    completed_scores = score_rows(trials.loc[pairs["completed"]], model)
+
     game = []
-    for term, comp, term_score, comp_score in zip(pairs["terminated"], pairs["completed"], term_scores, comp_scores):
+    for i in range(len(pairs)):
+        # Which trial is on the left is random. Otherwise the player would learn that the left one is always
+        # the stopped trial.
+        if rng.random() < 0.5:
+            left = "terminated"
+        else:
+            left = "completed"
         game.append({
-            "terminated": int(term), "completed": int(comp),
-            "left": "terminated" if rng.random() < 0.5 else "completed",
-            "model_pick": model_pick(term_score, comp_score, rng),
+            "terminated": int(pairs["terminated"].iloc[i]),
+            "completed": int(pairs["completed"].iloc[i]),
+            "left": left,
+            "model_pick": model_pick(terminated_scores[i], completed_scores[i], rng),
         })
     return game
