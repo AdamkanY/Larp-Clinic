@@ -15,8 +15,8 @@ from sklearn.dummy import DummyClassifier
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-import horse_race  # noqa: E402
-import train  # noqa: E402
+import horse_race
+import train
 
 
 def test_time_ordered_folds():
@@ -51,9 +51,12 @@ def test_train_split_sorted_by_start_date():
     assert dates.is_monotonic_increasing
 
 
-def race(scores: dict) -> dict:
-    """Invented horses: {name: (tuned PR-AUC, spread)} in the shape horse_race.json uses."""
-    return {name: {"tuned": {"cv_pr_auc": pr, "cv_pr_auc_std": std}} for name, (pr, std) in scores.items()}
+def race(scores):
+    """Invented horses: {name: (tuned PR-AUC, spread)} becomes the form horse_race.json uses."""
+    horses = {}
+    for name, (pr_auc, spread) in scores.items():
+        horses[name] = {"tuned": {"cv_pr_auc": pr_auc, "cv_pr_auc_std": spread}}
+    return horses
 
 
 def test_verdict_clear_winner():
@@ -73,7 +76,8 @@ def test_verdict_tie_names_the_simplest():
 
 
 if __name__ == "__main__":
-    for name, test in list(globals().items()):
+    for name, test in sorted(globals().items()):
         if name.startswith("test_"):
             test()
-            print(f"ok  {name}")
+            print("ok", name)
+    print("all ok")
