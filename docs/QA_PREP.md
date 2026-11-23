@@ -25,7 +25,8 @@ same as a safety stop.
 **3. Where does the data come from?**
 The ClinicalTrials.gov API v2. `src/fetch_data.py` downloaded all interventional completed and terminated trials;
 `src/build_dataset.py` keeps those that started 2008-2019 (162,457). The "Find a trial" page calls the same API
-live for ongoing trials.
+live for ongoing trials. The "Explore the data" page reads the historical trials from a SQLite database with SQL
+(question 28).
 
 **4. What is data leakage, and how did you avoid it?**
 Leakage means the model sees information that would not be available at the time of the prediction, so it looks
@@ -129,7 +130,7 @@ a review-budget slider, a cost slider with the confusion matrix, the model race,
 (guess which of two trials was stopped, against the model).
 
 **20. How do you know the app works?**
-46 offline tests (`pytest tests`): the feature function, the predictions, the model protocol, the chart helpers and every page clicked
+47 offline tests (`pytest tests`): the feature function, the predictions, the model protocol, the database, the chart helpers and every page clicked
 through in Streamlit's test runner with the API mocked.
 
 ## Game questions (Raphael leads)
@@ -183,3 +184,15 @@ Umbrellas predict rain; handing out umbrellas does not make it rain (DSF deck 01
 Gradient boosting with native categories, `class_weight="balanced"`, isotonic calibration, permutation importance
 and the per-trial drivers. Each one has a one-sentence explanation in `docs/PREDICTION_PROTOCOL.md`; the team assigns
 one person per method who can explain it on the spot.
+
+**28. Where do you use a database, and why?**
+On "Explore the data". `src/database.py` turns the trials table into a SQLite database (`data/processed/trials.db`)
+with two tables: `trials` (one row per trial, primary key `nct_id`) and `trial_conditions` (one row per trial and
+condition, `nct_id` as foreign key). The second table exists because a record lists several conditions in one
+cell ("Asthma; COPD"); one value per cell is the first normal form (CS course 3.3). The page then asks SQL for its
+numbers: `WHERE` for the filters, `COUNT` and `AVG` for the key numbers, `GROUP BY` for the bars, a `JOIN` with
+`ORDER BY ... LIMIT 15` for the most common conditions, all through `pd.read_sql` (CS course 3.4.7). The filters go
+in as `?` parameters, never pasted into the SQL text, so typing `'; DROP TABLE trials; --` into the keyword box is
+just a search that finds nothing (no SQL injection). The folded box "Under the hood" at the bottom of the page shows
+every query. The model still trains from the parquet file: the database is for asking questions, the parquet for
+training.

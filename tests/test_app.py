@@ -19,7 +19,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
-from src import api_client, game, viz  # noqa: E402
+from src import api_client, database, game, viz  # noqa: E402
 from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS  # noqa: E402
 from src.labels import label  # noqa: E402
 
@@ -118,6 +118,44 @@ def test_gain_curve():
     assert curve["precision"].iloc[1] == 1.0 and curve["precision"].iloc[-1] == 0.4
     flat = viz.gain_curve([1, 0] * 50, [0.5] * 100, points=11)  # ties keep the input order: no head start
     assert np.allclose(flat["caught"], flat["reviewed"], atol=0.02)
+
+
+
+def test_database():
+    """The SQLite database gives the same numbers as the pandas helpers, splits conditions into rows and treats
+    filter text as data, never as SQL."""
+    with tempfile.TemporaryDirectory() as tmp:
+        parquet, db_path = Path(tmp) / "trials.parquet", Path(tmp) / "trials.db"
+        make_trials(parquet)
+        database.ensure_database(parquet, db_path)
+        df = viz.load_trials(parquet)
+        everything = database.TrialDatabase(db_path)
+        assert everything.summary() == {"n": 120, "rate": 0.25}
+        # Normal form: "Asthma; Pain" becomes two rows, so Pain is counted for all 120 trials, Asthma for 40.
+        top = everything.top_conditions(k=5).set_index("condition")["n"].to_dict()
+        assert top == {"Pain": 120, "Asthma": 40}
+        # Filters as SQL parameters give exactly the pandas filter's trials and rates.
+        filters = {"phases": ["Phase 2"], "sponsor_classes": ["Industry"], "year_range": (2010, 2012),
+                   "condition_kw": "asth"}
+        db = database.TrialDatabase(db_path, **filters)
+        expected = viz.filter_trials(df, ["Phase 2"], ["Industry"], (2010, 2012), "asth")
+        assert db.summary()["n"] == len(expected) == len(db.trials())
+        by_sql = db.rate_by("masking", viz.MASKING_ORDER)
+        by_pandas = viz.rate_by(expected, "masking", viz.MASKING_ORDER)
+        assert list(by_sql["masking"]) == list(by_pandas["masking"].astype(str))
+        assert np.allclose(by_sql["rate"], by_pandas["rate"])
+        # Every query was recorded for the page's SQL box, with "?" placeholders instead of the values.
+        assert all("?" in sql for purpose, sql, params in db.log) and "asth" not in " ".join(s for _, s, _ in db.log)
+        # A hostile keyword is only text: no match, and both tables are still there.
+        hostile = database.TrialDatabase(db_path, condition_kw="'; DROP TABLE trials; --")
+        assert hostile.summary()["n"] == 0 and everything.summary()["n"] == 120
+        # Column names cannot be parameters, so only the four known traits may be grouped by.
+        try:
+            db.rate_by("label; DROP TABLE trials")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an unknown column was accepted")
 
 
 class Response:

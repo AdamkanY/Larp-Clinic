@@ -143,6 +143,11 @@ Claude then wrote, on this branch:
 
 **[team]** Review the pull request before merging; say here what you changed.
 
+Then Simon asked about the grading criterion "API or database" and, after the explanation, for the database.
+Claude wrote, on the branch `sql-database` (on top of `course-alignment`): `src/database.py` (SQLite file with the
+tables `trials` and `trial_conditions`, keys and the first normal form, queries with `?` parameters), the Explore
+page reading its numbers with SQL and showing the queries in an "Under the hood" box, and tests for both.
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:

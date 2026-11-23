@@ -103,7 +103,8 @@ def test_home():
 
 
 def test_explore():
-    """Explore: key numbers, a filter that narrows them, and a message instead of an error when nothing matches."""
+    """Explore: key numbers, a filter that narrows them, a message instead of an error when nothing matches, and the
+    box with the SQL queries."""
     at = open_page("pages/3_Explore_Data.py")
     assert not at.exception and len(at.metric) == 3
     total = int(at.metric[0].value.replace(",", ""))
@@ -114,6 +115,10 @@ def test_explore():
     clear = [b for b in at.button if b.label == "Clear filters"][0]
     clear.click().run()
     assert int(at.metric[0].value.replace(",", "")) == total
+    # The SQL box lists the queries that made the numbers, with GROUP BY and the JOIN for the conditions.
+    assert any("Under the hood" in e.label for e in at.expander)
+    queries = " ".join(c.value for c in at.code)
+    assert "GROUP BY phase_label" in queries and "JOIN trials" in queries
 
 
 def test_explore_heatmap():

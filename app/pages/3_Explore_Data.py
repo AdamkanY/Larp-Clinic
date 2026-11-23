@@ -2,7 +2,9 @@
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Explore: interactive charts of historical COMPLETED vs TERMINATED trials (2008-2019).
 
-Descriptive only: no model is loaded here. Aggregations and figures live in `src/viz.py`.
+Descriptive only: no model is loaded here. The numbers come from the SQLite database `data/processed/trials.db`
+through SQL queries (`src/database.py`: WHERE for the filters, COUNT / AVG for the key numbers, GROUP BY for the
+bars, JOIN for the conditions); the figures live in `src/viz.py`. A folded box at the end shows every query.
 """
 
 import sys
@@ -16,7 +18,7 @@ for folder in (ROOT, ROOT / "app"):
     if str(folder) not in sys.path:
         sys.path.insert(0, str(folder))
 
-from src import viz  # noqa: E402
+from src import database, viz  # noqa: E402
 from ui import chart as show_chart, page_header, require_router  # noqa: E402
 
 require_router("pages/3_Explore_Data.py")
@@ -26,10 +28,21 @@ MAX_ROWS = 5000
 FILTER_KEYS = {"explore_phases": [], "explore_sponsors": [], "explore_condition": ""}
 
 
-@st.cache_data(show_spinner="Loading historical trials...")
-def get_trials():
-    """Load trials.parquet once per session/server; Streamlit caches the DataFrame."""
-    return viz.load_trials()
+@st.cache_resource(show_spinner="Preparing the trial database (first visit only, a few seconds)...")
+def get_database():
+    """Path of trials.db, built from trials.parquet on the first visit (or when the parquet is newer)."""
+    return database.ensure_database()
+
+
+@st.cache_data(show_spinner="Loading the matching trials...", max_entries=20)
+def matching_trials(phases, sponsors, years, condition_kw):
+    """The trials that pass the filters (one SQL SELECT ... WHERE), and that query for the SQL box.
+
+    Cached per filter combination, so moving between charts does not re-read the database.
+    """
+    db = database.TrialDatabase(get_database(), phases=phases, sponsor_classes=sponsors, year_range=years,
+                                condition_kw=condition_kw)
+    return db.trials(), db.log[-1]
 
 
 def reset_filters():
@@ -44,18 +57,22 @@ def chart(fig, caption):
     st.caption(caption)
 
 
-# Load the data once; without the file the page explains what is missing instead of failing.
+# Open the database once; without the trial data the page explains what is missing instead of failing.
 try:
-    df = get_trials()
+    db_path = get_database()
 except (FileNotFoundError, OSError):
     page_header("Explore the data")
     st.info("The trial data (data/processed/trials.parquet) is not available here, so there is nothing to chart yet.")
     st.stop()
 
-# The overall rate is the reference for every comparison on the page.
-overall = df["label"].mean()
+# The overall numbers and the filter choices, straight from SQL (no filters yet).
+overview = database.TrialDatabase(db_path)
+choices = overview.options()
+everything = overview.summary(filtered=False)
+total, overall = everything["n"], everything["rate"]
+y_min, y_max = choices["years"]
 page_header("Explore the data",
-            f"{len(df):,} past trials that started {df['start_year'].min()}-{df['start_year'].max()} and have ended. "
+            f"{total:,} past trials that started {y_min}-{y_max} and have ended. "
             f"{overall:.1%} of them were stopped early. Each bar shows how that share changes with one trait.")
 
 # ---- Filters ----
@@ -64,36 +81,39 @@ for key, default in FILTER_KEYS.items():
     st.session_state.setdefault(key, default)
 with st.container(key="panel_filters"):
     f1, f2, f3, f4 = st.columns([2, 2, 2, 2], vertical_alignment="bottom")
-    phase_options = [p for p in viz.PHASE_ORDER if p in set(df["phase_label"])]
+    phase_options = [p for p in viz.PHASE_ORDER if p in choices["phases"]]
     phases = f1.multiselect("Phase", phase_options, key="explore_phases", placeholder="All phases")
-    sponsor_options = df["sponsor_class"].value_counts().index.tolist()
-    sponsors = f2.multiselect("Sponsor", sponsor_options, key="explore_sponsors", placeholder="All sponsors")
-    y_min, y_max = int(df["start_year"].min()), int(df["start_year"].max())
+    sponsors = f2.multiselect("Sponsor", choices["sponsors"], key="explore_sponsors", placeholder="All sponsors")
     years = f3.slider("Start year", y_min, y_max, (y_min, y_max), key="explore_years")
     condition_kw = f4.text_input("Condition keyword", key="explore_condition", placeholder="e.g. breast cancer")
     narrowed = bool(phases or sponsors or condition_kw.strip() or years != (y_min, y_max))
     st.button("Clear filters", on_click=reset_filters, disabled=not narrowed)
 
-# Every chart below uses the filtered trials.
-filtered = viz.filter_trials(df, phases, sponsors, years, condition_kw)
+# Every query below applies the same filters: SQL does the counting, the WHERE clause the filtering. The full year
+# range is no filter, so it adds nothing to the queries.
+year_filter = tuple(years) if years != (y_min, y_max) else None
+db = database.TrialDatabase(db_path, phases=phases, sponsor_classes=sponsors, year_range=year_filter,
+                            condition_kw=condition_kw)
+shown = db.summary()
+filtered, trials_query = matching_trials(tuple(phases), tuple(sponsors), year_filter, condition_kw)
 
 # ---- Key numbers ----
 k1, k2, k3 = st.columns(3)
-k1.metric("Trials shown", f"{len(filtered):,}", help=f"Out of {len(df):,} trials in total.")
-if len(filtered):
-    rate = filtered["label"].mean()
+k1.metric("Trials shown", f"{shown['n']:,}", help=f"Out of {total:,} trials in total.")
+if shown["n"]:
+    rate = shown["rate"]
     # Only compare with all trials once a filter actually narrows the selection.
-    delta = f"{(rate - overall) * 100:+.1f} points vs all trials" if len(filtered) < len(df) else None
+    delta = f"{(rate - overall) * 100:+.1f} points vs all trials" if shown["n"] < total else None
     k2.metric("Stopped early", f"{rate:.1%}", delta=delta, delta_color="inverse")
 else:
     k2.metric("Stopped early", "-")
-k3.metric("All trials", f"{overall:.1%}", help=f"Share stopped early across all {len(df):,} trials, for comparison.")
+k3.metric("All trials", f"{overall:.1%}", help=f"Share stopped early across all {total:,} trials, for comparison.")
 
-if filtered.empty:
+if not shown["n"]:
     st.warning("No trials match these filters. Widen the year range or clear a filter.")
     st.stop()
 # The dashed average line in the bar charts is the average of the trials shown, not of all trials.
-average = filtered["label"].mean()
+average = shown["rate"]
 
 # ---- Design factors ----
 st.subheader("Which kinds of trials get stopped more often?")
@@ -101,21 +121,21 @@ st.caption("The dashed line is the average of the trials shown. Faded bars rest 
            f"{viz.MIN_GROUP_N} trials and are not reliable.")
 c1, c2 = st.columns(2)
 with c1:
-    stats = viz.rate_by(filtered, "phase_label", viz.PHASE_ORDER)
+    stats = db.rate_by("phase_label", viz.PHASE_ORDER)  # SQL: GROUP BY phase_label
     chart(viz.rate_bar(stats, "phase_label", "Phase", average),
           f"By phase. {viz.extremes(stats, 'phase_label')} \"No phase\" means trials without a drug-development "
           "phase, such as behavioural studies.")
 with c2:
-    stats = viz.rate_by(filtered, "sponsor_class")
+    stats = db.rate_by("sponsor_class")  # SQL: GROUP BY sponsor_class
     chart(viz.rate_bar(stats, "sponsor_class", "Lead sponsor", average),
           f"By who runs the trial. {viz.extremes(stats, 'sponsor_class')}")
 c3, c4 = st.columns(2)
 with c3:
-    stats = viz.rate_by(filtered, "masking", viz.MASKING_ORDER)
+    stats = db.rate_by("masking", viz.MASKING_ORDER)  # SQL: GROUP BY masking
     chart(viz.rate_bar(stats, "masking", "Blinding", average),
           f"By how many people were kept unaware of the treatment (blinding). {viz.extremes(stats, 'masking')}")
 with c4:
-    stats = viz.rate_by(filtered, "allocation", viz.ALLOCATION_ORDER)
+    stats = db.rate_by("allocation", viz.ALLOCATION_ORDER)  # SQL: GROUP BY allocation
     chart(viz.rate_bar(stats, "allocation", "Allocation", average),
           f"By how participants were assigned to groups. {viz.extremes(stats, 'allocation')}")
 
@@ -150,7 +170,7 @@ st.subheader("Conditions and eligibility")
 c5, c6 = st.columns([3, 2])
 with c5:
     st.markdown("**The 15 most common conditions**")
-    chart(viz.conditions_bar(filtered),
+    chart(viz.conditions_bar(filtered, stats=db.top_conditions()),  # SQL: JOIN + GROUP BY + LIMIT
           "Each bar is the share stopped early; the label adds how many trials it rests on.")
 with c6:
     st.markdown("**Length of the eligibility criteria**")
@@ -182,3 +202,16 @@ st.dataframe(
         "overall_status": "Result",
     },
 )
+
+# ---- Under the hood ----
+# Every SQL query this page just ran, with its parameters, so anyone can see (and copy) how the numbers are made.
+with st.expander("Under the hood: the SQL queries behind this page"):
+    st.write(
+        "The numbers on this page come from a small SQLite database (`data/processed/trials.db`) with two tables: "
+        "`trials` (one row per trial, key `nct_id`) and `trial_conditions` (one row per trial and condition, so "
+        "one cell never holds a list). Your filters go into each query as parameters (the `?`), never into the SQL "
+        "text itself. These are the queries for your current filters:"
+    )
+    for purpose, sql, params in overview.log + db.log + [trials_query]:
+        st.markdown(f"**{purpose}**" + (f" (parameters: {params})" if params else ""))
+        st.code(sql, language="sql", wrap_lines=True)
