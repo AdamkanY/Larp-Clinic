@@ -1,47 +1,37 @@
 # AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Train the models on the train split and save them to ``models/``.
+"""Train the models on the training trials and save them in models/.
 
-Models (every preprocessing step is fitted inside a Pipeline, so on train folds
-only):
+The three models:
 
-* ``baseline_lr``: LogisticRegression(class_weight='balanced').
-  numeric -> median impute + standardise; 0/1 flags -> most-frequent impute;
-  categorical -> most-frequent impute + one-hot.
-* ``gbm_uncalibrated``: HistGradientBoostingClassifier(class_weight='balanced')
-  with native categorical splits. Categories are ordinal-coded (unseen ones
-  become missing) and missing values are left for the trees to route.
-* ``gbm`` (the app model): the tuned ``gbm_uncalibrated`` pipeline wrapped in
-  ``CalibratedClassifierCV(method='isotonic')`` with 5 shuffled stratified folds,
-  fitted on train. Each fold fits the pipeline on 4/5 of train and an isotonic
-  map on the remaining 1/5; predictions average the 5 calibrated copies.
+* baseline_lr: logistic regression. Numbers get the median for gaps and are scaled, 0/1 flags get the most
+  common value for gaps, categories are one-hot encoded.
+* gbm_uncalibrated: gradient boosting (HistGradientBoostingClassifier). It can read categories and gaps
+  directly, so categories only get a number code.
+* gbm (the model of the app): the tuned gbm_uncalibrated with isotonic calibration on top, so that its
+  percentages match what really happened.
 
-Inputs are one of the ``FEATURE_SETS`` below (default ``APP_FEATURE_SET``, the
-set of the model the app loads); meta and display columns
-(``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date, split, titles,
-conditions, sponsor name, phase label) never reach a model.
+All preparation steps sit inside a scikit-learn Pipeline. That way they are learned from the training part of
+every fold only. The models never see ids, titles, dates or the label (NON_FEATURE_COLUMNS in features.py).
 
-Protocol: the train split is sorted by start date and every model choice uses
-time-ordered cross-validation (``TimeSeriesSplit``, an expanding window: each
-fold trains on the earlier trials and validates on the next block of later
-ones, never the other way round; DSF decks 10 and 16). Hyperparameters are
-picked by that CV (refit on PR-AUC); calibration adds no tuned parameters.
-Every model also gets out-of-fold (OOF) predictions on the validation blocks
-(the later 5/6 of train; the first block is never validated): the decision
-threshold is the one that maximises F1 on them, and the calibrated model's OOF
-scores are saved as ``models/score_reference.npy`` for ``predict.percentile``. The typical train
-trial (median of every number and flag, most common value of every category)
-is saved as ``models/explain_reference.json`` for ``predict.explain``. The test split
-(start 2017-2019) is scored only by ``evaluate.evaluate_saved``, after every
-model is saved.
+How we keep the evaluation honest:
+
+* The training trials are sorted by start date. Every choice uses time-ordered cross-validation
+  (TimeSeriesSplit): train on the earlier trials, check on the next block of later ones, never the other way
+  round (DSF decks 10 and 16).
+* The settings of each model are picked by that cross-validation (best PR-AUC).
+* Every model also scores the blocks it was checked on ("out-of-fold" scores). From them we pick the yes/no
+  threshold (best F1), and the calibrated model's scores are saved as models/score_reference.npy for
+  predict.percentile(). The first block is only ever used for training, so it has no such score.
+* The typical training trial is saved as models/explain_reference.json for predict.explain().
+* The test trials (start 2017-2019) are scored only at the very end, by evaluate.evaluate_saved().
 
 Usage:
-    python src/train.py                 # app models (feature set v1), ~5-10 min on 4 cores
-    python src/train.py --features v2   # GBM with condition categories, saved as
-                                        # gbm_v2 / gbm_uncalibrated_v2, app files untouched
+    python src/train.py                 # the app models (feature set v1), about 5-10 minutes
+    python src/train.py --features v2   # gradient boosting with the condition categories, saved as
+                                        # gbm_v2 / gbm_uncalibrated_v2; the app files stay untouched
 """
 
-import argparse
 import json
 import platform
 import sys
@@ -60,17 +50,16 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
-from sklearn.model_selection import (GridSearchCV, ParameterGrid, StratifiedKFold,
-                                     TimeSeriesSplit)
+from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold, TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
+# The other files of src/ are imported by their plain name.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import evaluate  # noqa: E402
-from features import (BINARY_FEATURES, CATEGORICAL_FEATURES,  # noqa: E402
-                      CONDITION_FEATURES, FEATURE_COLUMNS, LABELS,
+import evaluate
+from features import (BINARY_FEATURES, CATEGORICAL_FEATURES, CONDITION_FEATURES, FEATURE_COLUMNS, LABELS,
                       NON_FEATURE_COLUMNS, NUMERIC_FEATURES)
-from predict import to_model_frame  # noqa: E402
+from predict import to_model_frame
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "processed" / "trials.parquet"
@@ -78,36 +67,33 @@ MODELS_DIR = ROOT / "models"
 SCORE_REFERENCE_PATH = MODELS_DIR / "score_reference.npy"
 EXPLAIN_REFERENCE_PATH = MODELS_DIR / "explain_reference.json"
 
-# Must match src/build_dataset.py; check_dataset() fails loudly if they drift.
+# First and last start date of each split. Must be the same as in build_dataset.py; check_dataset() stops the
+# run if the data file does not fit.
 SPLITS = {
     "train": (pd.Timestamp("2008-01-01"), pd.Timestamp("2016-12-31")),
     "test": (pd.Timestamp("2017-01-01"), pd.Timestamp("2019-12-31")),
 }
-# v1: the 29 original design features. v2: plus the keyword condition categories
-# of features.condition_features. Both are trained with the same protocol; the
-# app switches to v2 only if it raises the calibrated GBM's test ROC-AUC by at
-# least +0.005 and CV agrees (rule fixed before the first v2 run, see
-# models/CLAUDE.md for the numbers). FEATURE_COLUMNS (what build_features returns and the parquet
-# holds) is the superset; each model records its own inputs, see
-# predict.model_features.
-FEATURE_SETS = {
-    "v1": [c for c in FEATURE_COLUMNS if c not in CONDITION_FEATURES],
-    "v2": list(FEATURE_COLUMNS),
-}
+
+# v1: the 29 original design features. v2: v1 plus the condition categories. Both are trained the same way.
+# Rule we fixed before the first v2 run: the app only switches to v2 if it raises the test ROC-AUC of the
+# calibrated model by at least 0.005 and the cross-validation agrees (numbers in models/CLAUDE.md).
+FEATURES_V1 = []
+for column in FEATURE_COLUMNS:
+    if column not in CONDITION_FEATURES:
+        FEATURES_V1.append(column)
+FEATURE_SETS = {"v1": FEATURES_V1, "v2": list(FEATURE_COLUMNS)}
 APP_FEATURE_SET = "v1"
 
 RANDOM_STATE = 42
 CV_FOLDS = 5
-REFIT_METRIC = "average_precision"  # PR-AUC: the metric that matters at ~11% positives
+REFIT_METRIC = "average_precision"  # PR-AUC, the metric that matters when only about 11% are positive
 CALIBRATION_METHOD = "isotonic"
-# Calibration only maps scores to observed rates and tunes nothing, so it keeps
-# shuffled folds (as before the switch to time-ordered CV); the train rows are
-# now sorted by date, so unshuffled folds would each calibrate on one era.
+# Calibration only maps scores to observed rates and tunes nothing, so it uses shuffled folds. The training
+# rows are sorted by date, so folds without shuffling would each calibrate on one era only.
 CALIBRATION_CV = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
-# Small grids on purpose: this is a baseline, and every extra cell is another
-# chance to overfit the CV folds. Both grids turned out flat (all cells within
-# one CV standard deviation), so widening them buys nothing.
+# The settings we try. Small on purpose: every extra setting is one more chance to fit the folds by luck. Both
+# grids turned out flat (all settings within one standard deviation), so bigger grids would not help.
 PARAM_GRIDS = {
     "baseline_lr": {"clf__C": [0.001, 0.01, 0.1, 1.0, 10.0]},
     "gbm": {
@@ -118,23 +104,36 @@ PARAM_GRIDS = {
 }
 
 
-def check_dataset(df: pd.DataFrame) -> None:
-    """Fail if the parquet breaks the label, date-window or split rules.
+# ---------------------------------------------------------------------------------------------------------------
+# Loading the data
+# ---------------------------------------------------------------------------------------------------------------
 
-    Cheap insurance against training on a stale or hand-edited
-    ``trials.parquet``, or against a display column slipping into the
-    feature list.
+def check_dataset(df):
+    """Stop with an error if the data file breaks the label, date or split rules.
+
+    This protects us from training on an old or hand-edited trials.parquet, and from a display column that
+    ends up in the feature list by mistake.
     """
+    # No column may be a feature and a meta/display column at the same time.
     overlap = set(FEATURE_COLUMNS) & set(NON_FEATURE_COLUMNS)
     if overlap:
         raise ValueError(f"Meta/display columns listed as features: {sorted(overlap)}")
-    missing = [c for c in FEATURE_COLUMNS + ["label", "start_date", "split"] if c not in df]
+
+    # All columns we need must be there.
+    missing = []
+    for column in FEATURE_COLUMNS + ["label", "start_date", "split"]:
+        if column not in df:
+            missing.append(column)
     if missing:
         raise ValueError(f"trials.parquet lacks columns: {missing}")
+
+    # Only finished trials, and the label must fit the status.
     if not set(df["overall_status"]) <= set(LABELS):
         raise ValueError(f"Unexpected statuses: {set(df['overall_status']) - set(LABELS)}")
     if not (df["overall_status"].map(LABELS) == df["label"]).all():
         raise ValueError("label does not match overall_status (TERMINATED=1, COMPLETED=0)")
+
+    # The split column must fit the start dates.
     for split, (start, end) in SPLITS.items():
         in_window = df["start_date"].between(start, end)
         if not (in_window == (df["split"] == split)).all():
@@ -142,45 +141,59 @@ def check_dataset(df: pd.DataFrame) -> None:
                              f"..{end:%Y-%m-%d}; rebuild with src/build_dataset.py")
 
 
-def load_split(split: str, df: pd.DataFrame = None, features=None) -> tuple:
-    """Load one split as (X, y), with X holding only model input columns.
+def load_split(split, df=None, features=None):
+    """Load "train" or "test" as (X, y). X only has model input columns, y is the label (1 = stopped early).
 
-    Args:
-        split: "train" or "test".
-        df: the already loaded parquet; read (and checked) from disk if omitted.
-        features: the input columns; defaults to the app's feature set.
+    Without df the data file is read from disk. Without features the app's feature set is used.
     """
-    # Every load goes through check_dataset, so a stale or hand-edited parquet stops the training run.
+    # Every load is checked, so a wrong data file stops the run.
     if df is None:
         df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
-    # Sorted by start date (NCT number breaks ties), so the time-ordered CV folds of make_cv run from old to new.
+    if features is None:
+        features = FEATURE_SETS[APP_FEATURE_SET]
+
+    # Sorted by start date (the trial number decides ties), so the folds of make_cv() run from old to new.
     part = df[df["split"] == split].sort_values(["start_date", "nct_id"], kind="stable")
-    features = FEATURE_SETS[APP_FEATURE_SET] if features is None else features
-    return to_model_frame(part, features), part["label"].to_numpy(dtype=int)
+    X = to_model_frame(part, features)
+    y = part["label"].to_numpy(dtype=int)
+    return X, y
 
 
-def split_features(features) -> dict:
-    """The categorical / binary / numeric parts of a feature list, in FEATURE_COLUMNS order."""
-    return {"categorical": [c for c in CATEGORICAL_FEATURES if c in features],
-            "binary": [c for c in BINARY_FEATURES if c in features],
-            "numeric": [c for c in NUMERIC_FEATURES if c in features]}
+def split_features(features):
+    """Sort a list of feature names into its categorical, binary and numeric columns."""
+    parts = {"categorical": [], "binary": [], "numeric": []}
+    for column in CATEGORICAL_FEATURES:
+        if column in features:
+            parts["categorical"].append(column)
+    for column in BINARY_FEATURES:
+        if column in features:
+            parts["binary"].append(column)
+    for column in NUMERIC_FEATURES:
+        if column in features:
+            parts["numeric"].append(column)
+    return parts
 
 
-def build_lr_pipeline(features=None) -> Pipeline:
-    """Logistic regression with imputation, scaling and one-hot encoding.
+# ---------------------------------------------------------------------------------------------------------------
+# The models
+# ---------------------------------------------------------------------------------------------------------------
 
-    Args:
-        features: input columns; defaults to the app's feature set.
-    """
-    # Logistic regression needs numbers only: impute and scale numbers, impute flags, one-hot encode categories.
-    parts = split_features(FEATURE_SETS[APP_FEATURE_SET] if features is None else features)
+def build_lr_pipeline(features=None):
+    """Logistic regression with the preparation it needs (fill gaps, scale, one-hot). Not fitted yet."""
+    if features is None:
+        features = FEATURE_SETS[APP_FEATURE_SET]
+    parts = split_features(features)
+
+    # Numbers: fill gaps with the median, then scale to mean 0 and standard deviation 1.
     numeric = Pipeline([("impute", SimpleImputer(strategy="median")),
                         ("scale", StandardScaler())])
-    # Flags stay 0/1 (no scaling) so their coefficients read as "flag on vs off".
+    # Flags stay 0/1 (no scaling), so a coefficient reads as "flag on compared with flag off".
     binary = SimpleImputer(strategy="most_frequent")
+    # Categories: fill gaps with the most common value, then one 0/1 column per value.
     categorical = Pipeline([("impute", SimpleImputer(strategy="most_frequent")),
                             ("onehot", OneHotEncoder(handle_unknown="ignore"))])
+
     prep = ColumnTransformer([("num", numeric, parts["numeric"]),
                               ("bin", binary, parts["binary"]),
                               ("cat", categorical, parts["categorical"])],
@@ -189,25 +202,31 @@ def build_lr_pipeline(features=None) -> Pipeline:
     return Pipeline([("prep", prep), ("clf", clf)])
 
 
-def build_gbm_pipeline(drop=(), features=None) -> Pipeline:
-    """Histogram gradient boosting with native categorical splits.
+def build_gbm_pipeline(drop=(), features=None):
+    """Gradient boosting with the little preparation it needs. Not fitted yet.
 
-    Args:
-        drop: feature names to leave out (used by the ablations in
-            ``evaluate.py``); the default uses every feature of the set.
-        features: input columns; defaults to the app's feature set.
+    drop is a list of feature names to leave out. Only the ablations in evaluate.py use it.
     """
-    parts = split_features(FEATURE_SETS[APP_FEATURE_SET] if features is None else features)
-    # Gradient boosting reads categories natively, so they are only ordinal-coded; numbers pass through unchanged.
-    categorical = [c for c in parts["categorical"] if c not in drop]
-    other = [c for c in parts["binary"] + parts["numeric"] if c not in drop]
-    # Unseen categories at scoring time (e.g. a new API enum value) become
-    # missing instead of crashing the app.
+    if features is None:
+        features = FEATURE_SETS[APP_FEATURE_SET]
+    parts = split_features(features)
+
+    categorical = []
+    for column in parts["categorical"]:
+        if column not in drop:
+            categorical.append(column)
+    other = []
+    for column in parts["binary"] + parts["numeric"]:
+        if column not in drop:
+            other.append(column)
+
+    # Categories only get a number code. A category the model never saw (for example a new API value) becomes
+    # "missing" instead of crashing the app. Numbers and flags pass through unchanged.
     encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan,
                              encoded_missing_value=np.nan)
     prep = ColumnTransformer([("cat", encoder, categorical), ("num", "passthrough", other)],
                              verbose_feature_names_out=False).set_output(transform="pandas")
-    # Early stopping holds out 10% of each *training* fold, never test data.
+    # Early stopping holds back 10% of the trials it is TRAINED on to decide when to stop, never test trials.
     clf = HistGradientBoostingClassifier(
         class_weight="balanced", categorical_features=categorical,
         max_iter=1000, early_stopping=True, n_iter_no_change=20,
@@ -215,20 +234,27 @@ def build_gbm_pipeline(drop=(), features=None) -> Pipeline:
     return Pipeline([("prep", prep), ("clf", clf)])
 
 
-def explain_reference(X_train: pd.DataFrame) -> dict:
-    """The "typical training trial" that ``predict.explain`` compares a trial with.
+def build_calibrated(base):
+    """Put isotonic calibration around a fresh copy of a tuned pipeline. Not fitted yet.
 
-    Numbers and 0/1 flags take their train median (for a flag: the more common
-    value), categories their most common value. Missing values are ignored, so
-    the reference is always a complete, ordinary design.
+    Calibration learns, on held-out folds, which real share of stopped trials belongs to which model score.
+    This undoes the upward push of class_weight="balanced" and does not change the order of the trials.
     """
-    # The typical training trial, used by predict.explain as the point every factor is compared with.
+    return CalibratedClassifierCV(clone(base), method=CALIBRATION_METHOD, cv=CALIBRATION_CV)
+
+
+def explain_reference(X_train):
+    """The "typical training trial" that predict.explain() compares a trial with.
+
+    Numbers and 0/1 flags take the median of the training trials, categories their most common value. Gaps are
+    ignored, so the typical trial is always a complete, ordinary design.
+    """
     values = {}
-    for col in FEATURE_COLUMNS:
-        if col in CATEGORICAL_FEATURES:
-            values[col] = str(X_train[col].mode(dropna=True).iloc[0])
+    for column in FEATURE_COLUMNS:
+        if column in CATEGORICAL_FEATURES:
+            values[column] = str(X_train[column].mode(dropna=True).iloc[0])
         else:
-            values[col] = float(X_train[col].median(skipna=True))
+            values[column] = float(X_train[column].median(skipna=True))
     return {
         "contents": "median (numbers, 0/1 flags) or most common value (categories) of "
                     "every feature on the train split (start 2008-2016)",
@@ -237,101 +263,94 @@ def explain_reference(X_train: pd.DataFrame) -> dict:
     }
 
 
-def build_calibrated(base: Pipeline) -> CalibratedClassifierCV:
-    """Isotonic calibration around an (unfitted copy of a) tuned pipeline.
+# ---------------------------------------------------------------------------------------------------------------
+# Cross-validation
+# ---------------------------------------------------------------------------------------------------------------
 
-    Isotonic regression learns a monotone map from the model's score to the
-    observed terminated rate on held-out folds, which undoes the upward push
-    of ``class_weight='balanced'`` without changing how trials are ranked.
-    """
-    return CalibratedClassifierCV(clone(base), method=CALIBRATION_METHOD, cv=CALIBRATION_CV)
+def make_cv():
+    """The one way of cutting the training trials into folds, used for everything (tuning, thresholds, race).
 
-
-BUILDERS = {"baseline_lr": build_lr_pipeline, "gbm": build_gbm_pipeline}
-# Tuned name -> saved name. The tuned GBM is saved as gbm_uncalibrated; "gbm"
-# is reserved for its calibrated version, the model the app loads.
-SAVED_NAMES = {"baseline_lr": "baseline_lr", "gbm": "gbm_uncalibrated"}
-
-
-def make_cv() -> TimeSeriesSplit:
-    """The one CV splitter for tuning, OOF predictions, ablations and the horse race.
-
-    ``TimeSeriesSplit`` cuts the date-sorted train split into 6 blocks of equal
-    size. Fold k trains on blocks 1..k and validates on block k+1, so the model
-    is always checked on trials that started later than the ones it learned
-    from, the way it meets new trials in the app (an expanding window, DSF deck
-    10). A shuffled K-fold would let it learn from 2016 trials to predict 2009
-    ones, which DSF deck 16 rules out for data over time.
+    TimeSeriesSplit cuts the date-sorted training trials into 6 blocks of equal size. Fold k trains on blocks
+    1 to k and checks on block k+1. So the model is always checked on trials that started later than the ones
+    it learned from, like in the app (DSF deck 10). A shuffled K-fold would let it learn from 2016 trials to
+    predict 2009 ones, which DSF deck 16 rules out for data over time.
     """
     return TimeSeriesSplit(n_splits=CV_FOLDS)
 
 
-def tune(name: str, X, y, cv) -> GridSearchCV:
-    """Grid-search one model with time-ordered CV on train and refit on all of train.
+def tune(pipeline, grid, X, y, cv):
+    """Try every setting of the grid with cross-validation, then fit the best one on all training trials.
 
-    The model's inputs are the columns of ``X``.
+    Both metrics are recorded, PR-AUC picks the winner.
     """
-    # Grid search with time-ordered CV on the training trials only; both metrics are recorded, PR-AUC picks the
-    # winner.
-    search = GridSearchCV(BUILDERS[name](features=list(X.columns)), PARAM_GRIDS[name], cv=cv,
+    search = GridSearchCV(pipeline, grid, cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
                           refit=REFIT_METRIC, n_jobs=-1)
     search.fit(X, y)
     return search
 
 
-def cv_summary(search: GridSearchCV) -> dict:
-    """Best parameters and the CV scores of every grid cell, for the metrics JSON."""
-    res, best = search.cv_results_, search.best_index_
-    # The spread across folds is kept for every cell, so the horse race can compare gaps with it.
-    grid = [{"params": {k.removeprefix("clf__"): v for k, v in params.items()},
-             "cv_roc_auc": float(res["mean_test_roc_auc"][i]),
-             "cv_roc_auc_std": float(res["std_test_roc_auc"][i]),
-             "cv_pr_auc": float(res["mean_test_average_precision"][i]),
-             "cv_pr_auc_std": float(res["std_test_average_precision"][i])}
-            for i, params in enumerate(res["params"])]
+def without_prefix(params):
+    """{"clf__C": 1.0} -> {"C": 1.0}. The "clf__" only tells the pipeline which step a setting belongs to."""
+    plain = {}
+    for key, value in params.items():
+        plain[key.removeprefix("clf__")] = value
+    return plain
+
+
+def cv_summary(search):
+    """The best settings and the cross-validation scores of every setting, for the metrics file."""
+    results = search.cv_results_
+    best = search.best_index_
+
+    # One entry per setting. The spread across the folds is kept too, the horse race compares gaps with it.
+    grid = []
+    for i, params in enumerate(results["params"]):
+        grid.append({
+            "params": without_prefix(params),
+            "cv_roc_auc": float(results["mean_test_roc_auc"][i]),
+            "cv_roc_auc_std": float(results["std_test_roc_auc"][i]),
+            "cv_pr_auc": float(results["mean_test_average_precision"][i]),
+            "cv_pr_auc_std": float(results["std_test_average_precision"][i]),
+        })
+
     return {
         "scheme": f"TimeSeriesSplit(n_splits={CV_FOLDS}) on the train split sorted by start "
                   "date (expanding window: train on earlier trials, validate on the next block)",
         "refit_metric": "pr_auc",
-        "best_params": {k.removeprefix("clf__"): v for k, v in search.best_params_.items()},
-        "best_roc_auc_mean": float(res["mean_test_roc_auc"][best]),
-        "best_roc_auc_std": float(res["std_test_roc_auc"][best]),
-        "best_pr_auc_mean": float(res["mean_test_average_precision"][best]),
-        "best_pr_auc_std": float(res["std_test_average_precision"][best]),
+        "best_params": without_prefix(search.best_params_),
+        "best_roc_auc_mean": float(results["mean_test_roc_auc"][best]),
+        "best_roc_auc_std": float(results["std_test_roc_auc"][best]),
+        "best_pr_auc_mean": float(results["mean_test_average_precision"][best]),
+        "best_pr_auc_std": float(results["std_test_average_precision"][best]),
         "grid": grid,
     }
 
 
-def time_ordered_predictions(estimator, X, y, cv) -> tuple:
-    """Scores of every validation block of the time-ordered CV, from a copy that only saw earlier trials.
+def time_ordered_predictions(estimator, X, y, cv):
+    """Scores for every block the model is checked on, each from a copy that only saw earlier trials.
 
-    ``cross_val_predict`` cannot do this: it needs every row in exactly one
-    validation fold, and the first block of an expanding window is only ever
-    used for training. So the folds are run by hand.
-
-    Returns:
-        (proba, labels): the validation scores and the matching labels, in date order.
+    scikit-learn's cross_val_predict cannot do this, because it wants every row to be checked exactly once and
+    our first block is only used for training. So we run the folds by hand.
+    Returns (scores, labels) of the checked rows, in date order.
     """
-    probas, labels = [], []
-    # One fit per fold: train on the earlier blocks, score the next block.
-    for train_idx, valid_idx in cv.split(X, y):
-        model = clone(estimator).fit(X.iloc[train_idx], y[train_idx])
-        probas.append(model.predict_proba(X.iloc[valid_idx])[:, 1])
-        labels.append(y[valid_idx])
-    return np.concatenate(probas), np.concatenate(labels)
+    scores = []
+    labels = []
+    for train_rows, check_rows in cv.split(X, y):
+        model = clone(estimator)
+        model.fit(X.iloc[train_rows], y[train_rows])
+        scores.append(model.predict_proba(X.iloc[check_rows])[:, 1])
+        labels.append(y[check_rows])
+    return np.concatenate(scores), np.concatenate(labels)
 
 
-def out_of_fold(estimator, X, y, cv) -> tuple:
-    """OOF probabilities on the validation blocks and the F1-max threshold chosen on them.
+def out_of_fold(estimator, X, y, cv):
+    """Out-of-fold scores of the training trials and the yes/no threshold with the best F1 on them.
 
-    Every scored train trial is scored by a copy of ``estimator`` that never
-    saw it and learned only from earlier trials, so the threshold (and the
-    percentile reference) are not fitted to their own data. For the calibrated
-    model this is nested: 5 time-ordered outer folds, each running its own
-    5-fold calibration inside its training window.
+    Every scored trial gets its score from a copy of the model that never saw it and only learned from earlier
+    trials. So the threshold (and the reference for the percentile) is not fitted to its own data, and the
+    test years stay untouched. Returns (scores, information about the threshold).
     """
-    # Out-of-fold scores on the training trials give an honest threshold without touching the test years.
     oof, y_oof = time_ordered_predictions(estimator, X, y, cv)
     threshold, oof_f1 = evaluate.best_f1_threshold(y_oof, oof)
     info = {
@@ -347,8 +366,12 @@ def out_of_fold(estimator, X, y, cv) -> tuple:
     return oof, info
 
 
-def split_summary(df: pd.DataFrame) -> dict:
-    """Split rule and observed size / base rate per split, for the metrics JSON."""
+# ---------------------------------------------------------------------------------------------------------------
+# Saving
+# ---------------------------------------------------------------------------------------------------------------
+
+def split_summary(df):
+    """The split rule and the size and share of stopped trials per split, for the metrics file."""
     out = {"rule": "by start_date, never random"}
     for split, (start, end) in SPLITS.items():
         part = df[df["split"] == split]
@@ -363,15 +386,20 @@ def split_summary(df: pd.DataFrame) -> dict:
     return out
 
 
-def model_details(model) -> dict:
-    """Estimator facts worth keeping next to the model file."""
+def model_details(model):
+    """A few facts about a fitted model that are worth keeping next to the model file."""
+    # The calibrated model holds one fitted pipeline per calibration fold.
     if isinstance(model, CalibratedClassifierCV):
-        folds = [c.estimator.named_steps["clf"] for c in model.calibrated_classifiers_]
+        iterations = []
+        for calibrated in model.calibrated_classifiers_:
+            iterations.append(int(calibrated.estimator.named_steps["clf"].n_iter_))
         return {"estimator": "CalibratedClassifierCV(HistGradientBoostingClassifier)",
                 "class_weight": "balanced (inside each fold's pipeline)",
                 "calibration_method": model.method,
-                "n_calibration_folds": len(folds),
-                "n_iter_per_fold": [int(f.n_iter_) for f in folds]}
+                "n_calibration_folds": len(iterations),
+                "n_iter_per_fold": iterations}
+
+    # A plain pipeline: gradient boosting or logistic regression.
     clf = model.named_steps["clf"]
     details = {"estimator": type(clf).__name__, "class_weight": "balanced"}
     if isinstance(clf, HistGradientBoostingClassifier):
@@ -381,12 +409,17 @@ def model_details(model) -> dict:
     return details
 
 
-def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
-         feature_set: str, extra: dict = None) -> None:
-    """Write ``models/<name>.joblib`` and the training part of its metrics JSON."""
-    # Save the fitted model and a metrics file that records how it was made (split, features, CV, threshold).
+def save(name, model, df, cv_info, threshold, feature_set, extra=None):
+    """Write models/<name>.joblib and a metrics file that records how the model was made.
+
+    evaluate.py later adds the test results to the same metrics file.
+    """
     features = FEATURE_SETS[feature_set]
     joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
+
+    feature_info = {"all": features}
+    feature_info.update(split_features(features))
+
     report = {
         "model": name,
         "model_file": f"models/{name}.joblib",
@@ -396,107 +429,139 @@ def save(name: str, model, df: pd.DataFrame, cv_info: dict, threshold: dict,
         "label": {"TERMINATED": 1, "COMPLETED": 0},
         "split": split_summary(df),
         "feature_set": feature_set,
-        "features": {"all": features, **split_features(features)},
-        **model_details(model),
-        "cv": cv_info,
-        "threshold": threshold,
-        **(extra or {}),
+        "features": feature_info,
     }
-    evaluate.metrics_path(name).write_text(json.dumps(report, indent=2) + "\n",
-                                           encoding="utf-8")
+    report.update(model_details(model))
+    report["cv"] = cv_info
+    report["threshold"] = threshold
+    if extra:
+        report.update(extra)
+
+    text = json.dumps(report, indent=2) + "\n"
+    evaluate.metrics_path(name).write_text(text, encoding="utf-8")
 
 
-def main(feature_set: str = APP_FEATURE_SET) -> None:
-    """Tune, fit and save the models of one feature set, then evaluate them once on test.
+# ---------------------------------------------------------------------------------------------------------------
+# The whole training run
+# ---------------------------------------------------------------------------------------------------------------
 
-    The app's feature set writes the usual files (``gbm.joblib`` and friends) and
-    trains the logistic regression baseline too; any other set trains only the
-    GBM and saves it with the set as suffix (``gbm_v2.joblib``,
-    ``gbm_uncalibrated_v2.joblib``, ``score_reference_v2.npy``), so a comparison
-    run never replaces the app model.
+def tune_and_save(name, saved_name, pipeline, X_train, y_train, cv, df, feature_set):
+    """Step 1 for one model: tune it, pick its threshold and save it. Returns (fitted model, CV numbers)."""
+    start_time = time.time()
+    grid = PARAM_GRIDS[name]
+    print(f"\n--- {name}: grid search ({len(ParameterGrid(grid))} "
+          f"settings x {CV_FOLDS} time-ordered folds on train) ---")
+    search = tune(pipeline, grid, X_train, y_train, cv)
+    cv_info = cv_summary(search)
+    print(f"best {cv_info['best_params']}  CV ROC-AUC {cv_info['best_roc_auc_mean']:.4f}"
+          f" ± {cv_info['best_roc_auc_std']:.4f}  CV PR-AUC "
+          f"{cv_info['best_pr_auc_mean']:.4f} ± {cv_info['best_pr_auc_std']:.4f}")
+
+    model = search.best_estimator_
+    oof, threshold = out_of_fold(model, X_train, y_train, cv)
+    print(f"F1-max threshold on out-of-fold train predictions: {threshold['value']:.4f} "
+          f"(OOF F1 {threshold['oof_f1']:.4f})")
+
+    save(saved_name, model, df, cv_info, threshold, feature_set)
+    print(f"Saved models/{saved_name}.joblib ({time.time() - start_time:.0f}s)")
+    return model, cv_info
+
+
+def main(feature_set=APP_FEATURE_SET):
+    """Tune, fit and save the models of one feature set, then evaluate them once on the test trials.
+
+    The app's feature set writes the usual files (gbm.joblib and so on) and also trains the logistic
+    regression. Any other feature set only trains the gradient boosting and saves it with the set as an ending
+    (gbm_v2.joblib, gbm_uncalibrated_v2.joblib, score_reference_v2.npy). So a comparison run never replaces
+    the app model.
     """
-    # Which models this run trains, and under which file names (a non-app feature set gets a suffix).
     features = FEATURE_SETS[feature_set]
-    suffix = "" if feature_set == APP_FEATURE_SET else f"_{feature_set}"
-    builders = list(BUILDERS) if not suffix else ["gbm"]
+    is_app_set = feature_set == APP_FEATURE_SET
+    suffix = ""
+    if not is_app_set:
+        suffix = f"_{feature_set}"
+
+    # The test split is loaded here, but it is only handed to evaluate.evaluate_saved() at the very end.
     df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
-    # The test split is loaded here but only passed to evaluate.evaluate_saved at the very end, after every model is
-    # saved.
     X_train, y_train = load_split("train", df, features)
     X_test, y_test = load_split("test", df, features)
     print(f"Train: {len(y_train)} trials ({y_train.mean():.2%} terminated); "
           f"test: {len(y_test)} trials ({y_test.mean():.2%} terminated)")
     print(f"Feature set {feature_set} ({len(features)}): {', '.join(features)}")
 
-    # The same CV folds for every model, so their CV numbers are comparable.
+    # The same folds for every model, so their cross-validation numbers can be compared.
     cv = make_cv()
     MODELS_DIR.mkdir(exist_ok=True)
-    # Over every column build_features makes, so it serves any feature set.
-    reference = explain_reference(load_split("train", df, FEATURE_COLUMNS)[0])
+
+    # The typical training trial, over every column build_features makes, so it works for any feature set.
+    X_all_columns, _ = load_split("train", df, FEATURE_COLUMNS)
+    reference = explain_reference(X_all_columns)
     EXPLAIN_REFERENCE_PATH.write_text(json.dumps(reference, indent=2) + "\n", encoding="utf-8")
 
-    # Step 1: tune and save the uncalibrated models (baseline LR and GBM).
-    tuned = {}
-    for name in builders:
-        t0 = time.time()
-        print(f"\n--- {name}: grid search ({len(ParameterGrid(PARAM_GRIDS[name]))} "
-              f"settings x {CV_FOLDS} time-ordered folds on train) ---")
-        search = tune(name, X_train, y_train, cv)
-        cv_info = cv_summary(search)
-        print(f"best {cv_info['best_params']}  CV ROC-AUC {cv_info['best_roc_auc_mean']:.4f}"
-              f" ± {cv_info['best_roc_auc_std']:.4f}  CV PR-AUC "
-              f"{cv_info['best_pr_auc_mean']:.4f} ± {cv_info['best_pr_auc_std']:.4f}")
-        _, threshold = out_of_fold(search.best_estimator_, X_train, y_train, cv)
-        print(f"F1-max threshold on out-of-fold train predictions: {threshold['value']:.4f} "
-              f"(OOF F1 {threshold['oof_f1']:.4f})")
-        save(SAVED_NAMES[name] + suffix, search.best_estimator_, df, cv_info, threshold,
-             feature_set)
-        tuned[name] = (search.best_estimator_, cv_info)
-        print(f"Saved models/{SAVED_NAMES[name]}{suffix}.joblib ({time.time() - t0:.0f}s)")
+    # Step 1: tune and save the models without calibration. The tuned gradient boosting is saved as
+    # "gbm_uncalibrated", because the name "gbm" belongs to its calibrated version (the model of the app).
+    if is_app_set:
+        tune_and_save("baseline_lr", "baseline_lr", build_lr_pipeline(features),
+                      X_train, y_train, cv, df, feature_set)
+    gbm, gbm_cv_info = tune_and_save("gbm", "gbm_uncalibrated" + suffix, build_gbm_pipeline(features=features),
+                                     X_train, y_train, cv, df, feature_set)
 
-    # Step 2: wrap the tuned GBM in isotonic calibration, get honest out-of-fold scores for the threshold and the
-    # percentile reference, then fit it on all training trials.
-    t0 = time.time()
+    # Step 2: put calibration around the tuned gradient boosting. First get honest out-of-fold scores (for the
+    # threshold and the percentile reference), then fit it on all training trials.
+    start_time = time.time()
     print(f"\n--- gbm: {CALIBRATION_METHOD} calibration ({CALIBRATION_CV}) of the tuned GBM ---")
-    base, base_cv_info = tuned["gbm"]
-    calibrated = build_calibrated(base)
+    calibrated = build_calibrated(gbm)
     oof, threshold = out_of_fold(calibrated, X_train, y_train, cv)
     print(f"OOF Brier {threshold['oof_brier']:.4f}, OOF ROC-AUC {threshold['oof_roc_auc']:.4f}; "
           f"F1-max threshold {threshold['value']:.4f} (OOF F1 {threshold['oof_f1']:.4f})")
     calibrated.fit(X_train, y_train)
-    # Sorted, so predict.percentile is a single binary search.
+
+    # The out-of-fold scores are saved sorted, so predict.percentile() only needs a quick search.
     reference_path = SCORE_REFERENCE_PATH.with_name(f"score_reference{suffix}.npy")
     np.save(reference_path, np.sort(oof))
-    save(f"gbm{suffix}", calibrated, df,
-         {**base_cv_info, "note": f"hyperparameters tuned on gbm_uncalibrated{suffix}; "
-                                  "calibration adds no tuned parameters"},
-         threshold, feature_set,
-         extra={"calibration": {
-                    "method": CALIBRATION_METHOD,
-                    "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split "
-                          "(shuffled folds: calibration tunes nothing)",
-                    "base_model": f"gbm_uncalibrated{suffix}"},
-                "score_reference": {
-                    "file": f"models/{reference_path.name}",
-                    "contents": "sorted out-of-fold calibrated P(TERMINATED) of the train "
-                                "trials in the validation blocks of the time-ordered CV "
-                                "(start about 2009-2016; the earliest block is never scored)",
-                    "n": int(len(oof)),
-                    "quantiles": {f"p{q}": float(np.percentile(oof, q))
-                                  for q in (10, 25, 50, 75, 90, 99)}}})
-    print(f"Saved models/gbm{suffix}.joblib and models/{reference_path.name} "
-          f"({time.time() - t0:.0f}s)")
 
-    # Step 3: score the saved models once on the test years (the only place the test split is used).
-    names = [f"{name}{suffix}" for name in evaluate.MODEL_NAMES
-             if name.startswith("gbm") or not suffix]
+    # The calibrated model keeps the cross-validation numbers of the model it wraps, with a note.
+    cv_info = dict(gbm_cv_info)
+    cv_info["note"] = (f"hyperparameters tuned on gbm_uncalibrated{suffix}; "
+                       "calibration adds no tuned parameters")
+    quantiles = {}
+    for q in (10, 25, 50, 75, 90, 99):
+        quantiles[f"p{q}"] = float(np.percentile(oof, q))
+    extra = {
+        "calibration": {
+            "method": CALIBRATION_METHOD,
+            "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split "
+                  "(shuffled folds: calibration tunes nothing)",
+            "base_model": f"gbm_uncalibrated{suffix}",
+        },
+        "score_reference": {
+            "file": f"models/{reference_path.name}",
+            "contents": "sorted out-of-fold calibrated P(TERMINATED) of the train "
+                        "trials in the validation blocks of the time-ordered CV "
+                        "(start about 2009-2016; the earliest block is never scored)",
+            "n": int(len(oof)),
+            "quantiles": quantiles,
+        },
+    }
+    save(f"gbm{suffix}", calibrated, df, cv_info, threshold, feature_set, extra=extra)
+    print(f"Saved models/gbm{suffix}.joblib and models/{reference_path.name} "
+          f"({time.time() - start_time:.0f}s)")
+
+    # Step 3: score the saved models once on the test years. This is the only place the test split is used.
+    names = []
+    for name in evaluate.MODEL_NAMES:
+        if name.startswith("gbm") or is_app_set:
+            names.append(name + suffix)
     evaluate.evaluate_saved(X_test, y_test, names=names, X_train=X_train, y_train=y_train,
                             suffix=suffix)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train and save the models.")
-    parser.add_argument("--features", choices=sorted(FEATURE_SETS), default=APP_FEATURE_SET,
-                        help=f"feature set (default {APP_FEATURE_SET}, the app model's)")
-    main(parser.parse_args().features)
+    # "python src/train.py --features v2" picks another feature set; without it the app's set is trained.
+    chosen = APP_FEATURE_SET
+    if "--features" in sys.argv:
+        chosen = sys.argv[sys.argv.index("--features") + 1]
+    if chosen not in FEATURE_SETS:
+        sys.exit(f"Unknown feature set '{chosen}'. Choose one of: {', '.join(sorted(FEATURE_SETS))}")
+    main(chosen)
