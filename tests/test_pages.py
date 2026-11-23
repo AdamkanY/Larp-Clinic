@@ -20,6 +20,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))  # for src, when the file is run directly instead of through pytest
 sys.path.insert(0, str(ROOT / "tests"))
 from test_features import STUDY  # noqa: E402
 import src.api_client  # noqa: E402  (the offline tests point its snapshot path elsewhere)
