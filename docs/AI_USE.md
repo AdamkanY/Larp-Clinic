@@ -27,35 +27,40 @@ therefore means lines that the AI wrote or last changed. Commits made in the Git
 pull-request merges) carry no trailer, so their lines count as the team's even if the text came from a chat with an
 AI. `app/style.css` and most of `src/api_client.py` came in through such web uploads.
 
-Measured on 2026-11-10 at commit 513ae0b, before the branch `grading-readiness` (90 of 122 commits are AI-assisted):
+Measured on 2026-11-23 at commit 6d351e8 (98 of 135 commits are AI-assisted):
 
 | File | Lines | Lines from AI-assisted commits |
 |---|---|---|
-| `.streamlit/config.toml` | 42 | 100% |
-| `app/Home.py` | 94 | 98% |
-| `app/pages/1_Find_a_Trial.py` | 211 | 92% |
-| `app/pages/2_Check_Your_Trial.py` | 263 | 74% |
-| `app/pages/3_Explore_Data.py` | 155 | 100% |
-| `app/pages/4_How_the_Model_Works.py` | 541 | 91% |
-| `app/pages/5_Game.py` | 173 | 100% |
-| `app/risk_gauge.py` | 165 | 84% |
-| `app/style.css` | 291 | 4% |
-| `app/ui.py` | 171 | 100% |
-| `notebooks/01_eda.ipynb` | 891 | 100% |
-| `src/api_client.py` | 72 | 25% |
-| `src/build_dataset.py` | 145 | 100% |
-| `src/evaluate.py` | 463 | 100% |
-| `src/features.py` | 355 | 100% |
-| `src/fetch_data.py` | 156 | 100% |
-| `src/game.py` | 111 | 100% |
-| `src/labels.py` | 129 | 100% |
-| `src/predict.py` | 275 | 100% |
-| `src/train.py` | 442 | 100% |
-| `src/viz.py` | 194 | 100% |
-| `tests/test_app.py` | 257 | 100% |
-| `tests/test_features.py` | 183 | 100% |
-| `tests/test_pages.py` | 269 | 100% |
-| `tests/test_predict.py` | 135 | 100% |
+| `.streamlit/config.toml` | 44 | 100% |
+| `app/Home.py` | 128 | 98% |
+| `app/pages/1_Find_a_Trial.py` | 242 | 94% |
+| `app/pages/2_Check_Your_Trial.py` | 294 | 78% |
+| `app/pages/3_Explore_Data.py` | 217 | 100% |
+| `app/pages/4_How_the_Model_Works.py` | 836 | 94% |
+| `app/pages/5_Game.py` | 187 | 100% |
+| `app/risk_gauge.py` | 177 | 85% |
+| `app/style.css` | 298 | 6% |
+| `app/ui.py` | 178 | 100% |
+| `notebooks/01_eda.ipynb` | 899 | 100% |
+| `src/api_client.py` | 132 | 62% |
+| `src/build_dataset.py` | 158 | 100% |
+| `src/database.py` | 215 | 100% |
+| `src/evaluate.py` | 486 | 100% |
+| `src/features.py` | 361 | 100% |
+| `src/fetch_data.py` | 165 | 100% |
+| `src/game.py` | 121 | 100% |
+| `src/horse_race.py` | 211 | 100% |
+| `src/labels.py` | 131 | 100% |
+| `src/predict.py` | 285 | 100% |
+| `src/save_examples.py` | 58 | 100% |
+| `src/train.py` | 502 | 100% |
+| `src/viz.py` | 274 | 100% |
+| `tests/test_app.py` | 372 | 100% |
+| `tests/test_features.py` | 185 | 100% |
+| `tests/test_model.py` | 79 | 100% |
+| `tests/test_pages.py` | 335 | 100% |
+| `tests/test_predict.py` | 137 | 100% |
+| `tools/ai_provenance.py` | 108 | 100% |
 
 The branch `grading-readiness` was written entirely by Claude (Opus 5.5) in one session on 2026-11-10 (section 3.3).
 
@@ -148,13 +153,30 @@ Claude wrote, on the branch `sql-database` (on top of `course-alignment`): `src/
 tables `trials` and `trial_conditions`, keys and the first normal form, queries with `?` parameters), the Explore
 page reading its numbers with SQL and showing the queries in an "Under the hood" box, and tests for both.
 
+### 3.5 The review of 2026-11-23 (branch `docs/stale-numbers`)
+
+Matteo gave Claude (Claude Code) the official assignment slides and the course material and asked: *"Gehe jetzt das
+ganze Projekt step-by-step durch. [...] Gib mir eine maximal ehrliche und auch kritische Meinung dazu"* ("Go through
+the whole project step by step. Give me a maximally honest and critical opinion."), then: *"Ja, korrigieren"* ("Yes,
+correct them") for the outdated numbers the review found. Claude changed, on this branch:
+
+- "42% at 20%" instead of 43% in the video script, the Q&A preparation and the submission checklist (the model was
+  retrained on 2026-11-23)
+- the test count (47) and the re-measured table in section 2; the commit counts in the README and in
+  `CONTRIBUTIONS.md`
+- the comparison group of "riskier than X%": 95,500 trials that started 2009-2016, not all 114,600 training trials
+  (risk card, bar caption, model page, docstrings in `src/predict.py`)
+- `tests/test_pages.py` can be run directly again (`python tests/test_pages.py`)
+
+All 47 tests pass. No model, data or feature code changed.
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:
 
 - **Rules first.** The leakage rules, the label and the split were fixed in `CLAUDE.md` before the model code was
   written, so the AI could not choose features that leak.
-- **Tests.** 41 offline tests check the feature function (leaky fields are ignored), the predictions, the chart
+- **Tests.** 47 offline tests check the feature function (leaky fields are ignored), the predictions, the chart
   helpers and every page in Streamlit's test runner. `tests/test_app.py` also checks that no colour is hard-coded
   outside `app/ui.py` and that every source file carries the AI header.
 - **Pull requests.** Most work arrived on branches as pull requests (#2 to #20) before it was merged into `main`.

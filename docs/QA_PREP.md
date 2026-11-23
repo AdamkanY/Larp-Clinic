@@ -47,7 +47,7 @@ only at how well it finds the rare stopped trials.
 
 **7. Is the model good?**
 Clearly better than guessing, far from certain. The 10% of test trials it rated riskiest were stopped 28% of the
-time, 2.4 times the average; the safest 10%: 3%. If you review the riskiest 20% of trials first you find 43% of all
+time, 2.4 times the average; the safest 10%: 3%. If you review the riskiest 20% of trials first you find 42% of all
 stopped trials (random picking: 20%). But most "red" trials still finish.
 
 ## Model questions (Adam leads, Dominic backs up)

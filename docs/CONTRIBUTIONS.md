@@ -67,10 +67,10 @@ commits, and an AI session can commit for the person who ran it.
 
 | GitHub account | Commits | Of which AI-assisted |
 |---|---|---|
-| `matteo-kaufmann` (Matteo) | 95 | 71 |
+| `matteo-kaufmann` (Matteo) | 97 | 71 |
 | `AdamkanY` (Adam) | 20 | 12 |
-| `Claude` (AI agent, run by a team member) | 7 | 7 |
-| `simonbse` (Simon) | 4 (2026-11-23, branch `course-alignment`) | 4 |
+| `Claude` (AI agent, run by a team member) | 11 | 11 |
+| `simonbse` (Simon) | 7 (all on 2026-11-23: branch `course-alignment`, its merge and two edits of this file) | 4 |
 
 Until 2026-11-23 Simon, Dominic and Raphael had no commits under their own accounts; Simon's first ones are the
 course-alignment branch. **[team]** If they worked through someone else's

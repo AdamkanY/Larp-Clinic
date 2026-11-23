@@ -671,6 +671,9 @@ def read_a_score_box(metrics):
     predicted = metrics["calibration"]["test_after"]["mean_predicted"]
     gap = test["terminated_rate"] / predicted - 1
     riskiest = metrics["test"]["calibration_bins"][-1]["observed_rate"]
+    # The comparison group is smaller than the training split: with time-ordered folds the earliest block is only
+    # ever trained on, so it has no out-of-fold score (src/train.py, out_of_fold).
+    reference_n = metrics.get("score_reference", {}).get("n", metrics["split"]["train"]["n_trials"])
     legend = (chip("Lower than most past trials", "green") + chip("Higher than most past trials", "yellow")
               + chip("Among the riskiest 10%", "red"))
     with st.container(border=True, key="read_box"):
@@ -680,8 +683,8 @@ def read_a_score_box(metrics):
             "\"15%\" means: of 100 past trials that looked like this on paper, about 15 were stopped.\n"
             f"- **It runs a little low.** On newer trials about {gap:.0%} more were really stopped than the model "
             "predicted, so read the number as a lower-end figure.\n"
-            f"- **The colour and \"riskier than X%\"** compare the trial with {metrics['split']['train']['n_trials']:,} "
-            "past trials (started 2008-2016): green is below the "
+            f"- **The colour and \"riskier than X%\"** compare the trial with {reference_n:,} "
+            "past trials (started 2009-2016): green is below the "
             "middle trial, yellow above it, red the riskiest tenth. Use this to compare trials; it is the part the "
             "model is best at.\n"
             f"- **Red is not a verdict.** Even in the riskiest tenth only about {riskiest:.0%} of trials were "

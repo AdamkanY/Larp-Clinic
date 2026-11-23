@@ -170,7 +170,7 @@ Who did what in detail: [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md).
 ## Use of AI
 
 Most of the code, the tests and the documentation in this repository were generated with **Claude Code**
-(Anthropic; models Claude Sonnet 5.5 and Claude Opus 5.5): 90 of the 122 commits up to 2026-11-05 are AI-assisted,
+(Anthropic; models Claude Sonnet 5.5 and Claude Opus 5.5): 98 of the 135 commits up to 2026-11-23 are AI-assisted,
 and in most source files over 90% of the lines come from those commits. The team set the requirements and the rules
 (the `CLAUDE.md` files: label, leakage rules, split, conventions), chose between options, reviewed and tested the
 output and corrected it, and is responsible for the result.

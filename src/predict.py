@@ -15,7 +15,7 @@ Typical use in the app::
 calibration (``CalibratedClassifierCV``, fitted on the train split), so
 ``score`` returns a calibrated probability: across many trials scored 0.20,
 about 20% were terminated. ``percentile`` compares a score with the
-out-of-fold calibrated scores of the 2008-2016 training trials.
+out-of-fold calibrated scores of the training trials that started 2009-2016.
 
 ``explain`` lists the factors that push one trial's risk up or down, measured on
 the uncalibrated GBM (``models/gbm_uncalibrated.joblib``) in log-odds. SHAP's
@@ -188,9 +188,10 @@ def _score_reference(resolved_path: str) -> np.ndarray:
 def percentile(prob: float, reference_path=SCORE_REFERENCE_PATH) -> float:
     """Share of historical training trials with a lower risk score, in percent.
 
-    The reference holds the out-of-fold calibrated scores of the 114,600
-    train-split trials (start 2008-2016): each one was scored by a model that
-    had not seen it, so the reference is as honest as a live score. Use it as
+    The reference holds the out-of-fold calibrated scores of the 95,500
+    train-split trials in the validation blocks of the time-ordered CV (start
+    2009-2016; the earliest block is only trained on): each one was scored by
+    a model that had not seen it, so the reference is as honest as a live score. Use it as
     ``percentile(score(features))``; only scores from ``models/gbm.joblib`` are
     on the same scale.
 
