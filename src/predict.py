@@ -1,286 +1,227 @@
 # AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Score trials with a saved model. This is the module the Streamlit app imports.
+"""Score trials with a saved model. This is the file the Streamlit app imports.
 
-Typical use in the app::
+How the app uses it:
 
-    from features import build_features
-    from predict import percentile, score
+    features = build_features(study_json)   # from features.py
+    risk = score(features)                   # probability of "stopped early", between 0 and 1
+    rank = percentile(risk)                  # "riskier than rank% of past trials"
+    drivers = explain(features)              # what pushes the risk up or down
 
-    risk = score(build_features(study_json))   # calibrated P(TERMINATED), 0-1
-    rank = percentile(risk)                     # "riskier than rank% of trials"
-    drivers = explain(build_features(study_json))  # what pushes it up / down
+models/gbm.joblib is the gradient boosting model with calibration on top. Calibrated means: of many trials that
+get 0.20, about 20% were really stopped.
 
-``models/gbm.joblib`` is the gradient boosting pipeline wrapped in isotonic
-calibration (``CalibratedClassifierCV``, fitted on the train split), so
-``score`` returns a calibrated probability: across many trials scored 0.20,
-about 20% were terminated. ``percentile`` compares a score with the
-out-of-fold calibrated scores of the training trials that started 2009-2016.
-
-``explain`` lists the factors that push one trial's risk up or down, measured on
-the uncalibrated GBM (``models/gbm_uncalibrated.joblib``) in log-odds. SHAP's
-TreeExplainer was tried first and rejected: it does not follow the native
-categorical splits of ``HistGradientBoostingClassifier`` (its values missed the
-model's log-odds by up to 2.2 on real trials), so ``explain`` sets one feature at
-a time to the typical training trial and measures the change instead.
-
-This module deliberately imports only pandas, numpy, joblib, ``features`` and
-``labels`` so the app does not pull in training or plotting dependencies.
+We tried SHAP for the explanations first. It did not work with the way our model splits on categories (its
+values were off by up to 2.2 log-odds on real trials). So explain() uses a simpler idea: set one feature at a
+time to the value of a typical trial and look how much the prediction moves.
 """
 
-import sys
-from functools import lru_cache
-from pathlib import Path
-
 import json
+import sys
+from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 
+# The other files of src/ are imported by their plain name, so this works from the app and from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import (BINARY_FEATURES, CATEGORICAL_FEATURES,  # noqa: E402
-                      FEATURE_COLUMNS, NUMERIC_FEATURES)
-from labels import feature_name, feature_value  # noqa: E402
+from features import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES
+from labels import feature_name, feature_value
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]  # the project folder
 DEFAULT_MODEL_PATH = "models/gbm.joblib"
-# The calibrated model's isotonic step is flat over wide ranges, so small pushes
-# vanish in it; the GBM it wraps gives smooth log-odds for explanations.
+# The explanations use the model before calibration. Calibration is a step function, so small changes would
+# disappear in it. The order and the direction of the factors are the same for both models.
 EXPLAIN_MODEL_PATH = "models/gbm_uncalibrated.joblib"
 SCORE_REFERENCE_PATH = "models/score_reference.npy"
 EXPLAIN_REFERENCE_PATH = "models/explain_reference.json"
-# Columns that only make sense together: moving one to the typical trial moves
-# the others too, and they are reported as one factor under the first name.
-# (No maximum age is stored as 120 plus has_max_age = 0; either alone would
-# describe a design that cannot exist.)
+
+# Columns that only make sense together. "No maximum age" is stored as 120 years plus has_max_age = 0, so
+# explain() changes both at once and reports them as one factor under the first name.
 LINKED_FEATURES = {"max_age_years": ["max_age_years", "has_max_age"]}
 
-
-def _resolve(path) -> Path:
-    """Resolve a relative path against the repository root, not the cwd."""
-    resolved = Path(path)
-    return resolved if resolved.is_absolute() else ROOT / resolved
+# Files we already loaded, so every file is read from disk only once (Streamlit reruns the script very often).
+LOADED_FILES = {}
 
 
-def model_features(model) -> list:
-    """The input columns a fitted model was trained on, in order.
-
-    A model saved before a feature was added keeps working: it is simply fed
-    its own, shorter list. Falls back to ``FEATURE_COLUMNS`` for estimators
-    that do not record their input names.
-    """
-    names = getattr(model, "feature_names_in_", None)
-    return list(names) if names is not None else list(FEATURE_COLUMNS)
-
-
-def to_model_frame(records, columns=None) -> pd.DataFrame:
-    """Turn feature dicts (or a DataFrame) into the exact frame the models expect.
-
-    Training and the app both go through this function, so a trial scored live
-    gets the same dtypes as the rows the model was fitted on: categoricals as
-    Python objects with ``np.nan`` for missing, flags and numbers as float64.
-    Only ``FEATURE_COLUMNS`` are kept; meta and display keys (``nct_id``,
-    ``label``, dates, titles, ``split``) are dropped here, which is what keeps
-    them out of the model.
-
-    Args:
-        records: a list of ``build_features`` dicts, or a DataFrame holding at
-            least the ``FEATURE_COLUMNS``.
-        columns: the columns to return, in order (``model_features(model)``);
-            defaults to ``FEATURE_COLUMNS``.
-
-    Returns:
-        DataFrame with exactly ``columns``, in that order.
-
-    Raises:
-        ValueError: if any feature key is absent. A silently missing column
-            would be imputed and give a plausible but wrong score.
-    """
-    # Accept both a list of dicts (the app) and a DataFrame (training, whole tables); refuse silently missing
-    # inputs.
-    columns = list(FEATURE_COLUMNS if columns is None else columns)
-    frame = records if isinstance(records, pd.DataFrame) else pd.DataFrame(list(records))
-    missing = [col for col in columns if col not in frame.columns]
-    if missing:
-        raise ValueError(f"Missing feature keys: {missing}")
-
-    # Convert column by column to the dtypes the model was fitted on.
-    out = {}
-    for col in columns:
-        if col in CATEGORICAL_FEATURES:
-            values = frame[col].astype(object)
-            # None, pd.NA and NaN all become np.nan, the one marker sklearn's
-            # imputers and encoders treat as missing in object columns.
-            out[col] = values.where(values.notna(), np.nan)
-        elif col in BINARY_FEATURES or col in NUMERIC_FEATURES:
-            # Nullable Int8/Int32 from the parquet and None from a live dict
-            # both end up as float64 with NaN.
-            out[col] = pd.to_numeric(frame[col], errors="coerce").astype("float64")
-        else:
-            raise ValueError(f"Unknown feature column: {col}")
-    return pd.DataFrame(out, index=frame.index)[columns]
-
-
-@lru_cache(maxsize=None)
-def _load_cached(resolved_path: str):
-    """Load a joblib file once per process; Streamlit reruns then reuse it."""
-    return joblib.load(resolved_path)
+def full_path(path):
+    """A path like "models/gbm.joblib" is meant from the project folder, wherever the app was started."""
+    path = Path(path)
+    if path.is_absolute():
+        return path
+    return ROOT / path
 
 
 def load_model(path=DEFAULT_MODEL_PATH):
-    """Load a saved model from ``models/``.
+    """Load a saved model from models/ (only the first time, afterwards from memory)."""
+    key = str(full_path(path))
+    if key not in LOADED_FILES:
+        LOADED_FILES[key] = joblib.load(key)
+    return LOADED_FILES[key]
 
-    Args:
-        path: path to a ``.joblib`` file. A relative path is resolved against
-            the repository root, so the app works whatever directory Streamlit
-            is started from.
 
-    Returns:
-        The fitted estimator (a Pipeline, or the calibrated wrapper around one);
-        call ``predict_proba`` on the output of ``to_model_frame``.
+def load_score_reference(path=SCORE_REFERENCE_PATH):
+    """The sorted risk scores of the past trials that percentile() compares with."""
+    key = str(full_path(path))
+    if key not in LOADED_FILES:
+        LOADED_FILES[key] = np.sort(np.load(key))
+    return LOADED_FILES[key]
+
+
+def load_explain_reference(path=EXPLAIN_REFERENCE_PATH):
+    """The "typical training trial" that train.py saved, as a dictionary {column: typical value}."""
+    key = str(full_path(path))
+    if key not in LOADED_FILES:
+        text = Path(key).read_text(encoding="utf-8")
+        LOADED_FILES[key] = json.loads(text)["values"]
+    return LOADED_FILES[key]
+
+
+def model_features(model):
+    """The input columns a model was trained on, in order.
+
+    An older model that was trained with fewer columns keeps working, because it gets its own shorter list.
     """
-    return _load_cached(str(_resolve(path)))
+    names = getattr(model, "feature_names_in_", None)
+    if names is None:
+        return list(FEATURE_COLUMNS)
+    return list(names)
 
 
-def score(features: dict, model=None) -> float:
-    """Calibrated predicted termination risk for one trial.
+def to_model_frame(records, columns=None):
+    """Turn feature dictionaries (or a DataFrame) into exactly the table the models expect.
 
-    Args:
-        features: the dict returned by ``build_features`` for one API study
-            record. Extra keys (nct_id, start_date, titles, ...) are ignored.
-        model: an already loaded model; defaults to ``models/gbm.joblib``
-            (calibrated). Passing another model returns that model's own
-            probability, which is uncalibrated for the other saved models.
+    Training and the app both use this function, so a trial scored in the app has the same data types as the
+    rows the model learned from. Only the feature columns are kept. Ids, titles, dates and the label are dropped
+    here, and that is what keeps them away from the model.
 
-    Returns:
-        Probability of TERMINATED in [0, 1].
+    A missing feature column raises an error. If we filled it in silently, the score would look fine but be wrong.
+    """
+    if columns is None:
+        columns = FEATURE_COLUMNS
+    columns = list(columns)
+
+    # The app passes a list of dictionaries, training passes a whole DataFrame.
+    if isinstance(records, pd.DataFrame):
+        frame = records
+    else:
+        frame = pd.DataFrame(list(records))
+
+    missing = []
+    for column in columns:
+        if column not in frame.columns:
+            missing.append(column)
+    if missing:
+        raise ValueError(f"Missing feature keys: {missing}")
+
+    out = {}
+    for column in columns:
+        if column in CATEGORICAL_FEATURES:
+            # Categories stay text. Every kind of "missing" (None, NA, NaN) becomes np.nan, the one that
+            # scikit-learn understands.
+            values = frame[column].astype(object)
+            out[column] = values.where(values.notna(), np.nan)
+        elif column in BINARY_FEATURES or column in NUMERIC_FEATURES:
+            # Flags and numbers become decimal numbers, missing values become NaN.
+            out[column] = pd.to_numeric(frame[column], errors="coerce").astype("float64")
+        else:
+            raise ValueError(f"Unknown feature column: {column}")
+    return pd.DataFrame(out, index=frame.index)[columns]
+
+
+def score_frame(records, model=None):
+    """Predicted risk of stopping early for many trials at once (one number per row, same order).
+
+    Use this for whole tables (the game, the model page). Calling score() thousands of times would take minutes.
+    Without a model the calibrated app model is used.
+    """
+    if model is None:
+        model = load_model()
+    table = to_model_frame(records, model_features(model))
+    # predict_proba gives two columns: P(completed) and P(terminated). We want the second one.
+    return model.predict_proba(table)[:, 1]
+
+
+def score(features, model=None):
+    """Predicted risk of stopping early for ONE trial, a number between 0 and 1.
+
+    features is the dictionary from build_features(). Extra keys such as the id or the title are ignored.
     """
     return float(score_frame([features], model)[0])
 
 
-def score_frame(records, model=None) -> np.ndarray:
-    """Calibrated predicted termination risk for many trials in one model call.
+def percentile(prob, reference_path=SCORE_REFERENCE_PATH):
+    """How many percent of the past trials have a LOWER risk score than prob.
 
-    Same numbers as ``score`` row by row; use it for whole tables (the game,
-    the How the model works page), where thousands of single calls would take minutes.
-    Each model is fed only the columns it was fitted on, so a table holding
-    extra feature columns (e.g. the v2 condition flags) scores correctly.
-
-    Args:
-        records: a DataFrame with at least the model's feature columns, or a
-            list of ``build_features`` dicts.
-        model: an already loaded model; defaults to ``models/gbm.joblib``.
-
-    Returns:
-        Array of P(TERMINATED), one per row, in input order.
+    percentile(p) == 73.0 means "riskier than 73% of past trials". The past trials are the training trials that
+    started 2009-2016 (95,500). Each of them was scored by a model that had not seen it, so the comparison is
+    as honest as a new score. Trials with exactly the same score do not count as lower.
     """
-    model = model if model is not None else load_model()
-    return model.predict_proba(to_model_frame(records, model_features(model)))[:, 1]
+    reference = load_score_reference(reference_path)
+    lower = np.searchsorted(reference, prob, side="left")  # the scores are sorted, so this is a quick search
+    return float(100.0 * lower / len(reference))
 
 
-@lru_cache(maxsize=None)
-def _score_reference(resolved_path: str) -> np.ndarray:
-    """Sorted reference scores, loaded once per process."""
-    return np.sort(np.load(resolved_path))
+def reference_size(reference_path=SCORE_REFERENCE_PATH):
+    """How many past trials percentile() compares with (for the captions in the app)."""
+    return int(len(load_score_reference(reference_path)))
 
 
-def percentile(prob: float, reference_path=SCORE_REFERENCE_PATH) -> float:
-    """Share of historical training trials with a lower risk score, in percent.
+def explain(features, top_n=5, model=None, reference=None):
+    """The factors that push the predicted risk of one trial up or down the most.
 
-    The reference holds the out-of-fold calibrated scores of the 95,500
-    train-split trials in the validation blocks of the time-ordered CV (start
-    2009-2016; the earliest block is only trained on): each one was scored by
-    a model that had not seen it, so the reference is as honest as a live score. Use it as
-    ``percentile(score(features))``; only scores from ``models/gbm.joblib`` are
-    on the same scale.
+    Idea: take the trial and replace ONE value by the value of a typical training trial (the median for numbers
+    and flags, the most common value for categories). Then look how much the model's prediction changes. A value
+    that is already typical changes nothing and is left out. The changes are measured in log-odds on the model
+    before calibration. They are one-at-a-time effects, so they do not add up to the full difference.
 
-    Args:
-        prob: a calibrated probability from ``score``.
-        reference_path: the ``.npy`` file written by ``src/train.py``.
-
-    Returns:
-        A value in [0, 100]: ``percentile(p) == 73.0`` means "riskier than 73%
-        of historical trials". Ties count as not lower, so a trial is never
-        called riskier than trials with exactly its own score.
+    Returns a list of at most top_n tuples, biggest effect first:
+    (plain name, this trial's value in words, "up" or "down", size of the effect)
     """
-    reference = _score_reference(str(_resolve(reference_path)))
-    return float(100.0 * np.searchsorted(reference, prob, side="left") / len(reference))
-
-
-def reference_size(reference_path=SCORE_REFERENCE_PATH) -> int:
-    """Number of historical trials behind ``percentile`` (for captions)."""
-    return int(len(_score_reference(str(_resolve(reference_path)))))
-
-
-@lru_cache(maxsize=None)
-def _explain_reference(resolved_path: str) -> dict:
-    """The typical training trial written by ``src/train.py``, loaded once per process."""
-    return json.loads(Path(resolved_path).read_text(encoding="utf-8"))["values"]
-
-
-def explain(features: dict, top_n=5, model=None, reference=None) -> list:
-    """The factors that push one trial's predicted risk up or down the most.
-
-    Method (perturbation to the typical trial): for each input of the model,
-    replace this trial's value with the one of a typical training trial (the
-    train median for numbers and flags, the most common value for categories,
-    from ``models/explain_reference.json``) and measure how much the model's
-    log-odds of TERMINATED change. A factor that is already typical moves
-    nothing and is left out. The model is the uncalibrated GBM, whose log-odds
-    are smooth; calibration only rescales them monotonically, so the order and
-    direction of the factors hold for the app's calibrated score too.
-
-    The sizes are one-at-a-time effects, not shares: with interactions they do
-    not add up to the trial's distance from the typical trial.
-
-    Args:
-        features: the dict returned by ``build_features`` (or
-            ``features_from_design``) for one trial.
-        top_n: how many factors to return at most.
-        model: a fitted pipeline with ``decision_function``; defaults to
-            ``models/gbm_uncalibrated.joblib``.
-        reference: ``{column: typical value}``; defaults to the saved one.
-
-    Returns:
-        Up to ``top_n`` tuples ``(friendly_name, value, direction, size)``,
-        largest first: the plain name (``labels.feature_name``), this trial's
-        value in plain words (``labels.feature_value``), ``"up"`` if the value
-        raises the risk compared with the typical trial or ``"down"`` if it
-        lowers it, and the size of that change in log-odds (always >= 0).
-    """
-    # Load the explanation model and the typical training trial unless the caller passes its own (tests do).
-    model = model if model is not None else load_model(EXPLAIN_MODEL_PATH)
+    if model is None:
+        model = load_model(EXPLAIN_MODEL_PATH)
     if reference is None:
-        reference = _explain_reference(str(_resolve(EXPLAIN_REFERENCE_PATH)))
+        reference = load_explain_reference()
     columns = model_features(model)
-    base = to_model_frame([features], columns)
+    trial = to_model_frame([features], columns)
 
-    # Build one perturbed copy of this trial per factor: that factor (and its linked columns) set to the typical
-    # value.
-    linked = {c for group in LINKED_FEATURES.values() for c in group[1:]}
-    factors, rows = [], []
-    for col in columns:
-        if col in linked:
-            continue  # moved together with its lead column
-        group = [c for c in LINKED_FEATURES.get(col, [col]) if c in columns]
-        row = base.iloc[0].copy()
-        for c in group:
-            row[c] = reference[c]
-        factors.append(col)
-        rows.append(row)
-    perturbed = to_model_frame(pd.DataFrame(rows).reset_index(drop=True), columns)
+    # Columns that are changed together with another column do not get their own turn.
+    partner_columns = []
+    for group in LINKED_FEATURES.values():
+        partner_columns += group[1:]
 
-    # Score the trial and all its copies in one call; the difference in log-odds is each factor's push.
-    log_odds = model.decision_function(pd.concat([base, perturbed], ignore_index=True))
-    effects = log_odds[0] - log_odds[1:]  # > 0: this trial's value raises the risk
-    # Strongest pushes first, in either direction.
+    # One copy of the trial per factor, with that factor set to the typical value.
+    factors = []
+    copies = []
+    for column in columns:
+        if column in partner_columns:
+            continue
+        changed = trial.iloc[0].copy()
+        for linked_column in LINKED_FEATURES.get(column, [column]):
+            if linked_column in columns:
+                changed[linked_column] = reference[linked_column]
+        factors.append(column)
+        copies.append(changed)
+    copies = to_model_frame(pd.DataFrame(copies).reset_index(drop=True), columns)
+
+    # Score the trial and all copies in one call. Row 0 is the real trial.
+    log_odds = model.decision_function(pd.concat([trial, copies], ignore_index=True))
+    effects = log_odds[0] - log_odds[1:]  # above 0: this trial's value makes the risk higher
+
+    # Biggest effects first, whatever the direction.
     order = np.argsort(-np.abs(effects), kind="stable")
-    out = []
+    result = []
     for i in order[:top_n]:
-        if abs(effects[i]) < 1e-9:
-            break  # the rest equal the typical trial and push nothing
-        col = factors[i]
-        out.append((feature_name(col), feature_value(col, base.iloc[0][col]),
-                    "up" if effects[i] > 0 else "down", float(abs(effects[i]))))
-    return out
+        effect = effects[i]
+        if abs(effect) < 1e-9:
+            break  # everything after this equals the typical trial
+        column = factors[i]
+        if effect > 0:
+            direction = "up"
+        else:
+            direction = "down"
+        value_in_words = feature_value(column, trial.iloc[0][column])
+        result.append((feature_name(column), value_in_words, direction, float(abs(effect))))
+    return result

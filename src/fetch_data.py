@@ -2,19 +2,18 @@
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.
 
-Raw API pages are written unchanged to ``data/raw/pages/page_NNNNN.json``.
-The script is resumable: each page stores the ``nextPageToken`` that leads to
-the following one, so a rerun continues after the last complete page.
+The API gives the studies in pages of 1,000. Every page is saved unchanged as data/raw/pages/page_NNNNN.json.
+Each page also holds a "nextPageToken", the key to the page after it. So when the download is interrupted, we can
+run the script again and it goes on after the last saved page.
 
-Usage:
-    python src/fetch_data.py            # fetch or resume
-    python src/fetch_data.py --restart  # delete existing pages, start over
-    python src/fetch_data.py --full     # no field projection (whole records)
+How to run it:
+    python src/fetch_data.py            # download, or go on with an interrupted download
+    python src/fetch_data.py --restart  # delete the saved pages and start again
+    python src/fetch_data.py --full     # download whole records, not only the fields in FIELDS
 """
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
@@ -23,15 +22,14 @@ import requests
 API_URL = "https://clinicaltrials.gov/api/v2/studies"
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 PAGES_DIR = RAW_DIR / "pages"
-MANIFEST = RAW_DIR / "manifest.json"
+MANIFEST = RAW_DIR / "manifest.json"  # remembers with which query the saved pages were downloaded
 PAGE_SIZE = 1000
 MAX_RETRIES = 6
-REQUEST_TIMEOUT = 60
-PAUSE_BETWEEN_PAGES = 0.5  # seconds; be polite to the public API
+REQUEST_TIMEOUT = 60  # seconds
+PAUSE_BETWEEN_PAGES = 0.5  # seconds, so we do not flood the public API
 
-# Only the design-time fields build_features reads. Projecting keeps the raw
-# download small and means leaky fields (enrollment, results...) never touch disk.
-# Use --full to download whole records instead.
+# We only ask for the fields that build_features() reads. This keeps the download small, and fields that would
+# leak the outcome (enrollment, results, ...) are never even saved. With --full we get whole records instead.
 FIELDS = [
     "NCTId", "OverallStatus", "StartDate", "Phase", "DesignAllocation",
     "DesignInterventionModel", "DesignPrimaryPurpose", "DesignMasking",
@@ -40,13 +38,13 @@ FIELDS = [
     "HealthyVolunteers", "Sex", "MinimumAge", "MaximumAge",
     "EligibilityCriteria", "PrimaryOutcomeMeasure", "SecondaryOutcomeMeasure",
     "Condition",
-    # Display-only (never features): shown in the app's trial cards and tables.
+    # Only shown in the app (trial cards and tables), never used as features.
     "BriefTitle", "LeadSponsorName",
 ]
 
 
-def base_params(full: bool) -> dict:
-    """Query parameters shared by every page of the download."""
+def base_params(full):
+    """The query parameters that are the same for every page of the download."""
     # Every interventional trial that is completed or terminated, 1,000 per page.
     params = {
         "format": "json",
@@ -60,41 +58,53 @@ def base_params(full: bool) -> dict:
     return params
 
 
-def get_with_retry(session: requests.Session, params: dict) -> dict:
-    """GET one page, retrying 429/5xx/network errors with exponential backoff."""
-    # Exponential back-off: 2, 4, 8, ... seconds between attempts.
+def get_with_retry(session, params):
+    """Download one page and return it as a dictionary. If it fails, wait and try again (at most 6 more times).
+
+    Worth another try: the server is busy (code 429), has an error of its own (500 and above), or the connection
+    broke. Any other error code would not go away by waiting, so the script stops with the message of the server.
+    """
     for attempt in range(MAX_RETRIES + 1):
+        # We wait longer after every failed try: 2, 4, 8, ... seconds.
         wait = 2 ** (attempt + 1)
         try:
-            resp = session.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                return resp.json()
-            if resp.status_code == 429 or resp.status_code >= 500:
-                # Respect the server's own hint when it gives one.
-                wait = max(wait, int(resp.headers.get("Retry-After", 0) or 0))
-                reason = f"HTTP {resp.status_code}"
+            response = session.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 200:
+                return response.json()
+            if response.status_code == 429 or response.status_code >= 500:
+                # Sometimes the server says how long we should wait. Then we wait at least that long.
+                server_wait = int(response.headers.get("Retry-After", 0) or 0)
+                if server_wait > wait:
+                    wait = server_wait
+                reason = f"HTTP {response.status_code}"
             else:
-                # 4xx other than 429 will not fix itself: fail loudly with the body.
-                raise SystemExit(f"HTTP {resp.status_code}: {resp.text[:500]}")
-        except (requests.ConnectionError, requests.Timeout, ValueError) as exc:
-            reason = type(exc).__name__
+                raise SystemExit(f"HTTP {response.status_code}: {response.text[:500]}")
+        except (requests.ConnectionError, requests.Timeout, ValueError) as error:
+            # ValueError: the answer was not valid JSON (for example a page that was cut off).
+            reason = type(error).__name__
+
         if attempt == MAX_RETRIES:
             raise SystemExit(f"Giving up after {MAX_RETRIES} retries ({reason}).")
         print(f"  {reason}; retry {attempt + 1}/{MAX_RETRIES} in {wait}s", flush=True)
         time.sleep(wait)
 
 
-def write_json_atomic(path: Path, payload: dict) -> None:
-    """Write via a temp file so an interrupted run never leaves a half page."""
-    # Write to a temporary file first and rename it, so an interrupted run never leaves half a page behind.
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload), encoding="utf-8")
-    tmp.replace(path)
+def write_json(path, content):
+    """Save content as a JSON file.
+
+    We write to a temporary file first and rename it at the end. So if the script is stopped in the middle of
+    writing, no half page is left behind under the real name.
+    """
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(content), encoding="utf-8")
+    temporary.replace(path)
 
 
-def resume_state(params: dict, restart: bool):
-    """Return (next page number, next page token) from what is already on disk."""
-    # Resume logic: count the pages already on disk and continue from the token stored in the last one.
+def resume_state(params, restart):
+    """Look at the pages that are already saved and return where to go on: (next page number, its token).
+
+    A new download starts at (1, None). With restart=True the saved pages are deleted first.
+    """
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if restart:
@@ -102,28 +112,34 @@ def resume_state(params: dict, restart: bool):
             page.unlink()
         MANIFEST.unlink(missing_ok=True)
         pages = []
-    # A resume must use the same query, otherwise the pages would mix two different downloads.
+
+    # We can only go on with the same query. Otherwise the pages of two different downloads would be mixed.
     if MANIFEST.exists():
         old = json.loads(MANIFEST.read_text())
         if old.get("params") != params:
-            raise SystemExit("Existing pages used different query parameters; "
-                             "rerun with --restart.")
+            raise SystemExit("Existing pages used different query parameters; rerun with --restart.")
+
+    # Nothing saved yet: note the query and start with page 1.
     if not pages:
-        write_json_atomic(MANIFEST, {"params": params, "started": time.ctime()})
+        write_json(MANIFEST, {"params": params, "started": time.ctime()})
         return 1, None
-    last = json.loads(pages[-1].read_text(encoding="utf-8"))
+
+    # Go on after the last saved page. Its number is in the file name ("page_00012" -> 12), and the page itself
+    # holds the token of the next one. The last page of all has no token.
+    last_page = json.loads(pages[-1].read_text(encoding="utf-8"))
     number = int(pages[-1].stem.split("_")[1])
-    return number + 1, last.get("nextPageToken")
+    return number + 1, last_page.get("nextPageToken")
 
 
-def main() -> None:
-    """Download pages until the API stops returning a nextPageToken."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+def main():
+    """Download page after page until the API gives no token for a next page."""
+    parser = argparse.ArgumentParser(
+        description="Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.")
     parser.add_argument("--restart", action="store_true", help="delete pages and start over")
     parser.add_argument("--full", action="store_true", help="download whole records")
     args = parser.parse_args()
 
-    # Where to start: page 1 with no token, or the next page after the last one on disk.
+    # Where do we start? At page 1, or after the last page that is already saved.
     params = base_params(args.full)
     number, token = resume_state(params, args.restart)
     if number > 1 and token is None:
@@ -133,26 +149,34 @@ def main() -> None:
         print(f"Resuming at page {number}.")
 
     session = requests.Session()
-    # Generic client name; no personal contact details.
+    # The API wants to know who is asking. A general name is enough, no personal contact details.
     session.headers["User-Agent"] = "trial-radar-student-project/0.1"
-    fetched, total, start = 0, None, time.time()
 
-    # Page loop: fetch, save, print progress with an estimate of the time left, follow the next token.
+    fetched = 0  # studies downloaded in this run
+    total = None  # studies the API has in all (it tells us with every page)
+    start = time.time()
+
     while True:
+        # Download one page and save it. Every page after the first one needs the token of the page before.
         query = dict(params)
         if token:
             query["pageToken"] = token
         data = get_with_retry(session, query)
-        write_json_atomic(PAGES_DIR / f"page_{number:05d}.json", data)
+        write_json(PAGES_DIR / f"page_{number:05d}.json", data)
 
+        # Print the progress. If we know the total, we also estimate the minutes left from the speed so far.
         fetched += len(data.get("studies", []))
         total = data.get("totalCount", total)
         elapsed = time.time() - start
-        eta = f", ETA {elapsed / fetched * (total - fetched) / 60:.0f} min" \
-            if total and fetched and total > fetched else ""
-        print(f"page {number}: {fetched} studies this run"
-              f"{f' of ~{total} total' if total else ''}{eta}", flush=True)
+        message = f"page {number}: {fetched} studies this run"
+        if total:
+            message += f" of ~{total} total"
+        if total and fetched and total > fetched:
+            minutes_left = elapsed / fetched * (total - fetched) / 60
+            message += f", ETA {minutes_left:.0f} min"
+        print(message, flush=True)
 
+        # Go to the next page, or stop if this was the last one.
         token = data.get("nextPageToken")
         if not token:
             print("Done.")
@@ -162,4 +186,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

@@ -11,12 +11,11 @@ import streamlit as st
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
-from risk_gauge import (bar_caption, drivers_caption, drivers_chart, estimate_caption,  # noqa: E402
-                        risk_bar, risk_card)
-from src.features import (CONDITION_FLAG_FEATURES, INTERVENTION_TYPES, condition_features,  # noqa: E402
-                          features_from_design)
-from src.labels import feature_name, feature_value, label  # noqa: E402
-from ui import chart, page_header, require_router  # noqa: E402
+from risk_gauge import bar_caption, drivers_caption, drivers_chart, estimate_caption, risk_bar, risk_card
+from src.features import CONDITION_FLAG_FEATURES, INTERVENTION_TYPES, condition_features, features_from_design
+from src.labels import feature_name, feature_value, label
+from src.predict import explain, load_model, model_features, score
+from ui import chart, page_header, require_router
 
 require_router("pages/2_Check_Your_Trial.py")
 
@@ -36,9 +35,11 @@ CHOICES = {
 }
 # Help texts shown next to each dropdown (the question mark icon).
 HELP = {
-    "phase": "The development stage. 'No phase' is used for studies that are not drug trials, such as behavioural ones.",
+    "phase": ("The development stage. 'No phase' is used for studies that are not drug trials, such as "
+              "behavioural ones."),
     "allocation": "Randomized: chance decides who gets which treatment.",
-    "intervention_model": "How participants are grouped: parallel groups, everyone gets everything in turn (crossover), and so on.",
+    "intervention_model": ("How participants are grouped: parallel groups, everyone gets everything in turn "
+                           "(crossover), and so on."),
     "primary_purpose": "What the trial mainly tries to do.",
     "masking": "How many parties (patients, doctors, assessors) are kept unaware of who gets which treatment.",
     "sponsor_class": "Who runs and pays for the trial.",
@@ -52,20 +53,30 @@ DEFAULTS = {
     "conditions": "Type 2 diabetes", "healthy_volunteers": False, "min_age_years": 18.0, "has_max_age": False,
     "max_age_years": 65.0, "eligibility_text_len": 1500, "intervention_types": ["DRUG"],
 }
-# "Which single change lowers the estimate?" only tries levers a trial designer actually controls. Phase, sponsor type, purpose and
-# the condition follow from the research question, so changing them is not advice.
+# "Which single change lowers the estimate?" only tries levers a trial designer actually controls. Phase, sponsor
+# type, purpose and the condition follow from the research question, so changing them is not advice.
 LEVERS = ["masking", "allocation", "n_arms", "eligibility_text_len", "min_age_years", "max_age_years", "has_dmc"]
-# Candidate values the 'which single change lowers the estimate' search tries for the age limits and the eligibility length.
+# The values that search tries for the age limits and for the length of the eligibility criteria.
 MIN_AGES = [0.0, 12.0, 18.0, 21.0, 40.0, 65.0]
 MAX_AGES = [None, 50.0, 65.0, 75.0, 85.0]  # None = no upper limit
 LENGTH_FACTORS = [0.5, 0.75, 1.25, 1.5]
+# How many single changes the table shows at most.
+MAX_CHANGES = 5
 
+# The two halves of the message for a model that does not fit the form. A detail can go in between.
+MISMATCH_START = "This design cannot be scored right now: the saved model and the app expect different inputs"
+MISMATCH_END = (". Nothing is wrong with your entries; the model needs retraining (python src/train.py). "
+                "The other pages still work.")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Model and form helpers
+# ---------------------------------------------------------------------------------------------------------------
 
 @st.cache_resource(show_spinner=False)
 def get_model():
-    """Load the trained model once per server; None while src/predict.py or models/gbm.joblib is missing."""
+    """Load the trained model once per server. Returns None while models/gbm.joblib cannot be loaded."""
     try:
-        from src.predict import load_model
         return load_model()
     except (ImportError, FileNotFoundError):
         return None
@@ -73,150 +84,240 @@ def get_model():
 
 def reset_form():
     """Put every input back to the example trial."""
-    st.session_state.update({f"chk_{name}": value for name, value in DEFAULTS.items()})
+    for name, value in DEFAULTS.items():
+        st.session_state[f"chk_{name}"] = value
 
 
 def pick(name, text):
-    """Dropdown for one categorical feature in plain words; 'Not specified' becomes None (a missing value)."""
-    # The empty choice first, then the API codes; format_func shows each code as a plain name.
+    """Dropdown for one categorical feature in plain words. 'Not specified' becomes None (a missing value)."""
+
+    def shown_name(code):
+        """What the dropdown shows for one option: the plain name of the API code."""
+        if code == UNSET:
+            return UNSET
+        return label(name, code)
+
+    # The empty choice comes first, then the API codes.
     options = [UNSET] + CHOICES[name]
-    choice = st.selectbox(text, options, key=f"chk_{name}", help=HELP[name],
-                          format_func=lambda v: v if v == UNSET else label(name, v))
-    return None if choice == UNSET else choice
+    choice = st.selectbox(text, options, key=f"chk_{name}", help=HELP[name], format_func=shown_name)
+    if choice == UNSET:
+        return None
+    return choice
+
+
+def intervention_name(code):
+    """Plain name of an intervention type for the list, for example 'DIETARY_SUPPLEMENT' -> 'Dietary supplement'."""
+    return label("", code)
 
 
 def split_conditions(text):
-    """'Asthma; COPD, Smoking' -> ['Asthma', 'COPD', 'Smoking']: commas, semicolons and new lines separate entries."""
-    return [part.strip() for part in re.split(r"[;,\n]", text or "") if part.strip()]
+    """'Asthma; COPD, Smoking' -> ['Asthma', 'COPD', 'Smoking']. Commas, semicolons and new lines separate entries."""
+    conditions = []
+    for part in re.split(r"[;,\n]", text or ""):
+        part = part.strip()
+        if part:
+            conditions.append(part)
+    return conditions
 
 
-def design_form():
-    """Render the form and return the design in plain inputs (the keys src.features.study_from_design reads)."""
-    # First run: fill every input with the example trial (setdefault keeps what the user already typed).
-    for name, value in DEFAULTS.items():
-        st.session_state.setdefault(f"chk_{name}", value)
-    # Panel 1: the design itself (phase, allocation, blinding, model, purpose, arms, intervention types).
-    with st.container(key="panel_design"):
-        st.markdown("##### Design")
-        a, b, c = st.columns(3)
-        with a:
-            row = {"phase": pick("phase", "Phase")}
-            row["allocation"] = pick("allocation", "Allocation")
-        with b:
-            row["masking"] = pick("masking", "Blinding")
-            row["intervention_model"] = pick("intervention_model", "Intervention model")
-        with c:
-            row["primary_purpose"] = pick("primary_purpose", "Purpose")
-            row["n_arms"] = st.number_input("Number of groups (arms)", 0, 20, key="chk_n_arms")
-        types = st.multiselect("Intervention types", INTERVENTION_TYPES, key="chk_intervention_types",
-                               format_func=lambda t: label("", t), help="What is tested: a drug, a device, a behaviour change...")
-    # Panel 2: who runs the trial and who watches it.
-    with st.container(key="panel_sponsor"):
-        st.markdown("##### Sponsor and oversight")
-        a, b, c = st.columns(3)
-        with a:
-            row["sponsor_class"] = pick("sponsor_class", "Lead sponsor")
-        row["has_collaborators"] = b.checkbox("Has collaborators", key="chk_has_collaborators")
-        row["has_dmc"] = c.checkbox("Has a data monitoring committee", key="chk_has_dmc",
-                                    help="An independent group that watches the safety data during the trial.")
-    # Panel 3: what is measured and which conditions are studied.
-    with st.container(key="panel_outcomes"):
-        st.markdown("##### Outcomes")
-        a, b, c = st.columns(3)
-        row["n_primary_outcomes"] = a.number_input("Primary outcomes", 0, 20, key="chk_n_primary_outcomes",
-                                                   help="The main questions the trial answers.")
-        row["n_secondary_outcomes"] = b.number_input("Secondary outcomes", 0, 50, key="chk_n_secondary_outcomes")
-        with c:
-            text = st.text_input("Conditions studied", key="chk_conditions",
-                                 help="Separate several conditions with commas, for example: asthma, COPD.")
-        row["conditions"] = split_conditions(text)
-        # Show which condition areas the keywords recognise, so the user sees how the text is read.
-        areas = [feature_name(col).removeprefix("Condition: ")
-                 for col, on in condition_features(row["conditions"]).items() if col in CONDITION_FLAG_FEATURES and on]
-        st.caption(f"Recognised condition areas: {', '.join(areas)}." if areas else
-                   "No condition area recognised; the model then treats it like any other condition.")
-    # Panel 4: who may take part.
-    with st.container(key="panel_people"):
-        st.markdown("##### Participants")
-        a, b, c = st.columns(3)
-        with a:
-            row["sex"] = pick("sex", "Sex eligible")
-            row["healthy_volunteers"] = st.checkbox("Accepts healthy volunteers", key="chk_healthy_volunteers")
-        with b:
-            row["min_age_years"] = st.number_input("Minimum age (years)", 0.0, 120.0, key="chk_min_age_years")
-            has_max_age = st.checkbox("Has a maximum age", key="chk_has_max_age")
-        with c:
-            # None = no upper limit; features_from_design turns it into 120 plus the flag, as for real records.
-            row["max_age_years"] = (st.number_input("Maximum age (years)", 0.0, 120.0, key="chk_max_age_years")
-                                    if has_max_age else None)
-            row["eligibility_text_len"] = st.number_input(
-                "Length of eligibility criteria (characters)", 0, 30000, step=100, key="chk_eligibility_text_len",
-                help="A short paragraph is about 500 characters; long inclusion/exclusion lists reach several thousand.",
-            )
-    row["intervention_types"] = types
-    return row
-
+# ---------------------------------------------------------------------------------------------------------------
+# "Which single change lowers the estimate?"
+# ---------------------------------------------------------------------------------------------------------------
 
 def lever_options(design, lever):
-    """The other values worth trying for one design lever; nothing that would describe an impossible design."""
-    # Each lever gets its own list of realistic alternatives; impossible combinations are filtered out.
+    """The other values worth trying for one design lever. Nothing that would describe an impossible design."""
     current = design.get(lever)
+    options = []
     if lever == "masking":
         options = CHOICES["masking"]
     elif lever == "allocation":
-        # "Single group" is not advice, and one arm cannot be randomized.
-        options = ["RANDOMIZED", "NON_RANDOMIZED"] if (design.get("n_arms") or 0) >= 2 else ["NON_RANDOMIZED"]
+        # One arm cannot be randomized. "Single group" is never suggested, because it is not advice.
+        if (design.get("n_arms") or 0) >= 2:
+            options = ["RANDOMIZED", "NON_RANDOMIZED"]
+        else:
+            options = ["NON_RANDOMIZED"]
     elif lever == "n_arms":
-        fewest = 2 if design.get("allocation") == "RANDOMIZED" else 1  # randomizing needs two groups
-        options = [n for n in range((current or 0) - 2, (current or 0) + 3) if fewest <= n <= 20]
+        # Up to two arms fewer or more, at most 20. Randomizing needs at least two groups.
+        fewest = 1
+        if design.get("allocation") == "RANDOMIZED":
+            fewest = 2
+        arms = current or 0
+        for n in range(arms - 2, arms + 3):
+            if fewest <= n <= 20:
+                options.append(n)
     elif lever == "eligibility_text_len":
-        options = [int(round(current * f / 100) * 100) for f in LENGTH_FACTORS] if current else []
-        options = [n for n in options if n > 0]
+        # Shorter and longer texts, rounded to full hundreds. An empty text has nothing to scale.
+        if current:
+            for factor in LENGTH_FACTORS:
+                length = int(round(current * factor / 100) * 100)
+                if length > 0:
+                    options.append(length)
     elif lever == "min_age_years":
+        # The minimum has to stay below the maximum age.
         top = design.get("max_age_years")
-        options = [a for a in MIN_AGES if top is None or a < top]
+        for age in MIN_AGES:
+            if top is None or age < top:
+                options.append(age)
     elif lever == "max_age_years":
-        options = [a for a in MAX_AGES if a is None or a > (design.get("min_age_years") or 0)]
+        # The maximum has to stay above the minimum age. None (no upper limit) is always possible.
+        lowest = design.get("min_age_years") or 0
+        for age in MAX_AGES:
+            if age is None or age > lowest:
+                options.append(age)
     else:  # has_dmc
         options = [not current]
-    # The current value is not a change, so it is removed from the options.
-    return [value for value in options if value != current]
+
+    # The current value is not a change, so it is left out.
+    changes = []
+    for value in options:
+        if value != current:
+            changes.append(value)
+    return changes
 
 
 def describe(lever, old, new):
     """One change in plain words, for example 'Blinding: None (open label) → Double blind'."""
-    # The maximum age needs its own wording: None means 'no upper limit', stored as 120 like in the training data.
-    words = {"max_age_years": lambda v: feature_value("max_age_years", 120.0 if v is None else v)}
-    show = words.get(lever, lambda v: feature_value(lever, v))
-    return f"{feature_name(lever)}: {show(old)} → {show(new)}"
+    # "No maximum age" is None in the form, but the names in labels.py expect it as 120 years, like in the
+    # training data.
+    if lever == "max_age_years":
+        if old is None:
+            old = 120.0
+        if new is None:
+            new = 120.0
+    return f"{feature_name(lever)}: {feature_value(lever, old)} → {feature_value(lever, new)}"
 
 
-def lowering_changes(design, risk_of, top=5):
-    """Best single change per design lever that lowers the risk, strongest first, as (description, new risk, change).
+def risk_of(design):
+    """Predicted risk of a design from the form. It goes through the same feature function as the training data."""
+    return score(features_from_design(design), get_model())
 
-    risk_of scores a design dict. Only LEVERS are tried: never phase, sponsor type, purpose or the condition.
+
+def new_risk(change):
+    """The new risk of a (description, new risk) pair. Used to sort the changes."""
+    return change[1]
+
+
+def lowering_changes(design):
+    """The best single change per design lever that lowers the risk, strongest first.
+
+    Returns a list of (description, new risk, change in risk). Only LEVERS are tried: never phase, sponsor type,
+    purpose or the condition.
     """
-    # Score the current design once, then every alternative of every lever, one change at a time.
+    # Score the current design once, then every other value of every lever, one change at a time.
     base = risk_of(design)
     best = []
     for lever in LEVERS:
-        tries = [(value, risk_of({**design, lever: value})) for value in lever_options(design, lever)]
-        if tries:
-            # Keep only the best alternative per lever.
-            value, risk = min(tries, key=lambda t: t[1])
-            best.append((describe(lever, design.get(lever), value), risk))
-    # Lowest new risk first; only changes that really lower the risk are shown.
-    best.sort(key=lambda t: t[1])
-    return [(text, risk, risk - base) for text, risk in best[:top] if risk < base]
+        # Keep only the value with the lowest risk for this lever.
+        best_value = None
+        best_risk = None
+        for value in lever_options(design, lever):
+            changed = dict(design)
+            changed[lever] = value
+            risk = risk_of(changed)
+            if best_risk is None or risk < best_risk:
+                best_value = value
+                best_risk = risk
+        if best_risk is not None:
+            best.append((describe(lever, design.get(lever), best_value), best_risk))
+
+    # Lowest new risk first. Of the first few, only changes that really lower the risk are shown.
+    best.sort(key=new_risk)
+    changes = []
+    for text, risk in best[:MAX_CHANGES]:
+        if risk < base:
+            changes.append((text, risk, risk - base))
+    return changes
 
 
-# ---- Page ----
-page_header("Check your own trial",
-            "Describe a trial design and see how likely it is to be stopped early. Change any value and the estimate updates straight away.")
+# ---------------------------------------------------------------------------------------------------------------
+# The page
+# ---------------------------------------------------------------------------------------------------------------
 
-# The result strip is created before the form so it sits on top, but filled after the form has been read.
-result_strip = st.container(key="sticky_result")  # filled once the risk is known, but shown above the form
-design = design_form()
+page_header("Check your own trial", "Describe a trial design and see how likely it is to be stopped early. "
+                                    "Change any value and the estimate updates straight away.")
+
+# The result strip is created before the form so it sits on top. It is filled further down, once the form has
+# been read and the risk is known.
+result_strip = st.container(key="sticky_result")
+
+# First run: fill every input with the example trial. What the user already typed is kept.
+for name, value in DEFAULTS.items():
+    if f"chk_{name}" not in st.session_state:
+        st.session_state[f"chk_{name}"] = value
+
+# The form fills this dictionary. Its keys are the ones src.features.study_from_design reads.
+design = {}
+
+# Panel 1: the design itself (phase, allocation, blinding, model, purpose, arms, intervention types).
+with st.container(key="panel_design"):
+    st.markdown("##### Design")
+    a, b, c = st.columns(3)
+    with a:
+        design["phase"] = pick("phase", "Phase")
+        design["allocation"] = pick("allocation", "Allocation")
+    with b:
+        design["masking"] = pick("masking", "Blinding")
+        design["intervention_model"] = pick("intervention_model", "Intervention model")
+    with c:
+        design["primary_purpose"] = pick("primary_purpose", "Purpose")
+        design["n_arms"] = st.number_input("Number of groups (arms)", 0, 20, key="chk_n_arms")
+    design["intervention_types"] = st.multiselect(
+        "Intervention types", INTERVENTION_TYPES, key="chk_intervention_types", format_func=intervention_name,
+        help="What is tested: a drug, a device, a behaviour change...")
+
+# Panel 2: who runs the trial and who watches it.
+with st.container(key="panel_sponsor"):
+    st.markdown("##### Sponsor and oversight")
+    a, b, c = st.columns(3)
+    with a:
+        design["sponsor_class"] = pick("sponsor_class", "Lead sponsor")
+    design["has_collaborators"] = b.checkbox("Has collaborators", key="chk_has_collaborators")
+    design["has_dmc"] = c.checkbox("Has a data monitoring committee", key="chk_has_dmc",
+                                   help="An independent group that watches the safety data during the trial.")
+
+# Panel 3: what is measured and which conditions are studied.
+with st.container(key="panel_outcomes"):
+    st.markdown("##### Outcomes")
+    a, b, c = st.columns(3)
+    design["n_primary_outcomes"] = a.number_input("Primary outcomes", 0, 20, key="chk_n_primary_outcomes",
+                                                  help="The main questions the trial answers.")
+    design["n_secondary_outcomes"] = b.number_input("Secondary outcomes", 0, 50, key="chk_n_secondary_outcomes")
+    with c:
+        conditions_text = st.text_input("Conditions studied", key="chk_conditions",
+                                        help="Separate several conditions with commas, for example: asthma, COPD.")
+    design["conditions"] = split_conditions(conditions_text)
+    # Show which condition areas the keywords recognise, so the user sees how the text is read.
+    areas = []
+    for column, found in condition_features(design["conditions"]).items():
+        if column in CONDITION_FLAG_FEATURES and found:
+            areas.append(feature_name(column).removeprefix("Condition: "))
+    if areas:
+        st.caption(f"Recognised condition areas: {', '.join(areas)}.")
+    else:
+        st.caption("No condition area recognised; the model then treats it like any other condition.")
+
+# Panel 4: who may take part.
+with st.container(key="panel_people"):
+    st.markdown("##### Participants")
+    a, b, c = st.columns(3)
+    with a:
+        design["sex"] = pick("sex", "Sex eligible")
+        design["healthy_volunteers"] = st.checkbox("Accepts healthy volunteers", key="chk_healthy_volunteers")
+    with b:
+        design["min_age_years"] = st.number_input("Minimum age (years)", 0.0, 120.0, key="chk_min_age_years")
+        has_max_age = st.checkbox("Has a maximum age", key="chk_has_max_age")
+    with c:
+        # The input for the maximum age only shows when the box is ticked. None = no upper limit;
+        # features_from_design turns it into 120 plus the flag, as for real records.
+        if has_max_age:
+            design["max_age_years"] = st.number_input("Maximum age (years)", 0.0, 120.0, key="chk_max_age_years")
+        else:
+            design["max_age_years"] = None
+        design["eligibility_text_len"] = st.number_input(
+            "Length of eligibility criteria (characters)", 0, 30000, step=100, key="chk_eligibility_text_len",
+            help="A short paragraph is about 500 characters; long inclusion/exclusion lists reach several thousand.",
+        )
+
 st.button("Reset to the example trial", on_click=reset_form)
 
 # Without a model file the form still works, but nothing can be scored.
@@ -224,29 +325,30 @@ if get_model() is None:
     result_strip.info("The estimate is not available here yet: the model file is missing.")
     st.stop()
 
-# Imported only now: src.predict loads model files, which the check above made sure exist.
-from src.predict import explain, model_features, score  # noqa: E402
-
-MISMATCH = ("This design cannot be scored right now: the saved model and the app expect different inputs{detail}. "
-            "Nothing is wrong with your entries; the model needs retraining (python src/train.py). "
-            "The other pages still work.")
-# The same feature function as training (via study_from_design), then a check that the model gets every input.
+# The same feature function as training (via study_from_design), then a check that the model gets every input
+# it was trained on.
 row = features_from_design(design)
-missing = [c for c in model_features(get_model()) if c not in row]
+missing = []
+for column in model_features(get_model()):
+    if column not in row:
+        missing.append(feature_name(column))
 if missing:
-    result_strip.error(MISMATCH.format(detail=f" (the model also needs: {', '.join(map(feature_name, missing))})"))
+    result_strip.error(MISMATCH_START + f" (the model also needs: {', '.join(missing)})" + MISMATCH_END)
     st.stop()
 try:
     risk = score(row, get_model())
 except ValueError:
-    result_strip.error(MISMATCH.format(detail=""))
+    result_strip.error(MISMATCH_START + MISMATCH_END)
     st.stop()
 
-# Remember the last risk so the strip can show how much the latest edit changed it.
+# Remember the last risk, so the strip can show how much the latest edit changed it. A change that would round
+# to "+0.0%" is not shown.
 previous = st.session_state.get("previous_risk")
 st.session_state["previous_risk"] = risk
-changed = previous is not None and abs(risk - previous) >= 0.0005  # hide a meaningless "+0.0%"
-result_strip.markdown(risk_card(risk, delta=risk - previous if changed else None, compact=True), unsafe_allow_html=True)
+delta = None
+if previous is not None and abs(risk - previous) >= 0.0005:
+    delta = risk - previous
+result_strip.markdown(risk_card(risk, delta=delta, compact=True), unsafe_allow_html=True)
 
 # Where the design ranks among past trials.
 st.subheader("Where this design stands")
@@ -258,15 +360,15 @@ with st.expander("How to read this"):
     st.write(bar_caption())
     st.write(estimate_caption(risk))
 
-# Which factors push this design's risk up or down (src.predict.explain).
+# Which factors push this design's risk up or down (src.predict.explain). None means it could not be worked out,
+# an empty list means no factor differs from a typical past trial.
 st.subheader("What drives this estimate")
 try:
     drivers = explain(row)
 except (FileNotFoundError, KeyError, ValueError):
     drivers = None
-drivers_fig = drivers_chart(drivers or [])
-if drivers_fig is not None:
-    chart(drivers_fig, key="drivers_chart")
+if drivers:
+    chart(drivers_chart(drivers), key="drivers_chart")
     st.caption(drivers_caption())
 elif drivers == []:
     st.write("This design looks like a typical past trial in every factor, so nothing pushes it up or down.")
@@ -277,12 +379,12 @@ else:
 # real risk: the model learned patterns from past trials (prediction), not what a change would cause (DSF deck 01,
 # "prediction or causal question?").
 st.subheader("Which single change lowers the estimate?")
-changes = lowering_changes(design, lambda d: score(features_from_design(d), get_model()))
+changes = lowering_changes(design)
 if changes:
-    st.table(pd.DataFrame(
-        [(text, f"{new:.1%}", f"{delta:+.1%}") for text, new, delta in changes],
-        columns=["Single change", "New estimate", "Change"],
-    ).set_index("Single change"))
+    table_rows = []
+    for text, risk_after, change in changes:
+        table_rows.append({"Single change": text, "New estimate": f"{risk_after:.1%}", "Change": f"{change:+.1%}"})
+    st.table(pd.DataFrame(table_rows).set_index("Single change"))
     st.caption(
         "Only settings a trial designer can choose are tried (blinding, allocation, arms, length of the eligibility "
         "criteria, age limits, data monitoring committee); phase, sponsor and condition follow from the research "

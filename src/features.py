@@ -1,31 +1,34 @@
 # AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""The single feature-building function shared by training and the app.
+"""Turns one trial from ClinicalTrials.gov into the numbers and categories the model uses.
 
-``build_features`` takes ONE ClinicalTrials.gov API v2 study record (the dict
-under ``studies[i]``) and returns a flat dict of design-time features plus a few
-non-feature columns (id, status, label, start date).
+build_features() gets ONE study record from the API (one element of the "studies" list) and returns a flat
+dictionary. Training and the app both call this function, so a trial is always described in the same way.
 
-Leakage rule: every value is read through an explicit path below. Enrollment,
-locations, whyStopped, results, completion/last-update dates and every date
-other than ``startDateStruct`` are never read, so they cannot leak in even
-when the record contains them (live trials from the app carry the full record).
+Leakage rule: we only read fields that are known when a trial is registered. Enrollment, locations, whyStopped,
+results and every date except the start date are never read here, so they cannot reach the model.
 """
 
 import re
 from datetime import date
 
-# Intervention types in the API enum; one 0/1 column each (multi-hot).
+# ---------------------------------------------------------------------------------------------------------------
+# Column lists
+# ---------------------------------------------------------------------------------------------------------------
+
+# Intervention types of the API. Each one becomes its own 0/1 column, because a trial can have several.
 INTERVENTION_TYPES = [
     "DRUG", "DEVICE", "BIOLOGICAL", "PROCEDURE", "RADIATION", "BEHAVIORAL",
     "GENETIC", "DIETARY_SUPPLEMENT", "COMBINATION_PRODUCT", "DIAGNOSTIC_TEST",
     "OTHER",
 ]
+INTERVENTION_FEATURES = []
+for kind in INTERVENTION_TYPES:
+    INTERVENTION_FEATURES.append("intervention_" + kind.lower())
 
-# Condition categories: keyword patterns matched (case-insensitive, at word starts)
-# against each registered condition string. A trial can fall into several
-# categories (multi-hot) or none. Only these flags reach the model, never the
-# free text itself, so a model cannot memorise individual trials by name.
+# Condition categories. Each registered condition is searched for these keywords (at the start of a word, upper
+# and lower case do not matter). A trial can belong to several categories or to none. Only the 0/1 flags reach
+# the model, never the text itself, so the model cannot learn single trials by name.
 CONDITION_KEYWORDS = {
     "oncology": [
         r"cancers?\b", r"carcinom", r"tumou?r", r"neoplas", r"lymphom", r"leuka?emi", r"myelom",
@@ -71,291 +74,355 @@ CONDITION_KEYWORDS = {
     "healthy": [r"healthy"],
 }
 CONDITION_CATEGORIES = list(CONDITION_KEYWORDS)
-_CONDITION_RES = {
-    category: re.compile(r"\b(?:" + "|".join(patterns) + ")", re.I)
-    for category, patterns in CONDITION_KEYWORDS.items()
-}
-CONDITION_FLAG_FEATURES = [f"cond_{c}" for c in CONDITION_CATEGORIES]
-# Every column condition_features adds (the v2 features; see FEATURE_SETS in train.py).
+
+# One search pattern per category: "\b" means "start of a word", "|" means "or".
+CONDITION_PATTERNS = {}
+CONDITION_FLAG_FEATURES = []
+for category in CONDITION_CATEGORIES:
+    keywords = "|".join(CONDITION_KEYWORDS[category])
+    CONDITION_PATTERNS[category] = re.compile(r"\b(" + keywords + ")", re.IGNORECASE)
+    CONDITION_FLAG_FEATURES.append("cond_" + category)
+
+# All columns that condition_features() adds (the "v2" features, see FEATURE_SETS in train.py).
 CONDITION_FEATURES = CONDITION_FLAG_FEATURES + ["n_condition_categories"]
 
-# Columns that identify or describe a row but are NEVER fed to the model.
+# Columns that describe a row but are NEVER given to the model.
 META_COLUMNS = ["nct_id", "overall_status", "label", "start_date"]
 
-# Human-readable columns for the app (cards, tables, game). NEVER model inputs:
-# free text / identifiers would let a model memorise trials. Overlaps META
-# (nct_id, start_date, overall_status) on purpose; the app reads them from here.
+# Columns the app shows to people (cards, tables, the game). Also NEVER given to the model. nct_id, start_date
+# and overall_status are listed here again on purpose, because the app reads them from this list.
 DISPLAY_COLS = [
     "nct_id", "brief_title", "conditions", "lead_sponsor_name", "phase_label",
     "start_date", "overall_status",
 ]
-# Display columns that are not already META columns (extra parquet columns).
-EXTRA_DISPLAY_COLS = [c for c in DISPLAY_COLS if c not in META_COLUMNS]
-# Everything in the parquet that must be excluded when training.
+# The display columns that are not meta columns already.
+EXTRA_DISPLAY_COLS = ["brief_title", "conditions", "lead_sponsor_name", "phase_label"]
+# Everything in the data file that must be left out when training.
 NON_FEATURE_COLUMNS = META_COLUMNS + EXTRA_DISPLAY_COLS + ["split"]
 
+# The model inputs, in three groups: categories, 0/1 flags and numbers.
 CATEGORICAL_FEATURES = [
     "phase", "allocation", "intervention_model", "primary_purpose", "masking",
     "sponsor_class", "sex",
 ]
-BINARY_FEATURES = [
-    "has_collaborators", "has_dmc", "healthy_volunteers", "has_max_age",
-] + [f"intervention_{t.lower()}" for t in INTERVENTION_TYPES] + CONDITION_FLAG_FEATURES
+BINARY_FEATURES = (
+    ["has_collaborators", "has_dmc", "healthy_volunteers", "has_max_age"]
+    + INTERVENTION_FEATURES
+    + CONDITION_FLAG_FEATURES
+)
 NUMERIC_FEATURES = [
     "n_arms", "min_age_years", "max_age_years", "eligibility_text_len",
     "n_primary_outcomes", "n_secondary_outcomes", "n_conditions", "n_condition_categories",
 ]
 FEATURE_COLUMNS = CATEGORICAL_FEATURES + BINARY_FEATURES + NUMERIC_FEATURES
 
-# Stand-in for a missing maximum age (no upper limit).
+# A trial without a maximum age gets 120 years, so the column has no gaps.
 MAX_AGE_FILL = 120.0
 
+# What we predict: 1 = stopped early, 0 = finished.
 LABELS = {"TERMINATED": 1, "COMPLETED": 0}
 
-_PHASE_NAMES = {
+PHASE_NAMES = {
     "EARLY_PHASE1": "Early Phase 1", "PHASE1": "Phase 1", "PHASE2": "Phase 2",
     "PHASE3": "Phase 3", "PHASE4": "Phase 4", "NA": "Not Applicable",
 }
 
-# Hours/minutes only occur for very young infants; kept for completeness.
-_AGE_UNIT_YEARS = {
+# How many years one unit of age is. Hours and minutes only occur for newborns.
+YEARS_PER_UNIT = {
     "year": 1.0, "month": 1 / 12, "week": 7 / 365.25, "day": 1 / 365.25,
     "hour": 1 / 8766, "minute": 1 / 525960,
 }
-_AGE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(year|month|week|day|hour|minute)s?\b", re.I)
-_DATE_RE = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
+# "18 Years" -> number 18 and unit "year".
+AGE_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(year|month|week|day|hour|minute)s?\b", re.IGNORECASE)
+# "2015-03" or "2015-03-17" -> year, month and (maybe) day.
+DATE_PATTERN = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
 
 
-def _get(obj, *path):
-    """Walk nested dicts and return None as soon as a key is missing."""
-    for key in path:
-        if not isinstance(obj, dict):
+# ---------------------------------------------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------------------------------------------
+
+def get_field(record, *keys):
+    """Go down a nested dictionary key by key. Returns None as soon as a key is missing."""
+    value = record
+    for key in keys:
+        if not isinstance(value, dict):
             return None
-        obj = obj.get(key)
-    return obj
+        value = value.get(key)
+    return value
 
 
-def _count(items):
-    """Length of a list; an absent list counts as 0 (nothing was registered)."""
-    return len(items) if isinstance(items, list) else 0
+def count_items(items):
+    """Length of a list. A missing list counts as 0, because then nothing was registered."""
+    if isinstance(items, list):
+        return len(items)
+    return 0
 
 
-def _flag(value):
-    """Map an API boolean (or its string form) to 1/0, None if absent."""
+def yes_no_flag(value):
+    """True/False (or the text "true"/"false") -> 1/0. Anything else -> None."""
     if isinstance(value, bool):
         return int(value)
-    if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
-        return int(value.strip().lower() == "true")
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text == "true":
+            return 1
+        if text == "false":
+            return 0
     return None
 
 
 def phase_label(phases):
-    """Readable phase, e.g. ['PHASE2','PHASE3'] -> 'Phase 2/Phase 3'; absent -> None."""
+    """Readable phase, for example ['PHASE2', 'PHASE3'] -> 'Phase 2/Phase 3'. No phases -> None."""
     if not phases:
         return None
-    return "/".join(_PHASE_NAMES.get(p, p) for p in sorted(phases))
+    names = []
+    for phase in sorted(phases):
+        names.append(PHASE_NAMES.get(phase, phase))
+    return "/".join(names)
 
 
 def parse_age_years(text):
-    """Convert strings like '18 Years' or '6 Months' to years; 'N/A'/missing -> None."""
+    """'18 Years' -> 18.0 and '6 Months' -> 0.5. 'N/A' or a missing value -> None."""
     if not isinstance(text, str):
         return None
-    match = _AGE_RE.match(text)
+    match = AGE_PATTERN.match(text)
     if not match:
         return None
-    return float(match.group(1)) * _AGE_UNIT_YEARS[match.group(2).lower()]
+    number = float(match.group(1))
+    unit = match.group(2).lower()
+    return number * YEARS_PER_UNIT[unit]
 
 
 def parse_start_date(text):
-    """Parse 'YYYY-MM' or 'YYYY-MM-DD' to a date (month precision -> day 1).
+    """'YYYY-MM' or 'YYYY-MM-DD' -> a date (without a day we take day 1).
 
-    Returns None for anything else (year-only, garbage, impossible dates);
-    those rows are treated as invalid and dropped from the dataset.
+    Everything else (only a year, nonsense, impossible dates) gives None. Such trials are dropped from the data.
     """
     if not isinstance(text, str):
         return None
-    match = _DATE_RE.match(text.strip())
+    match = DATE_PATTERN.match(text.strip())
     if not match:
         return None
-    year, month, day = int(match.group(1)), int(match.group(2)), match.group(3)
+    year = int(match.group(1))
+    month = int(match.group(2))
+    day = 1
+    if match.group(3):
+        day = int(match.group(3))
     try:
-        return date(year, month, int(day) if day else 1)
+        return date(year, month, day)
     except ValueError:
         return None
 
 
-def condition_features(conditions: list[str]) -> dict:
-    """Keyword multi-hot flags for the condition categories of one trial.
+def condition_features(conditions):
+    """0/1 flag per condition category for one trial, plus how many categories matched.
 
-    Args:
-        conditions: the registered condition strings (``conditionsModule.conditions``);
-            None or an empty list means none were registered. Non-strings are ignored.
-
-    Returns:
-        ``{"cond_oncology": 0/1, ..., "cond_healthy": 0/1, "n_condition_categories": k}``
-        where k is the number of categories with at least one matching condition.
-        An absent list gives all zeros, like the other list counts.
+    conditions is the list of registered condition texts. None or an empty list gives all zeros.
+    Example result: {"cond_oncology": 1, "cond_cardio": 0, ..., "n_condition_categories": 1}
     """
-    texts = [c for c in conditions or [] if isinstance(c, str)]
-    row = {
-        f"cond_{category}": int(any(pattern.search(t) for t in texts))
-        for category, pattern in _CONDITION_RES.items()
-    }
+    texts = []
+    for condition in conditions or []:
+        if isinstance(condition, str):
+            texts.append(condition)
+
+    row = {}
+    for category in CONDITION_CATEGORIES:
+        found = 0
+        for text in texts:
+            if CONDITION_PATTERNS[category].search(text):
+                found = 1
+                break
+        row["cond_" + category] = found
     row["n_condition_categories"] = sum(row.values())
     return row
 
 
-def build_features(study_json: dict) -> dict:
-    """Build design-time features for one API v2 study record.
+# ---------------------------------------------------------------------------------------------------------------
+# The feature function
+# ---------------------------------------------------------------------------------------------------------------
 
-    Args:
-        study_json: one element of the API's ``studies`` list.
+def build_features(study_json):
+    """Build the row for one study record of the API.
 
-    Returns:
-        Flat dict with META_COLUMNS, DISPLAY_COLS and FEATURE_COLUMNS keys. Missing source
-        fields become None, except counts (0) and max age (120 + flag). ``label`` is 1/0 for TERMINATED/COMPLETED and None
-        for any other status (e.g. ongoing trials that are only scored).
+    The result has the meta columns, the display columns and all FEATURE_COLUMNS. Missing fields become None,
+    except counts (0) and the maximum age (120 plus the flag has_max_age = 0). "label" is 1 for TERMINATED,
+    0 for COMPLETED and None for every other status (running trials are only scored, not used for training).
     """
-    proto = _get(study_json, "protocolSection") or {}
+    proto = get_field(study_json, "protocolSection") or {}
 
-    status = _get(proto, "statusModule", "overallStatus")
-    start = parse_start_date(_get(proto, "statusModule", "startDateStruct", "date"))
+    # Read every part of the record once. Each read names its exact path (the leakage rule above).
+    status = get_field(proto, "statusModule", "overallStatus")
+    start = parse_start_date(get_field(proto, "statusModule", "startDateStruct", "date"))
+    design = get_field(proto, "designModule", "designInfo") or {}
+    phases = get_field(proto, "designModule", "phases")
+    interventions = get_field(proto, "armsInterventionsModule", "interventions")
+    sponsor_module = get_field(proto, "sponsorCollaboratorsModule")
+    collaborators = get_field(proto, "sponsorCollaboratorsModule", "collaborators")
+    criteria = get_field(proto, "eligibilityModule", "eligibilityCriteria")
+    max_age = parse_age_years(get_field(proto, "eligibilityModule", "maximumAge"))
+    conditions = get_field(proto, "conditionsModule", "conditions")
 
-    # Pull every module this function needs once; each later read goes through an explicit path (the leakage rule).
-    design = _get(proto, "designModule", "designInfo") or {}
-    phases = _get(proto, "designModule", "phases")
-    interventions = _get(proto, "armsInterventionsModule", "interventions")
-    collaborators = _get(proto, "sponsorCollaboratorsModule", "collaborators")
-    sponsor_module = _get(proto, "sponsorCollaboratorsModule")
-    criteria = _get(proto, "eligibilityModule", "eligibilityCriteria")
+    # No collaborators is a real answer (0), but only if the sponsor part exists at all.
+    has_collaborators = None
+    if sponsor_module:
+        has_collaborators = int(bool(collaborators))
 
-    max_age = parse_age_years(_get(proto, "eligibilityModule", "maximumAge"))
-    conditions = _get(proto, "conditionsModule", "conditions")
+    # No maximum age means "no upper limit": we store the flag 0 and 120 years as a stand-in.
+    has_max_age = 1
+    if max_age is None:
+        has_max_age = 0
+        max_age = MAX_AGE_FILL
 
-    # The row: meta columns (never model inputs), the design-time features, then display-only columns.
+    eligibility_text_len = None
+    if isinstance(criteria, str):
+        eligibility_text_len = len(criteria)
+
+    # The conditions as one text for the app, for example "Asthma; COPD".
+    condition_texts = []
+    for condition in conditions or []:
+        if isinstance(condition, str):
+            condition_texts.append(condition)
+
     row = {
-        "nct_id": _get(proto, "identificationModule", "nctId"),
+        # Meta columns (never model inputs).
+        "nct_id": get_field(proto, "identificationModule", "nctId"),
         "overall_status": status,
         "label": LABELS.get(status),
         "start_date": start.isoformat() if start else None,
 
+        # Design features.
         "phase": "/".join(sorted(phases)) if phases else None,
         "allocation": design.get("allocation"),
         "intervention_model": design.get("interventionModel"),
         "primary_purpose": design.get("primaryPurpose"),
-        "masking": _get(design, "maskingInfo", "masking"),
-        "n_arms": _count(_get(proto, "armsInterventionsModule", "armGroups")),
-        "sponsor_class": _get(sponsor_module, "leadSponsor", "class"),
-        # No collaborators is a real value (0), but only if the module exists.
-        "has_collaborators": (int(bool(collaborators)) if sponsor_module else None),
-        "has_dmc": _flag(_get(proto, "oversightModule", "oversightHasDmc")),
-        "healthy_volunteers": _flag(_get(proto, "eligibilityModule", "healthyVolunteers")),
-        "sex": _get(proto, "eligibilityModule", "sex"),
-        "min_age_years": parse_age_years(_get(proto, "eligibilityModule", "minimumAge")),
-        # Missing max age means "no upper limit": flag it and use 120 as a
-        # stand-in so the column has no gaps.
-        "has_max_age": int(max_age is not None),
-        "max_age_years": max_age if max_age is not None else MAX_AGE_FILL,
-        "eligibility_text_len": len(criteria) if isinstance(criteria, str) else None,
-        "n_primary_outcomes": _count(_get(proto, "outcomesModule", "primaryOutcomes")),
-        "n_secondary_outcomes": _count(_get(proto, "outcomesModule", "secondaryOutcomes")),
-        "n_conditions": _count(conditions),
+        "masking": get_field(design, "maskingInfo", "masking"),
+        "n_arms": count_items(get_field(proto, "armsInterventionsModule", "armGroups")),
+        "sponsor_class": get_field(sponsor_module, "leadSponsor", "class"),
+        "has_collaborators": has_collaborators,
+        "has_dmc": yes_no_flag(get_field(proto, "oversightModule", "oversightHasDmc")),
+        "healthy_volunteers": yes_no_flag(get_field(proto, "eligibilityModule", "healthyVolunteers")),
+        "sex": get_field(proto, "eligibilityModule", "sex"),
+        "min_age_years": parse_age_years(get_field(proto, "eligibilityModule", "minimumAge")),
+        "has_max_age": has_max_age,
+        "max_age_years": max_age,
+        "eligibility_text_len": eligibility_text_len,
+        "n_primary_outcomes": count_items(get_field(proto, "outcomesModule", "primaryOutcomes")),
+        "n_secondary_outcomes": count_items(get_field(proto, "outcomesModule", "secondaryOutcomes")),
+        "n_conditions": count_items(conditions),
 
-        # Display-only (see DISPLAY_COLS); not in FEATURE_COLUMNS.
-        "brief_title": _get(proto, "identificationModule", "briefTitle"),
-        "conditions": "; ".join(
-            c for c in conditions or [] if isinstance(c, str)) or None,
-        "lead_sponsor_name": _get(sponsor_module, "leadSponsor", "name"),
+        # Display columns (never model inputs).
+        "brief_title": get_field(proto, "identificationModule", "briefTitle"),
+        "conditions": "; ".join(condition_texts) or None,
+        "lead_sponsor_name": get_field(sponsor_module, "leadSponsor", "name"),
         "phase_label": phase_label(phases),
     }
 
-    # Multi-hot intervention flags and the keyword condition flags are added after the plain fields.
-    present = {i.get("type") for i in interventions or [] if isinstance(i, dict)}
+    # One 0/1 column per intervention type. If the list is missing we do not know, so the flags are None.
+    types_in_trial = []
+    for intervention in interventions or []:
+        if isinstance(intervention, dict):
+            types_in_trial.append(intervention.get("type"))
     for kind in INTERVENTION_TYPES:
-        # Unknown intervention list -> None, otherwise a clean 0/1.
-        row[f"intervention_{kind.lower()}"] = (
-            int(kind in present) if interventions is not None else None
-        )
-    row.update(condition_features(conditions if isinstance(conditions, list) else None))
+        column = "intervention_" + kind.lower()
+        if interventions is None:
+            row[column] = None
+        elif kind in types_in_trial:
+            row[column] = 1
+        else:
+            row[column] = 0
+
+    # The condition flags come last.
+    if not isinstance(conditions, list):
+        conditions = None
+    row.update(condition_features(conditions))
     return row
 
 
-def study_from_design(design: dict) -> dict:
-    """Turn a trial design typed into a form into a minimal API v2 study record.
+# ---------------------------------------------------------------------------------------------------------------
+# A design typed into the form of the app
+# ---------------------------------------------------------------------------------------------------------------
 
-    The record only holds the design-time fields ``build_features`` reads, so
-    ``build_features(study_from_design(d))`` applies exactly the training rules
-    (age parsing, the 120 stand-in for "no maximum age", multi-hot intervention
-    and condition flags, list counts) instead of a hand-written copy of them.
+def empty_entries(n):
+    """A list with n empty entries. build_features only counts such lists, the content does not matter."""
+    return [{}] * int(n or 0)
 
-    Args:
-        design: any subset of these keys (absent or None = not stated):
-            ``phase`` (API code, e.g. "PHASE2" or "PHASE1/PHASE2"), ``allocation``,
-            ``intervention_model``, ``primary_purpose``, ``masking``,
-            ``sponsor_class``, ``sex`` (API codes); ``n_arms``,
-            ``n_primary_outcomes``, ``n_secondary_outcomes`` (ints);
-            ``has_collaborators``, ``has_dmc``, ``healthy_volunteers`` (bools);
-            ``min_age_years``, ``max_age_years`` (years; None max = no upper
-            limit); ``eligibility_text_len`` (characters); ``intervention_types``
-            (list of ``INTERVENTION_TYPES``); ``conditions`` (list of strings).
 
-    Returns:
-        A dict shaped like one element of the API's ``studies`` list, with
-        overall status NOT_YET_RECRUITING (so it never gets a label).
+def age_text(years):
+    """Age the way the API writes it, for example 18 -> '18 Years'. None stays None."""
+    if years is None:
+        return None
+    return f"{float(years):g} Years"
+
+
+def study_from_design(design):
+    """Turn the values of the form on "Check your own trial" into a small record shaped like the API's.
+
+    This way a typed-in design goes through build_features() like a real trial, and we do not need a second copy
+    of the rules (age text, the 120 stand-in, the 0/1 columns, the counts).
+
+    design is a dictionary. Every key is optional (missing or None = not stated):
+    phase (API code such as "PHASE2" or "PHASE1/PHASE2"), allocation, intervention_model, primary_purpose,
+    masking, sponsor_class, sex (API codes); n_arms, n_primary_outcomes, n_secondary_outcomes (whole numbers);
+    has_collaborators, has_dmc, healthy_volunteers (True/False); min_age_years, max_age_years (years, no maximum
+    = None); eligibility_text_len (number of characters); intervention_types (list); conditions (list of texts).
+
+    The status is NOT_YET_RECRUITING, so the record never gets a label.
     """
-    def years(value):
-        """Age in the API's text form, e.g. 18 -> '18 Years'; None stays absent."""
-        return None if value is None else f"{float(value):g} Years"
+    phases = None
+    if design.get("phase"):
+        phases = design["phase"].split("/")
 
-    def placeholders(n):
-        """A list of n empty entries: build_features only counts these lists."""
-        return [{}] * int(n or 0)
+    interventions = []
+    for kind in design.get("intervention_types") or []:
+        interventions.append({"type": kind})
 
-    # Rebuild the API's nested shape from the flat form values, field by field, using the API's own key names.
-    info = {
-        "allocation": design.get("allocation"),
-        "interventionModel": design.get("intervention_model"),
-        "primaryPurpose": design.get("primary_purpose"),
-        "maskingInfo": {"masking": design.get("masking")},
-    }
-    length = design.get("eligibility_text_len")
-    sections = {
+    collaborators = []
+    if design.get("has_collaborators"):
+        collaborators = [{}]
+
+    # Only the length of the eligibility text is a feature, so a row of "x" with the right length is enough.
+    criteria = None
+    if design.get("eligibility_text_len") is not None:
+        criteria = "x" * int(design["eligibility_text_len"])
+
+    protocol = {
         "statusModule": {"overallStatus": "NOT_YET_RECRUITING"},
         "designModule": {
             "studyType": "INTERVENTIONAL",
-            "phases": design["phase"].split("/") if design.get("phase") else None,
-            "designInfo": info,
+            "phases": phases,
+            "designInfo": {
+                "allocation": design.get("allocation"),
+                "interventionModel": design.get("intervention_model"),
+                "primaryPurpose": design.get("primary_purpose"),
+                "maskingInfo": {"masking": design.get("masking")},
+            },
         },
         "armsInterventionsModule": {
-            "armGroups": placeholders(design.get("n_arms")),
-            "interventions": [{"type": t} for t in design.get("intervention_types") or []],
+            "armGroups": empty_entries(design.get("n_arms")),
+            "interventions": interventions,
         },
         "sponsorCollaboratorsModule": {
             "leadSponsor": {"class": design.get("sponsor_class")},
-            "collaborators": [{}] if design.get("has_collaborators") else [],
+            "collaborators": collaborators,
         },
         "oversightModule": {"oversightHasDmc": design.get("has_dmc")},
         "conditionsModule": {"conditions": list(design.get("conditions") or [])},
         "outcomesModule": {
-            "primaryOutcomes": placeholders(design.get("n_primary_outcomes")),
-            "secondaryOutcomes": placeholders(design.get("n_secondary_outcomes")),
+            "primaryOutcomes": empty_entries(design.get("n_primary_outcomes")),
+            "secondaryOutcomes": empty_entries(design.get("n_secondary_outcomes")),
         },
         "eligibilityModule": {
             "healthyVolunteers": design.get("healthy_volunteers"),
             "sex": design.get("sex"),
-            "minimumAge": years(design.get("min_age_years")),
-            "maximumAge": years(design.get("max_age_years")),
-            # Only the length is a feature; the text itself is a stand-in.
-            "eligibilityCriteria": None if length is None else "x" * int(length),
+            "minimumAge": age_text(design.get("min_age_years")),
+            "maximumAge": age_text(design.get("max_age_years")),
+            "eligibilityCriteria": criteria,
         },
     }
-    return {"protocolSection": sections}
+    return {"protocolSection": protocol}
 
 
-def features_from_design(design: dict) -> dict:
-    """Feature dict for a design typed into a form: ``build_features`` on ``study_from_design``.
-
-    This is the helper the "Check your own trial" page uses, so a typed-in design
-    and a real API record go through the same feature code.
-    """
+def features_from_design(design):
+    """The feature row for a design typed into the form (used by the page "Check your own trial")."""
     return build_features(study_from_design(design))

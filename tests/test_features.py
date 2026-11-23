@@ -11,9 +11,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from features import (CONDITION_FEATURES, DISPLAY_COLS, FEATURE_COLUMNS,  # noqa: E402
-                      MAX_AGE_FILL, META_COLUMNS, build_features, condition_features,
-                      features_from_design)
+from features import (CONDITION_FEATURES, DISPLAY_COLS, FEATURE_COLUMNS, MAX_AGE_FILL, META_COLUMNS,
+                      build_features, condition_features, features_from_design)
 
 STUDY = {
     "protocolSection": {
@@ -141,10 +140,15 @@ def test_condition_backfill_matches_build_features():
     study = copy.deepcopy(STUDY)
     study["protocolSection"]["conditionsModule"]["conditions"] = ["Lung Cancer", "Depression"]
     row = build_features(study)
-    stale = pd.DataFrame([{**row, "split": "train", "start_date": pd.Timestamp(row["start_date"]),
-                           **{c: 0 for c in CONDITION_FEATURES}}])
-    filled = backfill_conditions(stale).iloc[0]
-    assert all(filled[c] == row[c] for c in CONDITION_FEATURES)
+    # The same row as it would sit in an old data file: all condition columns still 0.
+    stale_row = dict(row)
+    stale_row["split"] = "train"
+    stale_row["start_date"] = pd.Timestamp(row["start_date"])
+    for column in CONDITION_FEATURES:
+        stale_row[column] = 0
+    filled = backfill_conditions(pd.DataFrame([stale_row])).iloc[0]
+    for column in CONDITION_FEATURES:
+        assert filled[column] == row[column], column
     assert filled["n_condition_categories"] == 3
 
 
@@ -162,15 +166,18 @@ def design_of_study():
 
 def test_features_from_design_matches_build_features():
     """A design typed into the form gets exactly the features of the equivalent API record."""
-    typed, real = features_from_design(design_of_study()), build_features(STUDY)
-    assert {c: typed[c] for c in FEATURE_COLUMNS} == {c: real[c] for c in FEATURE_COLUMNS}
+    typed = features_from_design(design_of_study())
+    real = build_features(STUDY)
+    for column in FEATURE_COLUMNS:
+        assert typed[column] == real[column], column
     assert typed["label"] is None  # a typed-in design is never a training row
 
 
 def test_features_from_design_rules():
     """The form gets the same rules as real records: no maximum age = 120 plus flag, unset = missing."""
-    row = features_from_design({**design_of_study(), "max_age_years": None, "masking": None,
-                                "conditions": ["Breast cancer"], "has_dmc": False})
+    design = design_of_study()
+    design.update({"max_age_years": None, "masking": None, "conditions": ["Breast cancer"], "has_dmc": False})
+    row = features_from_design(design)
     assert row["max_age_years"] == MAX_AGE_FILL and row["has_max_age"] == 0
     assert row["masking"] is None and row["has_dmc"] == 0
     assert row["cond_oncology"] == 1 and row["n_conditions"] == 1
@@ -182,4 +189,5 @@ if __name__ == "__main__":
     for name, test in sorted(globals().items()):
         if name.startswith("test_"):
             test()
+            print("ok", name)
     print("all ok")

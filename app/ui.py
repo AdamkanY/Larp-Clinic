@@ -2,7 +2,6 @@
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 """Shared look of the Trial-Radar pages: the one colour palette, the Plotly template built from it, one stylesheet
 (style.css), full-width bands, the tick scale and the page header."""
-import functools
 import html
 import re
 from pathlib import Path
@@ -37,36 +36,68 @@ PALETTE["down"] = PALETTE["bar"]  # "lowers the risk" uses the same green as the
 FONT_FAMILY = "IBM Plex Sans, sans-serif"
 TEMPLATE = "trial_radar"
 
+# The finished stylesheet is kept here after the first call, so style.css is read from disk only once per server
+# (Streamlit runs a page again on every click).
+LOADED_STYLESHEET = {}
+
 
 def alpha(colour, opacity):
-    """A palette hex colour as rgba() with the given opacity (Plotly has no color-mix)."""
+    """A palette colour like "#0A1F1A" as "rgba(10,31,26,opacity)".
+
+    Plotly has no other way to make a colour partly transparent.
+    """
     value = colour.lstrip("#")
-    red, green, blue = (int(value[i:i + 2], 16) for i in (0, 2, 4))
+    # A hex colour is three pairs of digits: red, green and blue, each from 00 to FF.
+    red = int(value[0:2], 16)
+    green = int(value[2:4], 16)
+    blue = int(value[4:6], 16)
     return f"rgba({red},{green},{blue},{opacity})"
 
 
 def plotly_template():
-    """The chart look as a Plotly template: transparent so the paper shows through, hairline grid, ink tooltips,
-    muted axis text, the palette's series colours, a paper-to-orange heatmap scale and dashed reference lines in
-    the muted colour."""
+    """The look of all charts as a Plotly template, built from the palette.
+
+    Transparent background so the paper shows through, thin grid lines, dark tooltips, muted axis text, the
+    palette's series colours, a heatmap scale from paper to orange and reference lines in the muted colour.
+    """
+    # Two text styles: normal text in ink, small text (axes, annotations) in the muted colour.
     font = {"family": FONT_FAMILY, "size": 13, "color": PALETTE["ink"]}
     small = {"family": FONT_FAMILY, "size": 12, "color": PALETTE["muted"]}
-    axis = {"tickfont": small, "title": {"font": small}, "gridcolor": alpha(PALETTE["ink"], 0.12),
-            "linecolor": PALETTE["ink"], "zeroline": False, "automargin": True}
+
+    # Both axes look the same.
+    axis = {
+        "tickfont": small,
+        "title": {"font": small},
+        "gridcolor": alpha(PALETTE["ink"], 0.12),
+        "linecolor": PALETTE["ink"],
+        "zeroline": False,
+        "automargin": True,
+    }
+
     # Heatmaps (src/viz.py rate_heatmap) shade from the light paper through the pale yellow risk band to the
     # "raises the risk" orange, so darker always means "stopped more often". Plotly picks dark or light cell text
     # for contrast on its own.
     risk_scale = [[0.0, PALETTE["paper_2"]], [0.5, PALETTE["mid_band"]], [1.0, PALETTE["up"]]]
-    return go.layout.Template(data={"heatmap": [go.Heatmap(colorscale=risk_scale)]}, layout={
-        "font": font, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)",
+
+    layout = {
+        "font": font,
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
         "colorway": [PALETTE["bar"], PALETTE["up"], PALETTE["neutral"], PALETTE["accent_deep"]],
-        "hoverlabel": {"bgcolor": PALETTE["ink"], "bordercolor": PALETTE["ink"], "align": "left",
-                       "font": {"family": FONT_FAMILY, "color": PALETTE["paper"], "size": 13}},
-        "xaxis": axis, "yaxis": axis, "legend": {"font": font, "title": {"text": ""}},
+        "hoverlabel": {
+            "bgcolor": PALETTE["ink"],
+            "bordercolor": PALETTE["ink"],
+            "align": "left",
+            "font": {"family": FONT_FAMILY, "color": PALETTE["paper"], "size": 13},
+        },
+        "xaxis": axis,
+        "yaxis": axis,
+        "legend": {"font": font, "title": {"text": ""}},
         "title": {"font": {"family": FONT_FAMILY, "size": 15, "color": PALETTE["ink"]}},
         "shapedefaults": {"line": {"color": PALETTE["muted"]}},
         "annotationdefaults": {"font": small},
-    })
+    }
+    return go.layout.Template(data={"heatmap": [go.Heatmap(colorscale=risk_scale)]}, layout=layout)
 
 
 # Registered on import, so every figure the pages (and src/viz.py) build afterwards starts from this look.
@@ -75,43 +106,58 @@ pio.templates.default = TEMPLATE
 
 
 def chart(fig, key=None):
-    """Show a Plotly figure in the app look, full width.
+    """Show a Plotly figure in the app look, full width. Every page uses this instead of st.plotly_chart.
 
-    theme=None stops Streamlit from laying its own chart theme over the template. Streamlit's frontend still fills
-    the font and both backgrounds from its page theme unless the figure's own layout sets them (template values do
-    not count), so they are copied from the template onto the layout here; values a chart set itself are kept.
-    Axis margins grow to fit their titles.
+    theme=None stops Streamlit from laying its own chart theme over our template.
     """
+    # Streamlit's frontend still fills the font and both backgrounds from its page theme, unless the figure's own
+    # layout sets them (values that only stand in the template do not count). So we copy them from the template
+    # onto the layout here. What a chart set itself is kept.
     base = pio.templates[TEMPLATE].layout
-    fig.update_layout(
-        template=TEMPLATE,
-        font={**base.font.to_plotly_json(), **fig.layout.font.to_plotly_json()},
-        paper_bgcolor=fig.layout.paper_bgcolor or base.paper_bgcolor,
-        plot_bgcolor=fig.layout.plot_bgcolor or base.plot_bgcolor,
-    )
+    font = {}
+    font.update(base.font.to_plotly_json())
+    font.update(fig.layout.font.to_plotly_json())
+    paper_colour = fig.layout.paper_bgcolor
+    if not paper_colour:
+        paper_colour = base.paper_bgcolor
+    plot_colour = fig.layout.plot_bgcolor
+    if not plot_colour:
+        plot_colour = base.plot_bgcolor
+    fig.update_layout(template=TEMPLATE, font=font, paper_bgcolor=paper_colour, plot_bgcolor=plot_colour)
+
+    # The margins grow to fit the axis titles.
     fig.update_xaxes(automargin=True)
     fig.update_yaxes(automargin=True)
     st.plotly_chart(fig, theme=None, width="stretch", key=key)
 
 
 def css_variables():
-    """The palette as CSS custom properties (ink_2 -> --ink-2), for the top of style.css."""
-    return ":root {" + " ".join(f"--{name.replace('_', '-')}: {value};" for name, value in PALETTE.items()) + "}"
+    """The palette as CSS variables for the top of style.css, for example "ink_2" becomes "--ink-2"."""
+    variables = []
+    for name, value in PALETTE.items():
+        css_name = name.replace("_", "-")
+        variables.append(f"--{css_name}: {value};")
+    return ":root {" + " ".join(variables) + "}"
 
 
-@functools.lru_cache(maxsize=1)
 def stylesheet():
     """The palette's CSS variables followed by the text of style.css, built once per server."""
-    return css_variables() + "\n" + STYLE.read_text(encoding="utf-8")
+    if "css" not in LOADED_STYLESHEET:
+        LOADED_STYLESHEET["css"] = css_variables() + "\n" + STYLE.read_text(encoding="utf-8")
+    return LOADED_STYLESHEET["css"]
 
 
 def plain(title):
-    """Drop a leading emoji or symbol from a page title; the look is plain type, no pictograms."""
+    """Drop a leading emoji or symbol from a page title. The look is plain type, no pictograms."""
+    # "^[^\w]+" means: everything at the start that is not a letter, a digit or an underscore.
     return re.sub(r"^[^\w]+", "", str(title))
 
 
 def esc(text):
-    """Escape text for use inside HTML that goes through st.markdown (also keeps '$' from turning into math)."""
+    """Make a text safe to put inside HTML that goes through st.markdown.
+
+    Characters like < and & are escaped. The dollar sign too, because st.markdown would start a formula with it.
+    """
     return html.escape(str(text), quote=True).replace("$", "&#36;")
 
 
@@ -124,7 +170,7 @@ def require_router(page):
     """Send a page that was opened directly (browser refresh, bookmark) through Home.py first.
 
     Opened on its own, a page would miss the top navigation and the wide layout that Home.py sets up. Home.py
-    sets `via_router` and, if a target was stored here, switches straight back to that page.
+    sets "via_router" and, if a target was stored here, switches straight back to that page.
     """
     if not st.session_state.get("via_router"):
         st.session_state["target_page"] = page
@@ -137,42 +183,70 @@ def inject_css():
 
 
 def tick_scale(marked, label=""):
-    """The signature scale: 100 hairlines, the first `marked` of them tall and in the accent colour.
+    """The scale that runs through the app: 100 thin lines, the first `marked` of them tall and pink.
 
-    Decorative (hidden from screen readers); `label` is the visible sentence that says what the ticks mean.
+    It is decoration (hidden from screen readers). `label` is the visible sentence that says what the lines mean.
     """
-    ticks = "".join(f'<i class="{"on" if i < marked else ""}" style="--i:{i}"></i>' for i in range(TICKS))
-    caption = f'<p class="ticks-caption">{esc(label)}</p>' if label else ""
+    # One <i> per tick. The CSS class "on" makes a tick tall and pink, "--i" is its position for the animation.
+    ticks = ""
+    for i in range(TICKS):
+        if i < marked:
+            css_class = "on"
+        else:
+            css_class = ""
+        ticks += f'<i class="{css_class}" style="--i:{i}"></i>'
+
+    caption = ""
+    if label:
+        caption = f'<p class="ticks-caption">{esc(label)}</p>'
     return f'<div class="ticks" aria-hidden="true">{ticks}</div>{caption}'
 
 
 def hero(title, subtitle, number=None, lead=None, scale=None):
-    """The landing page's first band. `number` is the giant figure (text), `lead` the sentence under it.
+    """The first band of the landing page: title, subtitle, a giant number and a tick scale.
 
-    `scale` is the HTML of a tick scale. Without a number the title is simply set very large.
+    `number` is the giant figure (as text), `lead` the sentence under it and `scale` the HTML from tick_scale().
+    All three can be left out.
     """
     inject_css()
-    figure = f'<p class="hero-number reveal" style="--d:1">{esc(number)}</p>' if number else ""
-    lead_html = f'<p class="hero-lead reveal" style="--d:2">{esc(lead)}</p>' if lead else ""
+
+    # The optional parts stay empty when they were not given.
+    figure = ""
+    if number:
+        figure = f'<p class="hero-number reveal" style="--d:1">{esc(number)}</p>'
+    lead_html = ""
+    if lead:
+        lead_html = f'<p class="hero-lead reveal" style="--d:2">{esc(lead)}</p>'
+    if not scale:
+        scale = ""
+
+    # "reveal" fades a part in when the page loads, "--d" is its place in the order.
     st.markdown(
         f'<div class="hero-copy"><h1 class="hero-title reveal" style="--d:0">{esc(plain(title))}</h1>'
         f'<p class="hero-sub reveal" style="--d:0">{esc(subtitle)}</p>{figure}{lead_html}'
-        f'<div class="reveal" style="--d:3">{scale or ""}</div></div>',
+        f'<div class="reveal" style="--d:3">{scale}</div></div>',
         unsafe_allow_html=True,
     )
 
 
 def band_copy(headline, text, number=None, number_label=None):
-    """Headline, one sentence and an optional big number for one landing-page band (the action is a widget below)."""
-    figure = (f'<div class="band-figure"><p class="band-number">{esc(number)}</p>'
-              f'<p class="band-number-label">{esc(number_label)}</p></div>') if number else ""
+    """The HTML for one band of the landing page: headline, one sentence and an optional big number.
+
+    The link to the page is not part of it. The page adds it as a widget below.
+    """
+    figure = ""
+    if number:
+        figure = (f'<div class="band-figure"><p class="band-number">{esc(number)}</p>'
+                  f'<p class="band-number-label">{esc(number_label)}</p></div>')
     return (f'<div class="band-copy"><div class="band-text"><h2 class="band-title">{esc(headline)}</h2>'
             f'<p class="band-sentence">{esc(text)}</p></div>{figure}</div>')
 
 
 def page_header(title, subtitle=None):
-    """Dark band that opens a page: the title set very large, an optional one-sentence description, a ruler edge."""
+    """The dark band that opens every page except Home: a very large title and an optional sentence below it."""
     inject_css()
-    sub = f'<p class="page-sub reveal" style="--d:1">{esc(subtitle)}</p>' if subtitle else ""
+    sub = ""
+    if subtitle:
+        sub = f'<p class="page-sub reveal" style="--d:1">{esc(subtitle)}</p>'
     st.markdown(f'<div class="page-head"><h1 class="reveal" style="--d:0">{esc(plain(title))}</h1>{sub}</div>',
                 unsafe_allow_html=True)
