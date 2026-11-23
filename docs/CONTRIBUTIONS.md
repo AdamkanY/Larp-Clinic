@@ -80,11 +80,7 @@ concrete example each. The tutor will ask.
 ## Per person, in one or two sentences **[team]**
 
 - **Adam Kanouni:**
-- **Simon Seidl:** Data pipeline lead. On 2026-11-23 went through the CS course (Ecoreps summary) and the Data
-  Science Fundamentals material, compared it with the project and, in a Claude session he directed, brought the model
-  and the app in line with it: time-ordered cross-validation, the model race, the cost-based yes/no line with the
-  confusion matrix, the "prediction, not cause" wording and the SQLite database of the Explore page (branch
-  `course-alignment`). **[Simon]** Check this sentence and add what else you did.
+- **Simon Seidl:** 
 - **Dominic Haibach:**
 - **Matteo Kaufmann:**
 - **Raphael Schmid:**
