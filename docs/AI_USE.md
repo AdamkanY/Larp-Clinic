@@ -170,6 +170,29 @@ correct them") for the outdated numbers the review found. Claude changed, on thi
 
 All 47 tests pass. No model, data or feature code changed.
 
+### 3.6 Simpler code (2026-11-23)
+
+Matteo asked Claude (Claude Code): *"Jetzt bitte das ganze Projekt in der Struktur durchgehen und versuchen den Code
+und die Struktur generell zu vereinfachen [...]. Das Endprodukt soll dasselbe sein, aber der Code/Struktur halt
+simpler"* ("Go through the whole project and simplify the code and the structure. The end product should stay the
+same, but the code should be simpler"). The reason: everyone has to be able to explain their part in the Q&A, and
+the code was written above the level of the course.
+
+Claude rewrote the Python files in `src/`, `app/`, `tests/` and `tools/` in a plainer style: normal loops and
+if/else instead of nested one-liners, short docstrings, no type hints, no `lru_cache` or lookup tables of
+functions. What the code does did not change. How this was checked:
+
+- old and new code were run side by side on the same inputs and compared for exact equality (for example 68,157
+  feature rows, scores and explanations for 3,000 trials with all five saved models);
+- the whole model pipeline (training v1 and v2, evaluation, horse race) was run with the old and the new code on
+  a fifth of the data: all 16 files in `models/` came out identical;
+- every page was opened in Streamlit's test runner and clicked through 19 states: everything shown is identical;
+- all tests pass. `python tests/test_app.py` now also runs the database and the palette test, which it skipped
+  before.
+
+The saved models and the data were not changed. The table in section 2 was measured before this rewrite; run
+`python tools/ai_provenance.py` again after it is committed.
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:
