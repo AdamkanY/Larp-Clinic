@@ -85,7 +85,7 @@ def risk_card(risk, delta=None, compact=False):
     # Card parts: big number, coloured label, rank sentence, optional change and, in the compact strip, a tick
     # meter.
     tone, label, pct = risk_tone(risk)
-    sub = f"Riskier than {pct:.0f}% of historical trials (started 2008-2016)" if pct is not None else ""
+    sub = f"Riskier than {pct:.0f}% of historical trials (started 2009-2016)" if pct is not None else ""
     change = f'<div class="sub">{delta:+.1%} compared with your previous input</div>' if delta is not None else ""
     size = " compact" if compact else ""
     meter = ""
@@ -134,7 +134,7 @@ def bar_caption():
         count = f"{reference_size():,}"
     except (OSError, ValueError):
         count = "the"
-    return (f"The bar ranks this trial among {count} past trials (started 2008-2016): green = less risky than "
+    return (f"The bar ranks this trial among {count} past trials (started 2009-2016): green = less risky than "
             "half of them, yellow = up to the riskiest 10%, red = the riskiest 10%.")
 
 
