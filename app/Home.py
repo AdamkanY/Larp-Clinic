@@ -33,7 +33,7 @@ PAGE_FILE = {title: path for title, path, _, _ in PAGES}
 AUDIENCES = [
     ("Trial sponsors and study designers",
      "Before registering a trial, they can test the design and see which single change, such as blinding or a data "
-     "monitoring committee, would lower the risk of stopping early.", "Check your own trial"),
+     "monitoring committee, goes with a lower estimate in past trials.", "Check your own trial"),
     ("Investors and business analysts",
      "Screening a company's ongoing trials, they can see which ones look riskier than most and deserve a closer look "
      "before they weigh the pipeline.", "Find a trial"),

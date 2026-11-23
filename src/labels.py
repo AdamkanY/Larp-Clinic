@@ -61,7 +61,7 @@ def label(kind, code):
     return NAMES.get(kind, {}).get(code) or str(code).replace("_", " ").capitalize()
 
 # Plain-English names for the model's input columns (FEATURE_COLUMNS in src/features.py). The How the model works page,
-# the per-trial driver charts and the "what would lower the risk" table all read them from here.
+# the per-trial driver charts and the "which single change lowers the estimate" table all read them from here.
 FEATURE_NAMES = {
     "phase": "Phase",
     "allocation": "Allocation (randomized or not)",

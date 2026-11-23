@@ -13,8 +13,8 @@ All numbers are from `models/gbm_metrics.json` and the test split (trials starte
 
 **1. What problem does the app solve, and for whom?**
 Clinical trials are stopped early more often than people expect (11.3% in our data). Two users: trial sponsors
-and study designers, who can test a design before registering it and see which single change would lower the
-risk ("Check your own trial"); and investors or business analysts, who can screen a company's ongoing trials
+and study designers, who can test a design before registering it and see which single change goes with a lower
+estimate in past trials ("Check your own trial"); and investors or business analysts, who can screen a company's ongoing trials
 ("Find a trial").
 
 **2. What does "stopped early" mean exactly?**
@@ -58,16 +58,20 @@ finds combinations of features without us writing them. We compared it with a lo
 (ROC-AUC 0.69); boosting reached 0.71 with honest probabilities.
 
 **9. How did you tune it without touching the test set?**
-5-fold cross-validation on the training trials only (2008-2016): the training set is cut into five parts, the model
-is trained on four and scored on the fifth, five times. A small grid of 12 settings (learning rate, tree size,
-regularisation) was compared on PR-AUC. The grid was flat (all within one standard deviation), so tuning was not
-what made the model work. The test years were scored once, at the end.
+Time-ordered cross-validation on the training trials only (2008-2016), `TimeSeriesSplit` in scikit-learn: the
+training trials are sorted by start date and cut into six blocks; the model trains on block 1 and is checked on
+block 2, then trains on blocks 1-2 and is checked on block 3, and so on, five checks in all (an "expanding window",
+DSF decks 10 and 16). So it is always checked on trials that started *later* than the ones it learned from, like in
+the app. A shuffled 5-fold split would let it learn from 2016 trials to predict 2009 ones. A small grid of 12
+settings (learning rate, tree size, regularisation) was compared on PR-AUC. The grid was flat (all 12 settings
+between 0.208 and 0.211 PR-AUC, less than the spread across the checks), so tuning was not what made the model work.
+The test years were scored once, at the end.
 
 **10. What is calibration, and why did you need it?**
 We trained with `class_weight="balanced"`, which makes the model pay extra attention to the rare stopped trials. That
-helps the ranking but inflates the percentages: the raw model predicted 39% on average when 11.7% were stopped.
+helps the ranking but inflates the percentages: the raw model predicted 40% on average when 11.7% were stopped.
 Isotonic calibration learns a monotone mapping from raw scores to real rates on held-out folds of the training data,
-so "15%" means about 15 of 100 such trials stop. The Brier score (squared error of the percentages) fell from 0.186
+so "15%" means about 15 of 100 such trials stop. The Brier score (squared error of the percentages) fell from 0.192
 to 0.097; the ranking stayed the same.
 
 **11. The papers report 0.73-0.80. Why is yours only 0.71?**
@@ -78,7 +82,7 @@ leakage controls and a temporal split that audit reports 0.74, so 0.71 is in the
 Kavalci & Hartshorn also turn the eligibility text into thousands of yes/no features; we only use its length.
 
 **12. Why does the model predict too low on the test trials?**
-On the 2017-2019 trials it predicts 9.9% on average and 11.7% were stopped. The gap grows with the start year (real
+On the 2017-2019 trials it predicts 9.8% on average and 11.7% were stopped. The gap grows with the start year (real
 rate 9% above the prediction in 2017, 16% in 2018, 31% in 2019). Most likely a tilt in the data: only finished trials
 are included, a stopped trial ends early by definition, and many long trials from 2019 that will complete are still
 running, so they are missing. We say so on the model page and in the README; we have not yet counted the running
@@ -117,9 +121,10 @@ The search shows a plain message and offers example trials stored in the reposit
 works. Every other page runs offline.
 
 **19. How do the five pages fit the use case?**
-Find a trial (search live trials, each with a risk), Check your own trial (design form with "what would lower the
-risk"), Explore the data (filters, bar charts, a heatmap of two traits), How the model works (quality, a review-budget
-slider, calibration, versions), Play the game (guess which of two trials was stopped, against the model).
+Find a trial (search live trials, each with a risk), Check your own trial (design form with "which single change
+lowers the estimate"), Explore the data (filters, bar charts, a heatmap of two traits), How the model works (quality,
+a review-budget slider, a cost slider with the confusion matrix, the model race, calibration, versions), Play the game
+(guess which of two trials was stopped, against the model).
 
 **20. How do you know the app works?**
 41 offline tests (`pytest tests`): the feature function, the predictions, the chart helpers and every page clicked

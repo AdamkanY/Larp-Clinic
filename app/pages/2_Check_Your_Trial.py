@@ -52,10 +52,10 @@ DEFAULTS = {
     "conditions": "Type 2 diabetes", "healthy_volunteers": False, "min_age_years": 18.0, "has_max_age": False,
     "max_age_years": 65.0, "eligibility_text_len": 1500, "intervention_types": ["DRUG"],
 }
-# "What would lower the risk" only tries levers a trial designer actually controls. Phase, sponsor type, purpose and
+# "Which single change lowers the estimate?" only tries levers a trial designer actually controls. Phase, sponsor type, purpose and
 # the condition follow from the research question, so changing them is not advice.
 LEVERS = ["masking", "allocation", "n_arms", "eligibility_text_len", "min_age_years", "max_age_years", "has_dmc"]
-# Candidate values the 'what would lower the risk' search tries for the age limits and the eligibility length.
+# Candidate values the 'which single change lowers the estimate' search tries for the age limits and the eligibility length.
 MIN_AGES = [0.0, 12.0, 18.0, 21.0, 40.0, 65.0]
 MAX_AGES = [None, 50.0, 65.0, 75.0, 85.0]  # None = no upper limit
 LENGTH_FACTORS = [0.5, 0.75, 1.25, 1.5]
@@ -273,18 +273,22 @@ elif drivers == []:
 else:
     st.info("The breakdown is not available here yet: models/explain_reference.json is missing.")
 
-# The best single change per design lever, as a small table.
-st.subheader("What would lower the risk?")
+# The best single change per design lever, as a small table. The heading speaks of the model's estimate, not the
+# real risk: the model learned patterns from past trials (prediction), not what a change would cause (DSF deck 01,
+# "prediction or causal question?").
+st.subheader("Which single change lowers the estimate?")
 changes = lowering_changes(design, lambda d: score(features_from_design(d), get_model()))
 if changes:
     st.table(pd.DataFrame(
         [(text, f"{new:.1%}", f"{delta:+.1%}") for text, new, delta in changes],
-        columns=["Single change", "New risk", "Change"],
+        columns=["Single change", "New estimate", "Change"],
     ).set_index("Single change"))
     st.caption(
         "Only settings a trial designer can choose are tried (blinding, allocation, arms, length of the eligibility "
         "criteria, age limits, data monitoring committee); phase, sponsor and condition follow from the research "
-        "question. Patterns in past trials, not proof of cause: changing a design does not guarantee this effect."
+        "question. The estimate drops because past trials with this setting were stopped less often. That is a "
+        "pattern, not proof of cause: the setting may simply go with other things (money, experience, the kind of "
+        "drug) that really make the difference, so changing it alone does not guarantee a lower real risk."
     )
 else:
     st.write("No single change in the design settings lowers the estimate.")

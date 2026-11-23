@@ -122,6 +122,27 @@ every point calmly, precisely and completely.") Claude then wrote, on this branc
 
 All 41 tests pass on the branch. **[team]** Review the pull request before merging; say here what you changed.
 
+### 3.4 The session of 2026-11-23 (branch `course-alignment`)
+
+Simon asked Claude (Opus 5.5, claude.ai with access to his browser) to read the CS course summary on Ecoreps and
+the Data Science Fundamentals (DSF) course on Canvas, compare both with our code and report without changing
+anything. After the report he asked: *"kannst du die sachen einbauen?"* ("can you build these things in?").
+Claude then wrote, on this branch:
+
+- time-ordered cross-validation (`TimeSeriesSplit`, expanding window) instead of shuffled folds for tuning, the
+  decision threshold and the ablations (DSF decks 10 and 16), and retrained all models with it
+- `src/horse_race.py` and the tab "Which model won?": baseline, logistic regression, decision tree, random forest,
+  k-nearest neighbours (CS course 6.4.4) and gradient boosting on the same folds, default vs tuned, with the fold
+  spread (DSF decks 16 and 17)
+- a cost slider on the model page that sets the yes/no line from the costs of the two errors (DSF deck 11) and shows
+  the confusion matrix it leads to (CS course 6.4.2, DSF deck 12)
+- the wording "Which single change lowers the estimate?" instead of "What would lower the risk?" (prediction, not
+  cause: DSF deck 01 and the DSF project rules)
+- `docs/PREDICTION_PROTOCOL.md`, `tests/test_model.py`, and updates to the README, `QA_PREP.md` and the `CLAUDE.md`
+  files
+
+**[team]** Review the pull request before merging; say here what you changed.
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:
