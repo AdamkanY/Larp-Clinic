@@ -160,13 +160,15 @@ def rate_over_time(df, average=None) -> go.Figure:
     return _style(fig)
 
 
-def conditions_bar(df, k=15, name_width=34) -> go.Figure:
+def conditions_bar(df, k=15, name_width=34, stats=None) -> go.Figure:
     """Horizontal bars: the share stopped early for the k most common conditions, riskiest on top.
 
     The label on each bar gives the rate and how many trials it rests on; long condition names are cut
-    (the hover shows them in full) so they never overlap the chart.
+    (the hover shows them in full) so they never overlap the chart. ``stats`` (columns condition, n, terminated,
+    rate) can come ready-made, e.g. from the SQL query in ``database.TrialDatabase.top_conditions``; otherwise
+    they are counted from ``df`` with ``top_conditions``.
     """
-    stats = top_conditions(df, k).sort_values("rate")  # ascending, so the highest rate sits on top
+    stats = (top_conditions(df, k) if stats is None else stats).sort_values("rate")  # highest rate on top
     short = stats["condition"].map(lambda c: c if len(c) <= name_width else c[: name_width - 1] + "…")
     fig = px.bar(stats.assign(short=short), x="rate", y="short", orientation="h",
                  custom_data=["condition", "n", "terminated"],

@@ -1,7 +1,8 @@
 # AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""How the model works: what it predicts, how to read a score, how well it works on unseen trials, which factors
-matter, how far to trust the percentages (calibration), and which model versions and checks were run."""
+"""How the model works: what it predicts, how to read a score, how well it works on unseen trials (with a cost-based
+yes/no line and its confusion matrix), which model won a fair race against the others, which factors matter, how far
+to trust the percentages (calibration), and which model versions and checks were run."""
 import json
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ MIN_DIRECTION = 0.03  # rank correlations weaker than this count as "no clear di
 # Rule fixed before model v2 was trained (models/CLAUDE.md): replace the app model only if the calibrated GBM's test
 # ROC-AUC improves by at least this much and cross-validation agrees.
 PROMOTION_BAR = 0.005
+DEFAULT_COST_RATIO = 5  # slider start: a missed stopped trial costs 5 false alarms (threshold 1/6, DSF deck P2 example)
 
 @st.cache_data(show_spinner=False)
 def load_metrics(name="gbm"):
@@ -293,6 +295,130 @@ def importance_chart(importance):
     return fig
 
 
+@st.cache_data(show_spinner=False)
+def load_horse_race():
+    """The model race of src/horse_race.py (models/horse_race.json), or None if the file is missing."""
+    try:
+        return json.loads((MODELS / "horse_race.json").read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def cost_threshold(cost_ratio):
+    """The yes/no line from the costs of the two errors (DSF deck 11): flag a trial if P(stopped) > c_FP / (c_FP + c_FN).
+
+    A false alarm costs 1, a missed stopped trial costs `cost_ratio`, so the line is 1 / (1 + cost_ratio).
+    """
+    return 1 / (1 + cost_ratio)
+
+
+def confusion_counts(labels, risks, threshold):
+    """Confusion matrix of the test trials at one threshold, as named counts (positive = stopped early)."""
+    flagged = risks >= threshold
+    stopped = labels == 1
+    return {"tp": int((flagged & stopped).sum()), "fp": int((flagged & ~stopped).sum()),
+            "fn": int((~flagged & stopped).sum()), "tn": int((~flagged & ~stopped).sum())}
+
+
+def confusion_chart(counts):
+    """2x2 confusion matrix: rows what really happened, columns what the model said (scikit-learn layout, CS 6.4.2).
+
+    Correct cells are green, false alarms yellow, missed stopped trials red, so the two kinds of error stand apart.
+    """
+    # z only picks the colour of a cell: 0 correct, 1 false alarm, 2 missed.
+    z = [[0, 1], [2, 0]]
+    names = [["Completed, not flagged", "Completed, but flagged<br>(false alarm)"],
+             ["Stopped, but not flagged<br>(missed)", "Stopped and flagged"]]
+    values = [[counts["tn"], counts["fp"]], [counts["fn"], counts["tp"]]]
+    text = [[f"<b>{values[r][c]:,}</b><br>{names[r][c]}" for c in range(2)] for r in range(2)]
+    scale = [[0.0, PALETTE["low_tint"]], [0.5, PALETTE["mid_tint"]], [1.0, PALETTE["high_tint"]]]
+    fig = go.Figure(go.Heatmap(
+        z=z, x=["Model: not flagged", "Model: flagged"], y=["Really completed", "Really stopped early"],
+        text=text, texttemplate="%{text}", textfont={"size": 14, "color": PALETTE["ink"]}, colorscale=scale,
+        zmin=0, zmax=2, showscale=False, xgap=4, ygap=4, hoverinfo="skip"))
+    fig.update_layout(height=320, margin={"l": 10, "r": 10, "t": 10, "b": 10})
+    fig.update_yaxes(autorange="reversed")  # "Really completed" on top, as in scikit-learn's confusion_matrix
+    return fig
+
+
+def horse_race_chart(race):
+    """Horizontal bars: validation PR-AUC of every horse after tuning, with the spread across the folds.
+
+    The open marker shows the same horse with its default settings, the dashed line the baseline, so tuning gains and
+    the head start over guessing are both readable. The winner is the one dark bar.
+    """
+    horses, ranking = race["horses"], race["verdict"]["ranking"]
+    order = ranking[::-1]  # Plotly draws the first row at the bottom; the winner should be on top
+    winner = race["verdict"]["winner"]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=[horses[n]["label"] for n in order], x=[horses[n]["tuned"]["cv_pr_auc"] for n in order], orientation="h",
+        name="Tuned", marker_color=[PALETTE["bar"] if n == winner else PALETTE["pale"] for n in order],
+        marker_line={"color": PALETTE["neutral"], "width": 1},
+        error_x={"type": "data", "array": [horses[n]["tuned"]["cv_pr_auc_std"] for n in order],
+                 "color": PALETTE["ink"], "thickness": 1.5, "width": 4},
+        hovertemplate="%{y}<br>Tuned PR-AUC %{x:.3f}<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        y=[horses[n]["label"] for n in order], x=[horses[n]["default"]["cv_pr_auc"] for n in order], mode="markers",
+        name="Standard settings", marker={"symbol": "circle-open", "size": 11, "color": PALETTE["up"],
+                                         "line": {"width": 2}},
+        hovertemplate="%{y}<br>Standard settings PR-AUC %{x:.3f}<extra></extra>"))
+    base = horses["baseline"]["tuned"]["cv_pr_auc"]
+    fig.add_vline(x=base, line_dash="dash", annotation_text=f"Guessing: {base:.2f}", annotation_position="top")
+    fig.update_layout(height=380, margin={"l": 10, "r": 10, "t": 30, "b": 60},
+                      legend={"orientation": "h", "y": -0.2, "x": 0})
+    fig.update_xaxes(title="PR-AUC on the later validation blocks (higher is better)", rangemode="tozero")
+    fig.update_yaxes(title=None)
+    return fig
+
+
+def tab_race():
+    """The horse race of DSF deck 16: six models on the same time-ordered folds, default vs tuned, and the winner."""
+    race = load_horse_race()
+    if race is None:
+        st.info("The model race is not available yet (run python src/horse_race.py to create models/horse_race.json).")
+        return
+    horses, v = race["horses"], race["verdict"]
+    st.write(
+        "We did not just pick a model. Six candidates ran a fair race: the same training trials (2008-2016), the "
+        "same five checks and the same score. Each check trains on the earlier trials and tests on the next, later "
+        "block, the way the app meets new trials. Every model ran with its standard settings and with a few tuned "
+        "ones. The 2017-2019 test trials were not used here; they are kept for one final check of the winner."
+    )
+    chart(horse_race_chart(race), key="race_chart")
+    # One row per horse, best first.
+    rows = []
+    for name in v["ranking"]:
+        h = horses[name]
+        rows.append({
+            "Model": h["label"], "From the course": h["course"],
+            "PR-AUC, standard settings": f"{h['default']['cv_pr_auc']:.3f} ± {h['default']['cv_pr_auc_std']:.3f}",
+            "PR-AUC, tuned": f"{h['tuned']['cv_pr_auc']:.3f} ± {h['tuned']['cv_pr_auc_std']:.3f}",
+            "ROC-AUC, tuned": f"{h['tuned']['cv_roc_auc']:.3f}",
+            "Tuned settings": ", ".join(f"{k}={val}" for k, val in h["tuned"]["params"].items()) or "none",
+        })
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    # The verdict in words, with the rule of DSF deck 16: a lead only counts if it is larger than the spread.
+    win, second = horses[v["winner"]], horses[v["runner_up"]]
+    if v["lead_larger_than_spread"]:
+        lead_text = (f"Its lead over {second['label'].lower()} ({v['lead']:.3f}) is larger than the spread across the "
+                     f"five checks ({v['winner_spread']:.3f}), so the win is clear.")
+    else:
+        simplest = horses[v["simplest_tied"]]["label"].lower()
+        lead_text = (f"Its lead over {second['label'].lower()} ({v['lead']:.3f}) is smaller than the spread across "
+                     f"the five checks ({v['winner_spread']:.3f}), so the two are practically tied. By the race rules "
+                     f"either may be chosen (the best score, or {simplest} as the one that needs less tuning).")
+        if v["winner"] == "gbm":
+            lead_text += (" The app keeps gradient boosting: it scored best, handles missing values and categories "
+                          "without extra steps, and its calibration and per-trial explanations are built on it.")
+    st.write(f"**Winner: {win['label']}.** {lead_text}")
+    st.caption(
+        "± is the spread (standard deviation) across the five checks: how much a score depends on which later trials "
+        "it is checked on. Guessing scores the share of stopped trials. The open circles show that tuning helps some "
+        "models a lot (a single tree without limits learns the training trials by heart) and others hardly at all."
+    )
+
+
 def tab_predicted(metrics):
     """What the model predicts and what is in the data."""
     # Totals over both splits: the size of the whole dataset the model page talks about.
@@ -370,6 +496,34 @@ def tab_quality(metrics, phases, scores=None):
         "Whether a trial gets stopped also depends on things nobody knows at registration, "
         "such as funding, recruitment problems or safety findings."
     )
+
+    # From a probability to a yes/no: the line depends on what each kind of mistake costs (DSF deck 11), and the
+    # confusion matrix shows what that line does on the test trials (CS course 6.4.2, DSF deck 12).
+    st.markdown("##### From a score to a yes/no: where should the line be?")
+    if scores is None:
+        st.info("This part needs the trial data and the model file, which are not available here.")
+    else:
+        ratio = st.slider("A missed stopped trial costs how many times as much as a false alarm?", 1, 20,
+                          DEFAULT_COST_RATIO, key="cost_ratio")
+        line = cost_threshold(ratio)
+        counts = confusion_counts(scores["label"].to_numpy(), scores["risk"].to_numpy(), line)
+        flagged = counts["tp"] + counts["fp"]
+        precision = counts["tp"] / flagged if flagged else 0.0
+        recall = counts["tp"] / (counts["tp"] + counts["fn"])
+        st.write(
+            f"If a missed stopped trial costs {ratio}x a false alarm, it pays to flag every trial whose estimated "
+            f"risk is above **1 / (1 + {ratio}) = {line:.0%}**. On the {len(scores):,} test trials that flags "
+            f"**{flagged:,}** ({flagged / len(scores):.0%}). It finds **{recall:.0%}** of the trials that were really "
+            f"stopped (recall), and **{precision:.0%}** of the flagged trials were really stopped (precision)."
+        )
+        chart(confusion_chart(counts), key="confusion_chart")
+        st.caption(
+            "Rows: what really happened; columns: what the model said at this line. The line comes from the costs, "
+            "not from the model, so two users with different costs draw it in different places. It only works "
+            "because the percentages are calibrated (see \"Can you trust it?\"); since they run a little low, the "
+            f"real line sits slightly lower. For comparison: the line that maximises F1 on the training trials is "
+            f"{result['at_threshold']['threshold']:.0%}."
+        )
 
     # The decision an investor or sponsor actually faces: "I can look closely at only so many trials. If I start
     # with the riskiest ones, how many of the trials that will be stopped do I find?"
@@ -660,13 +814,16 @@ if metrics:
             "- **It cannot see why trials stop**, such as funding, recruitment or safety problems."
         )
     read_a_score_box(metrics)
-    # Five tabs, one question each, in the order a reader asks them.
-    predicted_tab, quality_tab, factors_tab, trust_tab, versions_tab = st.tabs(
-        ["What is predicted", "How good is it?", "What matters most", "Can you trust it?", "Versions and checks"])
+    # Six tabs, one question each, in the order a reader asks them.
+    predicted_tab, quality_tab, race_tab, factors_tab, trust_tab, versions_tab = st.tabs(
+        ["What is predicted", "How good is it?", "Which model won?", "What matters most", "Can you trust it?",
+         "Versions and checks"])
     with predicted_tab:
         tab_predicted(metrics)
     with quality_tab:
         tab_quality(metrics, phases, scores)
+    with race_tab:
+        tab_race()
     with factors_tab:
         tab_factors()
     with trust_tab:

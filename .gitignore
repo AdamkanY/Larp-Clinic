@@ -225,3 +225,7 @@ data/raw/*
 
 # macOS Finder metadata
 .DS_Store
+
+# Trial-Radar: SQLite database built from trials.parquet on first use (src/database.py)
+data/processed/trials.db
+data/processed/trials.tmp

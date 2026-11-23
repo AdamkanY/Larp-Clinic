@@ -1,9 +1,9 @@
 {
   "model": "baseline_lr",
   "model_file": "models/baseline_lr.joblib",
-  "trained_on": "2026-11-05",
+  "trained_on": "2026-11-23",
   "sklearn_version": "1.9.1",
-  "python_version": "3.12.16",
+  "python_version": "3.12.3",
   "label": {
     "TERMINATED": 1,
     "COMPLETED": 0
@@ -102,119 +102,131 @@
   "class_weight": "balanced",
   "n_model_columns": 64,
   "cv": {
-    "scheme": "StratifiedKFold(n_splits=5, shuffle=True, random_state=42) on the train split only",
+    "scheme": "TimeSeriesSplit(n_splits=5) on the train split sorted by start date (expanding window: train on earlier trials, validate on the next block)",
     "refit_metric": "pr_auc",
     "best_params": {
-      "C": 10.0
+      "C": 0.1
     },
-    "best_roc_auc_mean": 0.6852460624058695,
-    "best_roc_auc_std": 0.0027191912889891778,
-    "best_pr_auc_mean": 0.1973421594744766,
-    "best_pr_auc_std": 0.0031278018962415306,
+    "best_roc_auc_mean": 0.6831191487365041,
+    "best_roc_auc_std": 0.008535904605682081,
+    "best_pr_auc_mean": 0.19154239969112402,
+    "best_pr_auc_std": 0.004492888517567987,
     "grid": [
       {
         "params": {
           "C": 0.001
         },
-        "cv_roc_auc": 0.6836340636985219,
-        "cv_pr_auc": 0.19505743937603254
+        "cv_roc_auc": 0.682005871995601,
+        "cv_roc_auc_std": 0.007061342933953863,
+        "cv_pr_auc": 0.18955916569911965,
+        "cv_pr_auc_std": 0.0017173346977487393
       },
       {
         "params": {
           "C": 0.01
         },
-        "cv_roc_auc": 0.6853274850179754,
-        "cv_pr_auc": 0.19687303452437033
+        "cv_roc_auc": 0.6835861511907086,
+        "cv_roc_auc_std": 0.007881775754886683,
+        "cv_pr_auc": 0.19145920297828636,
+        "cv_pr_auc_std": 0.0037699889769674095
       },
       {
         "params": {
           "C": 0.1
         },
-        "cv_roc_auc": 0.6852890903705182,
-        "cv_pr_auc": 0.19723715938211495
+        "cv_roc_auc": 0.6831191487365041,
+        "cv_roc_auc_std": 0.008535904605682081,
+        "cv_pr_auc": 0.19154239969112402,
+        "cv_pr_auc_std": 0.004492888517567987
       },
       {
         "params": {
           "C": 1.0
         },
-        "cv_roc_auc": 0.6852554110630937,
-        "cv_pr_auc": 0.1972885522086604
+        "cv_roc_auc": 0.6828492447433708,
+        "cv_roc_auc_std": 0.00878236257524132,
+        "cv_pr_auc": 0.19139701963031772,
+        "cv_pr_auc_std": 0.004702874017006909
       },
       {
         "params": {
           "C": 10.0
         },
-        "cv_roc_auc": 0.6852460624058695,
-        "cv_pr_auc": 0.1973421594744766
+        "cv_roc_auc": 0.6828200414755946,
+        "cv_roc_auc_std": 0.00877338402259103,
+        "cv_pr_auc": 0.19136336086366496,
+        "cv_pr_auc_std": 0.004664993832472781
       }
     ]
   },
   "threshold": {
-    "value": 0.5705891649009917,
-    "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
-    "oof_f1": 0.2793327556325823,
-    "oof_roc_auc": 0.6852366930992142,
-    "oof_pr_auc": 0.1968845185283827,
-    "oof_brier": 0.22612968744226877
+    "value": 0.5616311707178361,
+    "rule": "maximises F1 on out-of-fold predictions of the validation blocks (same CV folds)",
+    "n_scored": 95500,
+    "oof_f1": 0.2727917049481559,
+    "oof_roc_auc": 0.6830936236765661,
+    "oof_pr_auc": 0.19083300151471705,
+    "oof_brier": 0.21791691130090907,
+    "oof_terminated_rate": 0.10859685863874345
   },
   "test": {
-    "roc_auc": 0.6885953207426037,
-    "pr_auc": 0.21762557096924318,
-    "brier": 0.20527207076606158,
-    "mean_predicted": 0.4258934783446284,
+    "roc_auc": 0.6887147955632333,
+    "pr_auc": 0.21769979502129075,
+    "brier": 0.2053009246291445,
+    "mean_predicted": 0.42611461452394184,
     "at_threshold": {
-      "threshold": 0.5705891649009917,
-      "precision": 0.2210563756002134,
-      "recall": 0.4446431765337149,
-      "f1": 0.2953020134228188,
-      "flagged_share": 0.23499174624401864,
+      "threshold": 0.5616311707178361,
+      "precision": 0.21668177697189483,
+      "recall": 0.4702199964228224,
+      "f1": 0.29665989618596256,
+      "flagged_share": 0.25352612992874607,
       "confusion_matrix": {
-        "tn": 33506,
-        "fp": 8760,
-        "fn": 3105,
-        "tp": 2486
+        "tn": 32762,
+        "fp": 9504,
+        "fn": 2962,
+        "tp": 2629
       }
     },
     "calibration_bins": [
       {
-        "mean_predicted": 0.1458873025067423,
-        "observed_rate": 0.041370664437944
+        "mean_predicted": 0.14664939910983468,
+        "observed_rate": 0.041997492687003764
       },
       {
-        "mean_predicted": 0.225506064372239,
-        "observed_rate": 0.05014625992478061
+        "mean_predicted": 0.22626020211711845,
+        "observed_rate": 0.04847471792728792
       },
       {
-        "mean_predicted": 0.2846411985305967,
-        "observed_rate": 0.05078369905956113
+        "mean_predicted": 0.2852990686510453,
+        "observed_rate": 0.05203761755485893
       },
       {
-        "mean_predicted": 0.33896226554732656,
-        "observed_rate": 0.06122022565816966
+        "mean_predicted": 0.3395328952114578,
+        "observed_rate": 0.059757626410363564
       },
       {
-        "mean_predicted": 0.39616719478935786,
-        "observed_rate": 0.08984538236523193
+        "mean_predicted": 0.39658445078060495,
+        "observed_rate": 0.09089009611366486
       },
       {
-        "mean_predicted": 0.4566921463576177,
-        "observed_rate": 0.11327063740856844
+        "mean_predicted": 0.45703828669825863,
+        "observed_rate": 0.11556948798328108
       },
       {
-        "mean_predicted": 0.5128995855425158,
-        "observed_rate": 0.1391558712912662
+        "mean_predicted": 0.5128461030800139,
+        "observed_rate": 0.13643961554534056
       },
       {
-        "mean_predicted": 0.5635619441839714,
-        "observed_rate": 0.16405433646812956
+        "mean_predicted": 0.5633160205478535,
+        "observed_rate": 0.1638453500522466
       },
       {
-        "mean_predicted": 0.6156448395378754,
-        "observed_rate": 0.1966151274550773
+        "mean_predicted": 0.6151632378730768,
+        "observed_rate": 0.1968240702047639
       },
       {
-        "mean_predicted": 0.7189779284244756,
-        "observed_rate": 0.2618052653572921
+        "mean_predicted": 0.7184621872989346,
+        "observed_rate": 0.26243209360635184
       }
     ]
   },

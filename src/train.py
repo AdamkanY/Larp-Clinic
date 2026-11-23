@@ -12,20 +12,24 @@ only):
   with native categorical splits. Categories are ordinal-coded (unseen ones
   become missing) and missing values are left for the trees to route.
 * ``gbm`` (the app model): the tuned ``gbm_uncalibrated`` pipeline wrapped in
-  ``CalibratedClassifierCV(method='isotonic', cv=5)``, fitted on train. Each of
-  the 5 folds fits the pipeline on 4/5 of train and an isotonic map on the
-  remaining 1/5; predictions average the 5 calibrated copies.
+  ``CalibratedClassifierCV(method='isotonic')`` with 5 shuffled stratified folds,
+  fitted on train. Each fold fits the pipeline on 4/5 of train and an isotonic
+  map on the remaining 1/5; predictions average the 5 calibrated copies.
 
 Inputs are one of the ``FEATURE_SETS`` below (default ``APP_FEATURE_SET``, the
 set of the model the app loads); meta and display columns
 (``NON_FEATURE_COLUMNS``: nct_id, status, label, start_date, split, titles,
 conditions, sponsor name, phase label) never reach a model.
 
-Protocol: hyperparameters are picked by 5-fold stratified CV on train (refit on
-PR-AUC); calibration adds no tuned parameters. Every model also gets
-out-of-fold (OOF) train predictions: the decision threshold is the one that
-maximises F1 on them, and the calibrated model's OOF scores are saved as
-``models/score_reference.npy`` for ``predict.percentile``. The typical train
+Protocol: the train split is sorted by start date and every model choice uses
+time-ordered cross-validation (``TimeSeriesSplit``, an expanding window: each
+fold trains on the earlier trials and validates on the next block of later
+ones, never the other way round; DSF decks 10 and 16). Hyperparameters are
+picked by that CV (refit on PR-AUC); calibration adds no tuned parameters.
+Every model also gets out-of-fold (OOF) predictions on the validation blocks
+(the later 5/6 of train; the first block is never validated): the decision
+threshold is the one that maximises F1 on them, and the calibrated model's OOF
+scores are saved as ``models/score_reference.npy`` for ``predict.percentile``. The typical train
 trial (median of every number and flag, most common value of every category)
 is saved as ``models/explain_reference.json`` for ``predict.explain``. The test split
 (start 2017-2019) is scored only by ``evaluate.evaluate_saved``, after every
@@ -57,7 +61,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.model_selection import (GridSearchCV, ParameterGrid, StratifiedKFold,
-                                     cross_val_predict)
+                                     TimeSeriesSplit)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
@@ -80,10 +84,10 @@ SPLITS = {
     "test": (pd.Timestamp("2017-01-01"), pd.Timestamp("2019-12-31")),
 }
 # v1: the 29 original design features. v2: plus the keyword condition categories
-# of features.condition_features. v2 was trained with this exact protocol on
-# 2026-11-05 and raised the calibrated GBM's test ROC-AUC by only 0.004 (CV
-# +0.004), below the +0.005 bar set for replacing the app model, so the app
-# keeps v1. FEATURE_COLUMNS (what build_features returns and the parquet
+# of features.condition_features. Both are trained with the same protocol; the
+# app switches to v2 only if it raises the calibrated GBM's test ROC-AUC by at
+# least +0.005 and CV agrees (rule fixed before the first v2 run, see
+# models/CLAUDE.md for the numbers). FEATURE_COLUMNS (what build_features returns and the parquet
 # holds) is the superset; each model records its own inputs, see
 # predict.model_features.
 FEATURE_SETS = {
@@ -96,7 +100,10 @@ RANDOM_STATE = 42
 CV_FOLDS = 5
 REFIT_METRIC = "average_precision"  # PR-AUC: the metric that matters at ~11% positives
 CALIBRATION_METHOD = "isotonic"
-CALIBRATION_CV = 5  # plain int: unshuffled stratified folds; train rows are in random order
+# Calibration only maps scores to observed rates and tunes nothing, so it keeps
+# shuffled folds (as before the switch to time-ordered CV); the train rows are
+# now sorted by date, so unshuffled folds would each calibrate on one era.
+CALIBRATION_CV = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
 # Small grids on purpose: this is a baseline, and every extra cell is another
 # chance to overfit the CV folds. Both grids turned out flat (all cells within
@@ -147,7 +154,8 @@ def load_split(split: str, df: pd.DataFrame = None, features=None) -> tuple:
     if df is None:
         df = pd.read_parquet(DATA_PATH)
     check_dataset(df)
-    part = df[df["split"] == split]
+    # Sorted by start date (NCT number breaks ties), so the time-ordered CV folds of make_cv run from old to new.
+    part = df[df["split"] == split].sort_values(["start_date", "nct_id"], kind="stable")
     features = FEATURE_SETS[APP_FEATURE_SET] if features is None else features
     return to_model_frame(part, features), part["label"].to_numpy(dtype=int)
 
@@ -245,17 +253,26 @@ BUILDERS = {"baseline_lr": build_lr_pipeline, "gbm": build_gbm_pipeline}
 SAVED_NAMES = {"baseline_lr": "baseline_lr", "gbm": "gbm_uncalibrated"}
 
 
-def make_cv() -> StratifiedKFold:
-    """The one CV splitter for tuning, OOF predictions and ablations."""
-    return StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+def make_cv() -> TimeSeriesSplit:
+    """The one CV splitter for tuning, OOF predictions, ablations and the horse race.
+
+    ``TimeSeriesSplit`` cuts the date-sorted train split into 6 blocks of equal
+    size. Fold k trains on blocks 1..k and validates on block k+1, so the model
+    is always checked on trials that started later than the ones it learned
+    from, the way it meets new trials in the app (an expanding window, DSF deck
+    10). A shuffled K-fold would let it learn from 2016 trials to predict 2009
+    ones, which DSF deck 16 rules out for data over time.
+    """
+    return TimeSeriesSplit(n_splits=CV_FOLDS)
 
 
 def tune(name: str, X, y, cv) -> GridSearchCV:
-    """Grid-search one model with stratified CV on train and refit on all of train.
+    """Grid-search one model with time-ordered CV on train and refit on all of train.
 
     The model's inputs are the columns of ``X``.
     """
-    # Grid search with 5-fold CV on the training trials only; both metrics are recorded, PR-AUC picks the winner.
+    # Grid search with time-ordered CV on the training trials only; both metrics are recorded, PR-AUC picks the
+    # winner.
     search = GridSearchCV(BUILDERS[name](features=list(X.columns)), PARAM_GRIDS[name], cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
                           refit=REFIT_METRIC, n_jobs=-1)
@@ -266,13 +283,16 @@ def tune(name: str, X, y, cv) -> GridSearchCV:
 def cv_summary(search: GridSearchCV) -> dict:
     """Best parameters and the CV scores of every grid cell, for the metrics JSON."""
     res, best = search.cv_results_, search.best_index_
+    # The spread across folds is kept for every cell, so the horse race can compare gaps with it.
     grid = [{"params": {k.removeprefix("clf__"): v for k, v in params.items()},
              "cv_roc_auc": float(res["mean_test_roc_auc"][i]),
-             "cv_pr_auc": float(res["mean_test_average_precision"][i])}
+             "cv_roc_auc_std": float(res["std_test_roc_auc"][i]),
+             "cv_pr_auc": float(res["mean_test_average_precision"][i]),
+             "cv_pr_auc_std": float(res["std_test_average_precision"][i])}
             for i, params in enumerate(res["params"])]
     return {
-        "scheme": f"StratifiedKFold(n_splits={CV_FOLDS}, shuffle=True, "
-                  f"random_state={RANDOM_STATE}) on the train split only",
+        "scheme": f"TimeSeriesSplit(n_splits={CV_FOLDS}) on the train split sorted by start "
+                  "date (expanding window: train on earlier trials, validate on the next block)",
         "refit_metric": "pr_auc",
         "best_params": {k.removeprefix("clf__"): v for k, v in search.best_params_.items()},
         "best_roc_auc_mean": float(res["mean_test_roc_auc"][best]),
@@ -283,25 +303,46 @@ def cv_summary(search: GridSearchCV) -> dict:
     }
 
 
-def out_of_fold(estimator, X, y, cv) -> tuple:
-    """OOF train probabilities and the F1-max threshold chosen on them.
+def time_ordered_predictions(estimator, X, y, cv) -> tuple:
+    """Scores of every validation block of the time-ordered CV, from a copy that only saw earlier trials.
 
-    Every train trial is scored by a copy of ``estimator`` that never saw it,
-    so the threshold (and the percentile reference) are not fitted to their
-    own data. For the calibrated model this is nested: 5 outer folds, each
-    running its own 5-fold calibration inside.
+    ``cross_val_predict`` cannot do this: it needs every row in exactly one
+    validation fold, and the first block of an expanding window is only ever
+    used for training. So the folds are run by hand.
+
+    Returns:
+        (proba, labels): the validation scores and the matching labels, in date order.
+    """
+    probas, labels = [], []
+    # One fit per fold: train on the earlier blocks, score the next block.
+    for train_idx, valid_idx in cv.split(X, y):
+        model = clone(estimator).fit(X.iloc[train_idx], y[train_idx])
+        probas.append(model.predict_proba(X.iloc[valid_idx])[:, 1])
+        labels.append(y[valid_idx])
+    return np.concatenate(probas), np.concatenate(labels)
+
+
+def out_of_fold(estimator, X, y, cv) -> tuple:
+    """OOF probabilities on the validation blocks and the F1-max threshold chosen on them.
+
+    Every scored train trial is scored by a copy of ``estimator`` that never
+    saw it and learned only from earlier trials, so the threshold (and the
+    percentile reference) are not fitted to their own data. For the calibrated
+    model this is nested: 5 time-ordered outer folds, each running its own
+    5-fold calibration inside its training window.
     """
     # Out-of-fold scores on the training trials give an honest threshold without touching the test years.
-    oof = cross_val_predict(clone(estimator), X, y, cv=cv, method="predict_proba",
-                            n_jobs=-1)[:, 1]
-    threshold, oof_f1 = evaluate.best_f1_threshold(y, oof)
+    oof, y_oof = time_ordered_predictions(estimator, X, y, cv)
+    threshold, oof_f1 = evaluate.best_f1_threshold(y_oof, oof)
     info = {
         "value": threshold,
-        "rule": "maximises F1 on out-of-fold train predictions (same CV folds)",
+        "rule": "maximises F1 on out-of-fold predictions of the validation blocks (same CV folds)",
+        "n_scored": int(len(oof)),
         "oof_f1": oof_f1,
-        "oof_roc_auc": float(roc_auc_score(y, oof)),
-        "oof_pr_auc": float(average_precision_score(y, oof)),
-        "oof_brier": float(brier_score_loss(y, oof)),
+        "oof_roc_auc": float(roc_auc_score(y_oof, oof)),
+        "oof_pr_auc": float(average_precision_score(y_oof, oof)),
+        "oof_brier": float(brier_score_loss(y_oof, oof)),
+        "oof_terminated_rate": float(y_oof.mean()),
     }
     return oof, info
 
@@ -400,7 +441,7 @@ def main(feature_set: str = APP_FEATURE_SET) -> None:
     for name in builders:
         t0 = time.time()
         print(f"\n--- {name}: grid search ({len(ParameterGrid(PARAM_GRIDS[name]))} "
-              f"settings x {CV_FOLDS}-fold CV on train) ---")
+              f"settings x {CV_FOLDS} time-ordered folds on train) ---")
         search = tune(name, X_train, y_train, cv)
         cv_info = cv_summary(search)
         print(f"best {cv_info['best_params']}  CV ROC-AUC {cv_info['best_roc_auc_mean']:.4f}"
@@ -417,7 +458,7 @@ def main(feature_set: str = APP_FEATURE_SET) -> None:
     # Step 2: wrap the tuned GBM in isotonic calibration, get honest out-of-fold scores for the threshold and the
     # percentile reference, then fit it on all training trials.
     t0 = time.time()
-    print(f"\n--- gbm: {CALIBRATION_METHOD} calibration (cv={CALIBRATION_CV}) of the tuned GBM ---")
+    print(f"\n--- gbm: {CALIBRATION_METHOD} calibration ({CALIBRATION_CV}) of the tuned GBM ---")
     base, base_cv_info = tuned["gbm"]
     calibrated = build_calibrated(base)
     oof, threshold = out_of_fold(calibrated, X_train, y_train, cv)
@@ -433,12 +474,14 @@ def main(feature_set: str = APP_FEATURE_SET) -> None:
          threshold, feature_set,
          extra={"calibration": {
                     "method": CALIBRATION_METHOD,
-                    "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split",
+                    "cv": f"CalibratedClassifierCV(cv={CALIBRATION_CV}) on the train split "
+                          "(shuffled folds: calibration tunes nothing)",
                     "base_model": f"gbm_uncalibrated{suffix}"},
                 "score_reference": {
                     "file": f"models/{reference_path.name}",
-                    "contents": "sorted out-of-fold calibrated P(TERMINATED) of every "
-                                "train trial (start 2008-2016)",
+                    "contents": "sorted out-of-fold calibrated P(TERMINATED) of the train "
+                                "trials in the validation blocks of the time-ordered CV "
+                                "(start about 2009-2016; the earliest block is never scored)",
                     "n": int(len(oof)),
                     "quantiles": {f"p{q}": float(np.percentile(oof, q))
                                   for q in (10, 25, 50, 75, 90, 99)}}})

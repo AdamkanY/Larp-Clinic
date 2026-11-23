@@ -1,0 +1,463 @@
+{
+  "made_on": "2026-11-23",
+  "folds": "TimeSeriesSplit(n_splits=5) on the train split sorted by start date (train on earlier trials, validate on the next block)",
+  "metric": "PR-AUC (average precision) picks the winner; ROC-AUC is shown too",
+  "test_split": "not used here; the chosen model is scored once on test by evaluate.py",
+  "horses": {
+    "baseline": {
+      "label": "Baseline: always the average rate",
+      "course": "DSF deck 08 (a baseline first)",
+      "grid": [
+        {
+          "params": {},
+          "cv_roc_auc": 0.5,
+          "cv_roc_auc_std": 0.0,
+          "cv_pr_auc": 0.10859685863874347,
+          "cv_pr_auc_std": 0.004081003224628297
+        }
+      ],
+      "default": {
+        "params": {},
+        "cv_roc_auc": 0.5,
+        "cv_roc_auc_std": 0.0,
+        "cv_pr_auc": 0.10859685863874347,
+        "cv_pr_auc_std": 0.004081003224628297
+      },
+      "tuned": {
+        "params": {},
+        "cv_roc_auc": 0.5,
+        "cv_roc_auc_std": 0.0,
+        "cv_pr_auc": 0.10859685863874347,
+        "cv_pr_auc_std": 0.004081003224628297
+      }
+    },
+    "tree": {
+      "label": "Decision tree",
+      "course": "DSF deck 17 (one tree)",
+      "grid": [
+        {
+          "params": {
+            "max_depth": null,
+            "min_samples_leaf": 1
+          },
+          "cv_roc_auc": 0.5270141155948036,
+          "cv_roc_auc_std": 0.004401131626342168,
+          "cv_pr_auc": 0.1160852310266147,
+          "cv_pr_auc_std": 0.004667612168014483
+        },
+        {
+          "params": {
+            "max_depth": null,
+            "min_samples_leaf": 200
+          },
+          "cv_roc_auc": 0.6737326757202988,
+          "cv_roc_auc_std": 0.007540788407481138,
+          "cv_pr_auc": 0.1873780711220469,
+          "cv_pr_auc_std": 0.0057048123051059215
+        },
+        {
+          "params": {
+            "max_depth": 5,
+            "min_samples_leaf": 1
+          },
+          "cv_roc_auc": 0.6684021423103931,
+          "cv_roc_auc_std": 0.006085911589655998,
+          "cv_pr_auc": 0.17383571529963565,
+          "cv_pr_auc_std": 0.0054511214699406625
+        },
+        {
+          "params": {
+            "max_depth": 5,
+            "min_samples_leaf": 200
+          },
+          "cv_roc_auc": 0.6691958200116909,
+          "cv_roc_auc_std": 0.005023834338129411,
+          "cv_pr_auc": 0.17429501054103042,
+          "cv_pr_auc_std": 0.006064395635885165
+        },
+        {
+          "params": {
+            "max_depth": 10,
+            "min_samples_leaf": 1
+          },
+          "cv_roc_auc": 0.6591464496221716,
+          "cv_roc_auc_std": 0.013616620259196901,
+          "cv_pr_auc": 0.1714882765370061,
+          "cv_pr_auc_std": 0.0062896387772340325
+        },
+        {
+          "params": {
+            "max_depth": 10,
+            "min_samples_leaf": 200
+          },
+          "cv_roc_auc": 0.6750402550933444,
+          "cv_roc_auc_std": 0.008351238142635593,
+          "cv_pr_auc": 0.18618083089850393,
+          "cv_pr_auc_std": 0.006373295069458019
+        }
+      ],
+      "default": {
+        "params": {
+          "max_depth": null,
+          "min_samples_leaf": 1
+        },
+        "cv_roc_auc": 0.5270141155948036,
+        "cv_roc_auc_std": 0.004401131626342168,
+        "cv_pr_auc": 0.1160852310266147,
+        "cv_pr_auc_std": 0.004667612168014483
+      },
+      "tuned": {
+        "params": {
+          "max_depth": null,
+          "min_samples_leaf": 200
+        },
+        "cv_roc_auc": 0.6737326757202988,
+        "cv_roc_auc_std": 0.007540788407481138,
+        "cv_pr_auc": 0.1873780711220469,
+        "cv_pr_auc_std": 0.0057048123051059215
+      }
+    },
+    "forest": {
+      "label": "Random forest",
+      "course": "DSF deck 17 (many trees)",
+      "grid": [
+        {
+          "params": {
+            "min_samples_leaf": 1
+          },
+          "cv_roc_auc": 0.6723722183030272,
+          "cv_roc_auc_std": 0.003292563856519167,
+          "cv_pr_auc": 0.18231924500768967,
+          "cv_pr_auc_std": 0.004881802235193633
+        },
+        {
+          "params": {
+            "min_samples_leaf": 20
+          },
+          "cv_roc_auc": 0.7049715939765017,
+          "cv_roc_auc_std": 0.006961301809124523,
+          "cv_pr_auc": 0.209563832915518,
+          "cv_pr_auc_std": 0.0038159967734345272
+        }
+      ],
+      "default": {
+        "params": {
+          "min_samples_leaf": 1
+        },
+        "cv_roc_auc": 0.6723722183030272,
+        "cv_roc_auc_std": 0.003292563856519167,
+        "cv_pr_auc": 0.18231924500768967,
+        "cv_pr_auc_std": 0.004881802235193633
+      },
+      "tuned": {
+        "params": {
+          "min_samples_leaf": 20
+        },
+        "cv_roc_auc": 0.7049715939765017,
+        "cv_roc_auc_std": 0.006961301809124523,
+        "cv_pr_auc": 0.209563832915518,
+        "cv_pr_auc_std": 0.0038159967734345272
+      }
+    },
+    "knn": {
+      "label": "k-nearest neighbours",
+      "course": "CS course 6.4.4 (KNN, min-max scaling)",
+      "grid": [
+        {
+          "params": {
+            "n_neighbors": 5
+          },
+          "cv_roc_auc": 0.5869666012290988,
+          "cv_roc_auc_std": 0.004663763475282369,
+          "cv_pr_auc": 0.13688581601888353,
+          "cv_pr_auc_std": 0.003781850040853322
+        },
+        {
+          "params": {
+            "n_neighbors": 51
+          },
+          "cv_roc_auc": 0.66550634008143,
+          "cv_roc_auc_std": 0.0058391198616188356,
+          "cv_pr_auc": 0.1773373398560071,
+          "cv_pr_auc_std": 0.004151071079798302
+        },
+        {
+          "params": {
+            "n_neighbors": 201
+          },
+          "cv_roc_auc": 0.6815527141849328,
+          "cv_roc_auc_std": 0.005788386691369324,
+          "cv_pr_auc": 0.18963126170455316,
+          "cv_pr_auc_std": 0.0058075951824735645
+        }
+      ],
+      "default": {
+        "params": {
+          "n_neighbors": 5
+        },
+        "cv_roc_auc": 0.5869666012290988,
+        "cv_roc_auc_std": 0.004663763475282369,
+        "cv_pr_auc": 0.13688581601888353,
+        "cv_pr_auc_std": 0.003781850040853322
+      },
+      "tuned": {
+        "params": {
+          "n_neighbors": 201
+        },
+        "cv_roc_auc": 0.6815527141849328,
+        "cv_roc_auc_std": 0.005788386691369324,
+        "cv_pr_auc": 0.18963126170455316,
+        "cv_pr_auc_std": 0.0058075951824735645
+      }
+    },
+    "logistic_regression": {
+      "label": "Logistic regression",
+      "course": "DSF deck 11 (logistic regression)",
+      "grid": [
+        {
+          "params": {
+            "C": 0.001
+          },
+          "cv_roc_auc": 0.682005871995601,
+          "cv_roc_auc_std": 0.007061342933953863,
+          "cv_pr_auc": 0.18955916569911965,
+          "cv_pr_auc_std": 0.0017173346977487393
+        },
+        {
+          "params": {
+            "C": 0.01
+          },
+          "cv_roc_auc": 0.6835861511907086,
+          "cv_roc_auc_std": 0.007881775754886683,
+          "cv_pr_auc": 0.19145920297828636,
+          "cv_pr_auc_std": 0.0037699889769674095
+        },
+        {
+          "params": {
+            "C": 0.1
+          },
+          "cv_roc_auc": 0.6831191487365041,
+          "cv_roc_auc_std": 0.008535904605682081,
+          "cv_pr_auc": 0.19154239969112402,
+          "cv_pr_auc_std": 0.004492888517567987
+        },
+        {
+          "params": {
+            "C": 1.0
+          },
+          "cv_roc_auc": 0.6828492447433708,
+          "cv_roc_auc_std": 0.00878236257524132,
+          "cv_pr_auc": 0.19139701963031772,
+          "cv_pr_auc_std": 0.004702874017006909
+        },
+        {
+          "params": {
+            "C": 10.0
+          },
+          "cv_roc_auc": 0.6828200414755946,
+          "cv_roc_auc_std": 0.00877338402259103,
+          "cv_pr_auc": 0.19136336086366496,
+          "cv_pr_auc_std": 0.004664993832472781
+        }
+      ],
+      "default": {
+        "params": {
+          "C": 1.0
+        },
+        "cv_roc_auc": 0.6828492447433708,
+        "cv_roc_auc_std": 0.00878236257524132,
+        "cv_pr_auc": 0.19139701963031772,
+        "cv_pr_auc_std": 0.004702874017006909
+      },
+      "tuned": {
+        "params": {
+          "C": 0.1
+        },
+        "cv_roc_auc": 0.6831191487365041,
+        "cv_roc_auc_std": 0.008535904605682081,
+        "cv_pr_auc": 0.19154239969112402,
+        "cv_pr_auc_std": 0.004492888517567987
+      }
+    },
+    "gbm": {
+      "label": "Gradient boosting (the app model)",
+      "course": "DSF deck 17 (boosting)",
+      "grid": [
+        {
+          "params": {
+            "l2_regularization": 0.0,
+            "learning_rate": 0.05,
+            "max_leaf_nodes": 15
+          },
+          "cv_roc_auc": 0.7028556367672755,
+          "cv_roc_auc_std": 0.010421515371942934,
+          "cv_pr_auc": 0.20962941155898163,
+          "cv_pr_auc_std": 0.005454751416067673
+        },
+        {
+          "params": {
+            "l2_regularization": 0.0,
+            "learning_rate": 0.05,
+            "max_leaf_nodes": 31
+          },
+          "cv_roc_auc": 0.702715448737598,
+          "cv_roc_auc_std": 0.011092707799450128,
+          "cv_pr_auc": 0.21074546430914473,
+          "cv_pr_auc_std": 0.005268194866190132
+        },
+        {
+          "params": {
+            "l2_regularization": 0.0,
+            "learning_rate": 0.05,
+            "max_leaf_nodes": 63
+          },
+          "cv_roc_auc": 0.7007213485354986,
+          "cv_roc_auc_std": 0.012240985966063246,
+          "cv_pr_auc": 0.2096012802363055,
+          "cv_pr_auc_std": 0.005878871436602026
+        },
+        {
+          "params": {
+            "l2_regularization": 0.0,
+            "learning_rate": 0.1,
+            "max_leaf_nodes": 15
+          },
+          "cv_roc_auc": 0.7019879429099565,
+          "cv_roc_auc_std": 0.01054806527872335,
+          "cv_pr_auc": 0.20984139780459427,
+          "cv_pr_auc_std": 0.004712400380238521
+        },
+        {
+          "params": {
+            "l2_regularization": 0.0,
+            "learning_rate": 0.1,
+            "max_leaf_nodes": 31
+          },
+          "cv_roc_auc": 0.7014829119528019,
+          "cv_roc_auc_std": 0.010586315832355926,
+          "cv_pr_auc": 0.21028262996495273,
+          "cv_pr_auc_std": 0.005046721450004033
+        },
+        {
+          "params": {
+            "l2_regularization": 0.0,
+            "learning_rate": 0.1,
+            "max_leaf_nodes": 63
+          },
+          "cv_roc_auc": 0.6979777428742029,
+          "cv_roc_auc_std": 0.012581335921836457,
+          "cv_pr_auc": 0.2084980139272606,
+          "cv_pr_auc_std": 0.0063067712524491944
+        },
+        {
+          "params": {
+            "l2_regularization": 1.0,
+            "learning_rate": 0.05,
+            "max_leaf_nodes": 15
+          },
+          "cv_roc_auc": 0.7031176237228512,
+          "cv_roc_auc_std": 0.009887158906073735,
+          "cv_pr_auc": 0.20944349542828045,
+          "cv_pr_auc_std": 0.005142149499149976
+        },
+        {
+          "params": {
+            "l2_regularization": 1.0,
+            "learning_rate": 0.05,
+            "max_leaf_nodes": 31
+          },
+          "cv_roc_auc": 0.7034266345203883,
+          "cv_roc_auc_std": 0.01078245928581642,
+          "cv_pr_auc": 0.21068805285796724,
+          "cv_pr_auc_std": 0.005017213924086876
+        },
+        {
+          "params": {
+            "l2_regularization": 1.0,
+            "learning_rate": 0.05,
+            "max_leaf_nodes": 63
+          },
+          "cv_roc_auc": 0.701942211466926,
+          "cv_roc_auc_std": 0.011395363422818447,
+          "cv_pr_auc": 0.21024259556302546,
+          "cv_pr_auc_std": 0.004583505269890718
+        },
+        {
+          "params": {
+            "l2_regularization": 1.0,
+            "learning_rate": 0.1,
+            "max_leaf_nodes": 15
+          },
+          "cv_roc_auc": 0.7022960778681071,
+          "cv_roc_auc_std": 0.010126471343698274,
+          "cv_pr_auc": 0.20889957405421516,
+          "cv_pr_auc_std": 0.004828597768061255
+        },
+        {
+          "params": {
+            "l2_regularization": 1.0,
+            "learning_rate": 0.1,
+            "max_leaf_nodes": 31
+          },
+          "cv_roc_auc": 0.7020041908366912,
+          "cv_roc_auc_std": 0.011764940920620096,
+          "cv_pr_auc": 0.21010773194106863,
+          "cv_pr_auc_std": 0.004721756773883223
+        },
+        {
+          "params": {
+            "l2_regularization": 1.0,
+            "learning_rate": 0.1,
+            "max_leaf_nodes": 63
+          },
+          "cv_roc_auc": 0.6994335917212345,
+          "cv_roc_auc_std": 0.01204756455976185,
+          "cv_pr_auc": 0.2077691030472706,
+          "cv_pr_auc_std": 0.006394338729746549
+        }
+      ],
+      "default": {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.1,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.7014829119528019,
+        "cv_roc_auc_std": 0.010586315832355926,
+        "cv_pr_auc": 0.21028262996495273,
+        "cv_pr_auc_std": 0.005046721450004033
+      },
+      "tuned": {
+        "params": {
+          "l2_regularization": 0.0,
+          "learning_rate": 0.05,
+          "max_leaf_nodes": 31
+        },
+        "cv_roc_auc": 0.702715448737598,
+        "cv_roc_auc_std": 0.011092707799450128,
+        "cv_pr_auc": 0.21074546430914473,
+        "cv_pr_auc_std": 0.005268194866190132
+      }
+    }
+  },
+  "verdict": {
+    "ranking": [
+      "gbm",
+      "forest",
+      "logistic_regression",
+      "knn",
+      "tree",
+      "baseline"
+    ],
+    "winner": "gbm",
+    "runner_up": "forest",
+    "lead": 0.0011816313936267309,
+    "winner_spread": 0.005268194866190132,
+    "lead_larger_than_spread": false,
+    "tied_with_winner": [
+      "gbm",
+      "forest"
+    ],
+    "simplest_tied": "forest"
+  }
+}

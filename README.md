@@ -18,7 +18,7 @@ part, often without producing an answer.
 
 | User | Decision | Page |
 |---|---|---|
-| Trial sponsors and study designers | Before registering a trial: is the design riskier than most, and which single change (blinding, allocation, number of arms, eligibility criteria, age limits, a data monitoring committee) would lower the risk? | Check your own trial |
+| Trial sponsors and study designers | Before registering a trial: is the design riskier than most, and which single change (blinding, allocation, number of arms, eligibility criteria, age limits, a data monitoring committee) goes with a lower estimate in past trials? (A pattern, not proof that the change would cause a lower risk.) | Check your own trial |
 | Investors and business analysts | When weighing a company's pipeline: which of its ongoing trials look riskier than comparable past trials and deserve a closer look? | Find a trial |
 
 **What is new.** Termination has been predicted before, with reported ROC-AUCs of about 0.73 [2] and up to 0.80 [3].
@@ -47,7 +47,7 @@ NeurIPS 2026, WiML workshop poster. https://neurips.cc/virtual/2026/163735
 |---|---|
 | Find a trial | Search ongoing interventional trials (recruiting, not yet recruiting, active, enrolling by invitation) through the ClinicalTrials.gov API. Every result shows its estimated risk; open one for details. |
 | Check your own trial | Describe a design from scratch and watch the estimate change; see which single change would lower it. |
-| Explore the data | Interactive charts of the past trials the model learned from: which kinds get stopped early more often, and a heatmap of two traits at once (for example phase x sponsor) to spot risky combinations. Filters apply to every chart. |
+| Explore the data | Interactive charts of the past trials the model learned from: which kinds get stopped early more often, and a heatmap of two traits at once (for example phase x sponsor) to spot risky combinations. Filters apply to every chart. The numbers come from a SQLite database with SQL queries, which a folded box on the page shows. |
 | How the model works | How to read a risk score, what is predicted, how good it is (with a review-budget slider: "if I can check 20% of trials, how many stopped ones do I find?" and the score distributions of stopped vs completed trials), which factors matter most, how far to trust the percentages (calibration plot), and model v1 vs v2 plus the robustness checks. |
 | Play the game | Two past trials from the same phase, one was stopped early: guess which, ten rounds, scored against the model. |
 
@@ -82,7 +82,10 @@ API pages in `data/raw/` are not in git.
 ```bash
 python src/fetch_data.py      # download raw trials from the ClinicalTrials.gov API v2 into data/raw/ (resumable)
 python src/build_dataset.py   # build_features on every record -> data/processed/trials.parquet
+python src/database.py        # optional: SQLite database for the Explore page (the app builds it on first use)
 python src/train.py           # fit baseline + gradient boosting on the train split, save to models/
+python src/train.py --features v2   # optional: version 2 with condition areas (compared, not used by the app)
+python src/horse_race.py      # race six models on the same time-ordered folds -> models/horse_race.json
 python src/evaluate.py        # score the saved models on the test split: metrics, calibration, importance
 python src/save_examples.py   # optional: refresh the saved ongoing trials for the offline search
 ```
@@ -103,9 +106,9 @@ so we report ranking and precision-recall metrics, not accuracy.
 
 - **The ranking works:** the 10% of test trials rated riskiest were stopped 2.4 times as often as the average.
   Inside a single phase it ranks less well than across all trials (ROC-AUC 0.61 in phase 2).
-- **Calibrated:** raw boosting scores overshoot (mean prediction 39%), so they are mapped to probabilities with
-  isotonic calibration. That cut the Brier score from 0.186 to 0.097 without hurting ranking.
-- **Still a little low:** the model predicts 9.9% on average for the test trials and 11.7% were stopped. Read a
+- **Calibrated:** raw boosting scores overshoot (mean prediction 40%), so they are mapped to probabilities with
+  isotonic calibration. That cut the Brier score from 0.192 to 0.097 without hurting ranking.
+- **Still a little low:** the model predicts 9.8% on average for the test trials and 11.7% were stopped. Read a
   percentage as a rough, lower-end figure and use it mainly to compare trials.
 - **Robust to later edits:** refitting without eligibility length and outcome counts, which a sponsor can change
   after registration, lowers test ROC-AUC by less than 0.01.
@@ -118,7 +121,15 @@ so we report ranking and precision-recall metrics, not accuracy.
   results, and enrollment (finished trials report actual counts, which give the outcome away).
 - Locations and number of sites are excluded too, because sites are added after a trial has started.
 - The split is by start date, never random, and hyperparameters and the decision threshold are chosen by
-  cross-validation on the train split only. The test years are never used for tuning.
+  time-ordered cross-validation on the train split only (`TimeSeriesSplit`: always train on earlier trials and
+  validate on later ones). The test years are never used for tuning.
+- Every imputer, scaler and encoder sits inside a scikit-learn `Pipeline`, so it is fitted on the training folds only.
+
+**How the model was chosen.** Six models ran a fair race on the same time-ordered folds with the same metric
+(PR-AUC), each with its standard settings and a small tuned grid (the "horse race" of the Data Science Fundamentals
+course): always the average rate, logistic regression, a decision tree, a random forest, k-nearest neighbours and
+gradient boosting. Gradient boosting scored best (validation PR-AUC 0.211), but the random forest is practically tied (0.210, within the spread across the folds); logistic regression (0.192), KNN (0.190) and a single tree (0.187) are behind, and all beat the baseline (0.109). We keep boosting, which also carries the calibration and the per-trial explanations. The race is on the model page ("Which model won?"). The ten questions of the course's prediction protocol are answered one by
+one in [`docs/PREDICTION_PROTOCOL.md`](docs/PREDICTION_PROTOCOL.md).
 
 ## Project layout
 
@@ -126,7 +137,7 @@ so we report ranking and precision-recall metrics, not accuracy.
 |---|---|
 | `app/` | The Streamlit app: `Home.py` (entry point and navigation), five `pages/`, the shared look (one colour palette and Plotly template) in `ui.py`, risk displays in `risk_gauge.py` |
 | `src/` | Data fetching, features, training, evaluation, prediction, the ClinicalTrials.gov client, chart helpers |
-| `data/` | `processed/trials.parquet` (the model-ready table), `examples/` (saved ongoing trials for the offline search); raw API pages are regenerated by `src/fetch_data.py` |
+| `data/` | `processed/trials.parquet` (the model-ready table), `processed/trials.db` (SQLite database for the Explore page, built from the parquet, not in git), `examples/` (saved ongoing trials for the offline search); raw API pages are regenerated by `src/fetch_data.py` |
 | `models/` | The saved models, their metrics and evaluation outputs |
 | `tests/` | Offline checks (no network) |
 | `notebooks/` | Exploration only; nothing in `src/` or `app/` imports from here |

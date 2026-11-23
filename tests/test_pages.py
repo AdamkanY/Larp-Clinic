@@ -103,7 +103,8 @@ def test_home():
 
 
 def test_explore():
-    """Explore: key numbers, a filter that narrows them, and a message instead of an error when nothing matches."""
+    """Explore: key numbers, a filter that narrows them, a message instead of an error when nothing matches, and the
+    box with the SQL queries."""
     at = open_page("pages/3_Explore_Data.py")
     assert not at.exception and len(at.metric) == 3
     total = int(at.metric[0].value.replace(",", ""))
@@ -114,6 +115,10 @@ def test_explore():
     clear = [b for b in at.button if b.label == "Clear filters"][0]
     clear.click().run()
     assert int(at.metric[0].value.replace(",", "")) == total
+    # The SQL box lists the queries that made the numbers, with GROUP BY and the JOIN for the conditions.
+    assert any("Under the hood" in e.label for e in at.expander)
+    queries = " ".join(c.value for c in at.code)
+    assert "GROUP BY phase_label" in queries and "JOIN trials" in queries
 
 
 def test_explore_heatmap():
@@ -227,14 +232,15 @@ def test_search_offline_examples():
 
 
 def test_how_the_model_works():
-    """Model page: title, summary and reading boxes, five tabs, calibration plot, v1 vs v2 and ablation tables."""
+    """Model page: title, summary and reading boxes, six tabs, calibration plot, cost slider with confusion matrix,
+    horse race, v1 vs v2 and ablation tables."""
     at = open_page("pages/4_How_the_Model_Works.py")
     assert not at.exception, [e.value for e in at.exception]
     text = markdown(at)
     assert "<h1" in text and ">How the model works</h1>" in text
     assert "In short" in text and "How to read a risk score" in text and "Red is not a verdict" in text
-    assert [t.label for t in at.tabs] == ["What is predicted", "How good is it?", "What matters most",
-                                          "Can you trust it?", "Versions and checks"]
+    assert [t.label for t in at.tabs] == ["What is predicted", "How good is it?", "Which model won?",
+                                          "What matters most", "Can you trust it?", "Versions and checks"]
     assert [m.label for m in at.metric] == ["ROC-AUC", "PR-AUC", "Brier score"]
     assert any(c.proto.id and "calibration_chart" in c.proto.id for c in at.get("plotly_chart"))
     assert any(c.proto.id and "score_violin" in c.proto.id for c in at.get("plotly_chart"))
@@ -244,7 +250,18 @@ def test_how_the_model_works():
     at.slider(key="gain_share").set_value(40).run()
     assert not at.exception
     assert any("**40%**" in m.value for m in at.markdown if "Reviewing the riskiest" in m.value)
+    # The cost slider moves the yes/no line (1 / (1 + ratio)) and the confusion matrix below it.
+    assert any(c.proto.id and "confusion_chart" in c.proto.id for c in at.get("plotly_chart"))
+    assert any("1 / (1 + 5) = 17%" in m.value for m in at.markdown)
+    at.slider(key="cost_ratio").set_value(9).run()
+    assert not at.exception
+    assert any("1 / (1 + 9) = 10%" in m.value for m in at.markdown)
     tables = [df.value for df in at.dataframe]
+    # The horse race: six horses, best first, the baseline among them, and the race chart (needs horse_race.json).
+    if (ROOT / "models" / "horse_race.json").exists():
+        race = [t for t in tables if "PR-AUC, tuned" in t.columns][0]
+        assert len(race) == 6 and "Baseline: always the average rate" in list(race["Model"])
+        assert any(c.proto.id and "race_chart" in c.proto.id for c in at.get("plotly_chart"))
     versions = [t for t in tables if "Status" in t.columns][0]
     assert list(versions["Status"]) == ["Used in the app", "Tested, not used"]
     assert list(versions["Inputs"]) == [29, 38]
