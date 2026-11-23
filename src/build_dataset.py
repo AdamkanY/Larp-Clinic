@@ -1,15 +1,15 @@
 # AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
 # of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Turn raw API pages into the model-ready table ``data/processed/trials.parquet``.
+"""Turn the downloaded API pages into the table the model learns from: data/processed/trials.parquet.
 
-Runs ``build_features`` over every study in ``data/raw/pages/``, keeps
-COMPLETED/TERMINATED trials that started 2008-01-01 .. 2019-12-31, and adds a
-``split`` column (train = start 2008-2016, test = start 2017-2019).
+Every study in data/raw/pages/ goes through build_features(). We keep the COMPLETED and TERMINATED trials that
+started between 2008-01-01 and 2019-12-31 and add the column "split": train = start 2008-2016, test = start
+2017-2019.
 
-Usage:
-    python src/build_dataset.py              # full rebuild from data/raw/pages/
-    python src/build_dataset.py --backfill   # add new condition features to the
-                                             # existing parquet (no raw pages needed)
+How to run it:
+    python src/build_dataset.py              # build the whole table from data/raw/pages/
+    python src/build_dataset.py --backfill   # only recompute the condition features in the existing table
+                                             # (works without the raw pages)
 """
 
 import argparse
@@ -19,38 +19,41 @@ from pathlib import Path
 
 import pandas as pd
 
+# The other files of src/ are imported by their plain name, so this works from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import (BINARY_FEATURES, CONDITION_FLAG_FEATURES,  # noqa: E402
-                      EXTRA_DISPLAY_COLS, FEATURE_COLUMNS, META_COLUMNS,
-                      build_features, condition_features)
+from features import BINARY_FEATURES, CONDITION_FLAG_FEATURES, EXTRA_DISPLAY_COLS, FEATURE_COLUMNS, META_COLUMNS
+from features import build_features, condition_features
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]  # the project folder
 PAGES_DIR = ROOT / "data" / "raw" / "pages"
 OUT_PATH = ROOT / "data" / "processed" / "trials.parquet"
 
-# The study window and the split year (root CLAUDE.md, rule 3); train.py checks the parquet against the same dates.
+# The years we study and the year where the test data starts (rule 3 in the main CLAUDE.md).
+# train.py checks the finished table against the same dates.
 WINDOW_START = pd.Timestamp("2008-01-01")
 WINDOW_END = pd.Timestamp("2019-12-31")
 TEST_FROM_YEAR = 2017  # train: 2008-2016, test: 2017-2019
 
 
-def load_rows() -> list:
-    """Run build_features on every study in every raw page."""
-    # Every raw page holds up to 1,000 studies; each study goes through the one feature function.
+def load_rows():
+    """Read every downloaded page and run build_features() on every study. Returns a list of feature rows."""
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if not pages:
         raise SystemExit(f"No pages in {PAGES_DIR}; run src/fetch_data.py first.")
+
+    # One page holds up to 1,000 studies. Every study goes through the one feature function.
     rows = []
     for page in pages:
         data = json.loads(page.read_text(encoding="utf-8"))
-        rows.extend(build_features(study) for study in data.get("studies", []))
+        for study in data.get("studies", []):
+            rows.append(build_features(study))
     print(f"Read {len(pages)} pages, {len(rows)} study records.")
     return rows
 
 
-def build_dataset(rows: list) -> pd.DataFrame:
-    """Dedupe, apply label/date filters and add the train/test split column."""
-    # One row per study; a study can appear on two pages if the registry changed during the download.
+def build_dataset(rows):
+    """Make the final table from the feature rows: no duplicates, only labelled trials in our years, with split."""
+    # One row per study. A study can be on two pages if the registry changed while we were downloading.
     df = pd.DataFrame(rows, columns=META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS)
     n_dupes = df.duplicated("nct_id").sum()
     df = df.drop_duplicates("nct_id")
@@ -58,7 +61,8 @@ def build_dataset(rows: list) -> pd.DataFrame:
     print("\nRows per status (before filtering):")
     print(df["overall_status"].value_counts(dropna=False).to_string())
 
-    # Drop rows without a label (other statuses), with an unreadable start date, or outside the window.
+    # Drop the rows we cannot use: no label (the status is neither COMPLETED nor TERMINATED), a start date we
+    # could not read, or a start outside 2008-2019.
     df["start_date"] = pd.to_datetime(df["start_date"])
     no_label = df["label"].isna()
     invalid = df["start_date"].isna()
@@ -69,84 +73,111 @@ def build_dataset(rows: list) -> pd.DataFrame:
           f"start >= 2020 {too_new.sum()} (counts can overlap)")
     df = df[~no_label & ~invalid & ~too_old & ~too_new].copy()
 
-    # Split by start year, never at random: the test trials started after every training trial.
-    df["split"] = (df["start_date"].dt.year >= TEST_FROM_YEAR).map(
-        {False: "train", True: "test"})
+    # Split by start year and never at random: every test trial started after all the training trials, the
+    # same way the app later scores trials that are newer than everything the model has seen.
+    is_test = df["start_date"].dt.year >= TEST_FROM_YEAR
+    df["split"] = is_test.map({False: "train", True: "test"})
     df["label"] = df["label"].astype("int8")
-    return set_dtypes(df).reset_index(drop=True)
+    df = set_dtypes(df)
+    return df.reset_index(drop=True)
 
 
-def set_dtypes(df: pd.DataFrame) -> pd.DataFrame:
-    """Nullable ints keep real missing values instead of turning flags into floats."""
-    # Nullable integer types keep missing values (pd.NA) instead of turning the columns into floats.
+def set_dtypes(df):
+    """Store flags and counts as whole numbers that can still be missing.
+
+    With normal integers pandas would turn a column with a missing value into decimal numbers. The types "Int8"
+    and "Int32" (with a capital I) keep whole numbers and mark a missing value as <NA>.
+    """
     for col in BINARY_FEATURES:
         df[col] = df[col].astype("Int8")
-    for col in ["n_arms", "n_primary_outcomes", "n_secondary_outcomes",
-                "n_conditions", "eligibility_text_len"]:
+    for col in ["n_arms", "n_primary_outcomes", "n_secondary_outcomes", "n_conditions", "eligibility_text_len"]:
         df[col] = df[col].astype("Int32")
     df["n_condition_categories"] = df["n_condition_categories"].astype("Int8")
     return df
 
 
-def backfill_conditions(df: pd.DataFrame) -> pd.DataFrame:
-    """Recompute the condition-category features from the stored ``conditions`` column.
+def backfill_conditions(df):
+    """Recompute the condition features of an existing table from its "conditions" column.
 
-    ``conditions`` holds the registered conditions joined with "; " (see
-    ``build_features``), so splitting it back gives the same list
-    ``condition_features`` sees on a raw record. This updates an existing
-    parquet when the condition features change, without re-downloading the
-    raw pages (which are not in git).
+    We need this when the keywords in features.py change: the raw pages are not in git, so we cannot always
+    rebuild everything. The "conditions" column holds the registered conditions joined with "; " (see
+    build_features). Splitting it gives back the list that condition_features() gets from a raw record.
     """
-    # Recompute the flags from the stored text and overwrite the old columns.
-    lists = df["conditions"].map(lambda text: text.split("; ") if isinstance(text, str) else None)
-    flags = pd.DataFrame(list(lists.map(condition_features)), index=df.index)
+    # One row of flags per trial. A trial without conditions gets None, which gives all zeros.
+    flag_rows = []
+    for text in df["conditions"]:
+        if isinstance(text, str):
+            conditions = text.split("; ")
+        else:
+            conditions = None
+        flag_rows.append(condition_features(conditions))
+    flags = pd.DataFrame(flag_rows, index=df.index)
+
+    # Overwrite the old columns with the new values.
     for col in flags.columns:
         df[col] = flags[col]
-    # Keep the column order build_dataset writes: meta, display, features, split.
+
+    # Keep the column order that build_dataset() writes: meta, display, features, split. Other columns go last.
     order = META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS + ["split"]
-    return set_dtypes(df[order + [c for c in df.columns if c not in order]].copy())
+    for col in df.columns:
+        if col not in order:
+            order.append(col)
+    return set_dtypes(df[order].copy())
 
 
-def report(df: pd.DataFrame) -> None:
-    """Print row counts, terminated rate per split and missingness per feature."""
+def report(df):
+    """Print how many trials we have, the share of terminated trials per split and the missing values."""
     print("\nRows per status (in window):")
     print(df["overall_status"].value_counts().to_string())
+
+    # Size and share of terminated trials for train and test.
     print("\nPer split:")
-    # Size and terminated rate of each split, then the share of missing values per feature.
-    summary = df.groupby("split")["label"].agg(rows="size", terminated="sum",
-                                                terminated_rate="mean")
+    summary = df.groupby("split")["label"].agg(rows="size", terminated="sum", terminated_rate="mean")
     print(summary.round(4).to_string())
+
+    # How many percent of the values are missing in each feature.
     print("\n% missing per feature:")
     print((df[FEATURE_COLUMNS].isna().mean() * 100).round(2).to_string())
 
 
-def report_conditions(df: pd.DataFrame) -> None:
-    """Print trials and terminated rate per condition category (train and test)."""
+def report_conditions(df):
+    """Print the number of trials and the share of terminated trials for every condition category."""
+    # One line per category, and a last line for the trials that are in no category.
     rows = []
-    # One row per condition category, plus the trials that match none.
     for col in CONDITION_FLAG_FEATURES + ["no category"]:
-        mask = df["n_condition_categories"] == 0 if col == "no category" else df[col] == 1
-        part = df[mask]
-        rows.append({"category": col.removeprefix("cond_"), "trials": len(part),
-                     "share": len(part) / len(df), "terminated_rate": part["label"].mean()})
+        if col == "no category":
+            part = df[df["n_condition_categories"] == 0]
+        else:
+            part = df[df[col] == 1]
+        rows.append({
+            "category": col.removeprefix("cond_"),
+            "trials": len(part),
+            "share": len(part) / len(df),
+            "terminated_rate": part["label"].mean(),
+        })
     print("\nCondition categories (multi-hot; a trial can be in several):")
     print(pd.DataFrame(rows).round(4).to_string(index=False))
 
 
-def main() -> None:
-    """Build (or backfill), report and save the dataset."""
-    # --backfill updates the existing parquet; without it the dataset is rebuilt from the raw pages.
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+def main():
+    """Build the table (or only backfill the condition features), print the reports and save the file."""
+    parser = argparse.ArgumentParser(
+        description="Turn raw API pages into the model-ready table ``data/processed/trials.parquet``.")
     parser.add_argument("--backfill", action="store_true",
                         help="recompute condition features in the existing parquet")
-    if parser.parse_args().backfill:
+    args = parser.parse_args()
+
+    # --backfill: update the condition features in the existing table and stop.
+    if args.backfill:
         df = backfill_conditions(pd.read_parquet(OUT_PATH))
         report_conditions(df)
         df.to_parquet(OUT_PATH, index=False)
         print(f"\nBackfilled condition features into {OUT_PATH.relative_to(ROOT)} ({len(df)} rows)")
         return
-    # Full rebuild: raw pages -> features -> filtered table -> parquet.
-    df = build_dataset(load_rows())
+
+    # Normal run: raw pages -> feature rows -> filtered table -> parquet file.
+    rows = load_rows()
+    df = build_dataset(rows)
     report(df)
     report_conditions(df)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
