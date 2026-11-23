@@ -60,8 +60,10 @@ reference is `gbm_uncalibrated`). Losing them costs under 0.01 ROC-AUC, so the m
 
 - `score()` returns the **calibrated** probability. On train (out-of-fold, the validation blocks of the time-ordered
   CV) the mean score (0.111) is close to their terminated rate (0.109). On test it is 0.098 vs an observed 0.117: 2017-2019 trials look lower-risk on paper (more phase-NA,
-  behavioural and healthy-volunteer studies) yet terminated slightly more often. Expect the same downward bias
-  for recent and ongoing trials.
+  behavioural and healthy-volunteer studies) yet terminated slightly more often. Partly a tilt in the test data,
+  measured with `src/open_trials.py`: 10.3% of the 2019 trials are still running (under 4% for every training year);
+  if all of them complete, the 2019 gap shrinks from +31% to +18%, so the tilt explains about half of it. Expect
+  the same downward bias for recent and ongoing trials.
 - `baseline_lr` and `gbm_uncalibrated` probabilities are inflated by `class_weight='balanced'`; use them for
   ranking only.
 - `.joblib` files only load reliably with the sklearn version in `sklearn_version` of the metrics JSON

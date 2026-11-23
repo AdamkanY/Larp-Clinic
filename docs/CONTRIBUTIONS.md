@@ -59,6 +59,7 @@ able to talk about their own rows.
 | Q&A preparation | ? | ? | ? | ? | ? | `docs/QA_PREP.md` |
 | Course alignment: CS and DSF course material compared with the project; time-ordered cross-validation, model race, cost-based yes/no line, "prediction, not cause" wording (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/train.py`, `src/horse_race.py`, `app/pages/4_How_the_Model_Works.py`, `docs/PREDICTION_PROTOCOL.md` |
 | SQL database for the Explore page (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/database.py`, `app/pages/3_Explore_Data.py` |
+| Check of the test-year tilt: running trials counted per start year (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/open_trials.py`, `data/processed/open_trials_by_year.csv`, model page "Can you trust it?" |
 
 ## What the git history shows
 
@@ -70,7 +71,7 @@ commits, and an AI session can commit for the person who ran it.
 | `matteo-kaufmann` (Matteo) | 95 | 71 |
 | `AdamkanY` (Adam) | 20 | 12 |
 | `Claude` (AI agent, run by a team member) | 7 | 7 |
-| `simonbse` (Simon) | 4 (2026-11-23, branch `course-alignment`) | 4 |
+| `simonbse` (Simon) | 5 (2026-11-23, branches `course-alignment` and `tilt-check`) | 5 |
 
 Until 2026-11-23 Simon, Dominic and Raphael had no commits under their own accounts; Simon's first ones are the
 course-alignment branch. **[team]** If they worked through someone else's

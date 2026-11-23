@@ -148,6 +148,11 @@ Claude wrote, on the branch `sql-database` (on top of `course-alignment`): `src/
 tables `trials` and `trial_conditions`, keys and the first normal form, queries with `?` parameters), the Explore
 page reading its numbers with SQL and showing the queries in an "Under the hood" box, and tests for both.
 
+Later the same evening Simon asked whether the limitations could be changed and chose to check the test-year tilt.
+Claude counted, from Simon's browser, the interventional trials per start year and status on ClinicalTrials.gov,
+saved them (`data/processed/open_trials_by_year.csv`, script `src/open_trials.py`) and added the check to the model
+page, the README and the Q&A prep. Result: the tilt is real but explains about half of the gap, not all of it.
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:

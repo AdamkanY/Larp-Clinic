@@ -200,8 +200,11 @@ output was checked and what worked and what did not, is in [`docs/AI_USE.md`](do
   ends early by definition, while a long trial that will complete may still be running, so the later the start
   year, the more completions are missing. The share stopped early fell from 13.0% (start 2008) to 10.3% (2016)
   and then rose to 12.4% (2019), and the model's under-prediction grows the same way: real rate 9% above the
-  average prediction for 2017, 16% for 2018, 31% for 2019. We read this as a tilt in the test data more than a
-  model error, but we have not yet counted the 2017-2019 trials that are still running.
+  average prediction for 2017, 16% for 2018, 31% for 2019. We counted the trials that are still running on
+  ClinicalTrials.gov (`src/open_trials.py`): under 4% of every training year, but 5.6% of the 2017 trials, 7.3% of
+  2018 and 10.3% of 2019, so the tilt is real. It explains part of the gap, not all of it: even if every running
+  trial completes, the 2019 trials end up at least 18% above the prediction instead of 31%. The rest is a real change
+  or hides among trials with an "unknown" status (23% of the 2019 trials).
 - **Ongoing trials are new to the model.** It was trained only on finished trials, so scores for running ones, as in
   the search, are less certain.
 
