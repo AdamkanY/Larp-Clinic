@@ -4,9 +4,10 @@ The course allows generative AI for code if it is cited and quoted in the source
 the project"; HSG rules on AI use, citations and the declaration of authorship, applied to source code). This file is
 that record. Every source file points here in its first lines ("AI use: ...").
 
-> **Status: draft, to be confirmed by the team.** Sections 1 to 3 are measured from the repository and are factual.
-> Sections 4 to 6 contain parts only the team can know; they are marked **[team]**. Fill or correct them in the
-> team meeting before the video is recorded, then delete this box.
+> **Status: nearly final.** The facts come from the repository (git history, measurements, test runs). Three places still
+> need the team and are marked **[team]**: the list of functions written by hand (section 3.7) and the two drafts in
+> section 5 ("How we will use AI in future projects", "What AI could do next"). Confirm or correct them, then delete
+> this box.
 
 ## 1. Tools
 
@@ -92,14 +93,18 @@ the repository word for word:
 The first versions were written on 2026-11-03 ("Set up folder structure and CLAUDE.md guides for agents",
 "Claude.md for efficiency gains") and updated with every change, as the root `CLAUDE.md` requires.
 
-### 3.2 Task prompts **[team]**
+### 3.2 Task prompts
 
-Paste here the prompts you gave Claude Code for the main tasks, word for word (Claude Code keeps the session
-history; copy from there). One entry per task is enough. Format:
+The prompts of the larger sessions are quoted in sections 3.3 to 3.7. The prompts of the earlier sessions are in the
+session history of Claude Code and are not copied here. The prompts of 2026-11-26 are listed word for word (in
+German, typing errors kept):
 
 | Date | Who | Prompt (verbatim) | What came out (commit or PR) | What we changed afterwards |
 |---|---|---|---|---|
-| **[team]** | | | | |
+| 2026-11-26 | Matteo | "bleiben bei der API, aber wir müssen die data einmal runterladen" | `data/examples/ongoing_trials.json` for the offline search (PR #28) | Checked with the offline search and the page tests |
+| 2026-11-26 | Matteo | "function explanation, input, output, files start at the first line" | Docstring format in every file and function (PR #27) | Checked by script (section 3.7) |
+| 2026-11-26 | Matteo | "jede funktion ki hinweis mal (wir werden später ein paar funktionen durchgehen und ja selber schreiben, vorerst überall AI declaren)" | The AI note under every function (PR #32) | The team rewrites some functions by hand later (section 3.7) |
+| 2026-11-26 | Matteo | "Ja, nach Rollen" (fill the open cells of the contribution matrix by role) | The filled matrix in `docs/CONTRIBUTIONS.md` (PR #30) | Each person checks their own column |
 
 For orientation, the AI-assisted commits by day (commit messages, which the AI wrote; they describe the result, they
 are not the prompts):
@@ -133,7 +138,7 @@ every point calmly, precisely and completely.") Claude then wrote, on this branc
 - the "AI use" header in every source file, `tools/ai_provenance.py` and this file
 - drafts of `docs/CONTRIBUTIONS.md`, `docs/VIDEO_SCRIPT.md` and `docs/SUBMISSION.md`
 
-All 41 tests pass on the branch. **[team]** Review the pull request before merging; say here what you changed.
+All 41 tests pass on the branch. Pull requests #21 and #22 were merged by Matteo on 2026-11-10.
 
 ### 3.4 The session of 2026-11-23 (branch `course-alignment`)
 
@@ -154,7 +159,7 @@ Claude then wrote, on this branch:
 - `docs/PREDICTION_PROTOCOL.md`, `tests/test_model.py`, and updates to the README, `QA_PREP.md` and the `CLAUDE.md`
   files
 
-**[team]** Review the pull request before merging; say here what you changed.
+Pull request #23 was merged by Simon on 2026-11-23; the commits are on his account (simonbse / Simon Seidl), so the session was run by him.
 
 Then Simon asked about the grading criterion "API or database" and, after the explanation, for the database.
 Claude wrote, on the branch `sql-database` (on top of `course-alignment`): `src/database.py` (SQLite file with the
@@ -225,6 +230,10 @@ Only docstrings and comments changed, no code. How this was checked: every file 
 **[team]** The lecturer also asked that some simple parts are written by hand and listed here. List them: which
 functions did the team write without the AI, and who?
 
+| File | Function | Written by | Why by hand |
+|---|---|---|---|
+| | | | |
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:
@@ -240,11 +249,11 @@ Facts from the repository:
 - **Checking a suggestion against the model.** SHAP was the first approach for per-trial explanations. It was tested
   and rejected because its values missed the model's own log-odds by up to 2.2 (docstring of `src/predict.py`).
 
-**[team]** Add who reviewed which pull requests and how (reading the diff, running the app, running the tests).
+Who merged which pull request (from the git history): Matteo merged #4 to #12, #14, #16, #17, #21, #22 and #25 to #32; Adam merged #2, #3, #15, #18, #19 and #20; Simon merged #23. The checks available before a merge were the offline tests (`pytest tests`) and the page tests that open every page of the app. Since 2026-11-26 the docstring format check and the comparison of the syntax trees before and after a rewrite were added.
 
 ## 5. Reflection: what worked, what did not, what we changed
 
-Draft from the repository history. **[team]** Confirm, correct and add your own experience.
+Written from the repository history.
 
 **What worked**
 
@@ -260,18 +269,26 @@ Draft from the repository history. **[team]** Confirm, correct and add your own 
 - **Wrong facts copied forward.** The deadline in `CLAUDE.md` said Dec 16; the course slides say the upload is due
   Dec 10. The AI repeated what it was told; nobody checked it against the slides until the review on 2026-11-10.
 - **Plausible but wrong methods.** SHAP looked like the standard answer for explanations but did not match the model.
-- **Many redesign rounds.** The look changed four times in two days (pull requests #11, #12, #16, #17). **[team]** Was
-  that useful exploration or churn?
+- **Many redesign rounds.** The look changed four times in two days (pull requests #11, #12, #16, #17). In hindsight only the last rounds paid off: they gave the single palette and Plotly
+  template in `app/ui.py` that every page uses now. The earlier rounds were mostly churn: a change of look is not
+  covered by tests, so every round had to be checked by eye.
 - **Gaps the tests did not cover.** A record with a null phase list crashed the search card code; found only when the
   offline fallback was written.
-- **Understanding lags behind the code.** **[team]** Be honest here: which parts can each of you explain without the AI?
+- **Understanding lags behind the code.** The large files were written almost entirely by the AI (for example
+  `app/pages/4_How_the_Model_Works.py` with 1,342 lines and `src/train.py` with 691). Each area has an owner who
+  answers for its idea and its decisions (the matrix and `docs/QA_PREP.md` say whose area is which), but the owners
+  did not write these files line by line. To close the gap we wrote the Q&A preparation, the Input and Output of
+  every function and the AI note under every function, and we will rewrite some simple functions by hand
+  (section 3.7).
 
 **How we adapted**
 
 - After the first sessions: the `CLAUDE.md` guides, so every new session starts from the same rules.
 - Every change to `app/` or `src/` must update the folder's `CLAUDE.md` in the same commit.
 - Fixed decision rules before experiments (model v2).
-- **[team]** anything else (for example: smaller tasks per prompt, reviewing every diff, asking for explanations).
+- Machine checks instead of trust: for the rewrites of 2026-11-23 and 2026-11-26 the old and the new code were compared
+  by script (identical syntax trees) and the tests were run, instead of relying on the AI's own summary.
+- Big jobs were split into helpers that each owned different files, and the result was checked with the same script.
 
 **How we will use AI in future projects** **[team]** Draft from what went wrong and right here; confirm it.
 
