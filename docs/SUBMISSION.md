@@ -26,11 +26,24 @@ Authorship") and the grading scheme. One person uploads; everyone checks this li
 
    `git archive` packs exactly the committed files: code, `data/processed/trials.parquet`, `data/examples/`, `models/`,
    fonts, README and docs (about 20 MB), without `.venv` or caches.
-3. **The declaration of authorship**, one for the whole group, filled in and signed: the HSG form linked in the course
-   slides and in the grading sheet (II.A.07 "Declaration of Authorship", on the HSG student SharePoint). Download it
-   from there; the version on the SharePoint is the valid one. Only the team can fill in and sign it. If the form
-   asks for the aids used (Hilfsmittelverzeichnis), copy them from `docs/AI_USE.md`, section 6: AI tools and models,
-   data, software, fonts, literature and course material. Say "none" for other AI tools only if that is true.
+3. **The declaration of authorship (Eigenständigkeitserklärung, HSG form II.A.07)**, attached to the work **word for
+   word as the HSG issued it**: `docs/II.A.07_Eigenständigkeitserklärung.pdf` (a byte-for-byte copy of the official
+   file; do not retype, shorten or change it). The text itself says it must be attached to the work and that submitting
+   the work means each of us agrees to it, has read and understood it and confirms that it is true. It has no fields
+   and no signature line, so there is nothing to fill in. Upload the PDF unchanged next to the video and the zip, and
+   keep it in the zip as well. If the HSG publishes a newer version, use that one.
+
+   The declaration refers to a **list of the aids used** (Verzeichnis): that is `docs/AI_USE.md`, section 6. Everyone
+   must have read the declaration before the upload, because the upload is their agreement. Check these statements
+   against what really happened:
+
+   - only public data, or data released with consent, were given to the AI (our trial data are public records of
+     ClinicalTrials.gov; check that nobody typed private documents or other people's personal data into Claude)
+   - every part made with an aid is declared (AI note in every file and function, `docs/AI_USE.md`)
+   - every source is cited, and we own or made every image, graphic and font (fonts: SIL Open Font License)
+   - the work was not, in whole or in part, already handed in for another course unless agreed in advance with the
+     lecturer and stated in the work (the project uses material of the Data Science Fundamentals course; if it is also
+     a deliverable there, this must be agreed and stated)
 
 ## Test the zip before uploading
 

@@ -10,4 +10,5 @@ them in step with `models/gbm_metrics.json` and the README; if the model is retr
 | `VIDEO_SCRIPT.md` | Timed script for the 4-minute video (who speaks, what is on screen, what is said), the slides to prepare and a checklist before upload | Claude (draft), Raphael | video |
 | `PREDICTION_PROTOCOL.md` | The ten questions of the DSF prediction protocol (deck P1) answered for Trial-Radar with the place in the code, the horse race table and verdict, "prediction, not cause", and the methods that are in neither course with who explains them (**[team]**) | Claude (draft), team | video, Q&A |
 | `QA_PREP.md` | Likely Q&A questions with short answers and the numbers behind them, grouped by who leads the answer | Claude (draft), team | Q&A on Dec 11 |
+| `II.A.07_Eigenständigkeitserklärung.pdf` | The official HSG declaration of authorship, a byte-for-byte copy of the file the HSG issued. **Never edit it.** It is attached to the work and uploaded unchanged | HSG | the zip, the Canvas upload |
 | `SUBMISSION.md` | Dates, what to upload to Canvas and how to build the zip, how to test it, and the content checklist | Claude (draft), team | whoever uploads |
