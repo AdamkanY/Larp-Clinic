@@ -25,9 +25,10 @@ from sklearn.metrics import roc_auc_score  # ROC-AUC inside each phase
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-# Project code: feature lists, plain names, scoring, the gain curve and the shared look of the app.
+# Project code: feature lists, plain names, scoring, the open-trials check, the gain curve and the shared look.
 from src.features import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURE_COLUMNS
 from src.labels import PHASE_ORDER, feature_name, label
+from src.open_trials import load_counts, tilt_table
 from src.predict import load_model, score_frame
 from src.viz import gain_curve
 from ui import PALETTE, alpha, chart, chip, page_header, require_router
@@ -1112,11 +1113,81 @@ def tab_trust(metrics, scores):
         "reason is in the data, not the model: only trials that have already ended are included. A stopped trial "
         "ends early by definition, so it is already in the data; a long trial that will complete is often still "
         "running and missing. The later the start year, the more completions are still missing, which matches the "
-        "gap growing from 2017 to 2019. So part of the gap is a tilt in the test data. "
-        "We have not yet counted the 2017-2019 trials that are still running, "
-        "so it is a well-supported explanation, not a proof. Either way: read a percentage as a lower estimate and "
-        "use it mainly to compare trials."
+        "gap growing from 2017 to 2019. So part of the gap is a tilt in the test data; the check below measures how "
+        "large that part is. Either way: read a percentage as a lower estimate and use it mainly to compare trials."
     )
+    if scores is not None:
+        tab_tilt(scores)
+
+
+def tilt_chart(table):
+    """Draw, per test start year, the prediction, the real share stopped today and the lowest possible final share.
+
+    The lowest possible final share assumes that every trial that is still running completes.
+
+    Input: table is the result of open_trials.tilt_table().
+
+    Output: a Plotly figure with three bars per start year.
+    """
+    years = table["start_year"].astype(str)
+    fig = go.Figure([
+        go.Bar(x=years, y=table["predicted"], name="Model predicted",
+               marker={"color": PALETTE["pale"], "line": {"color": PALETTE["neutral"], "width": 2}},
+               hovertemplate="%{x}: model predicted %{y:.1%}<extra></extra>"),
+        go.Bar(x=years, y=table["rate_if_running_complete"], name="Really stopped, if every running trial completes",
+               marker_color=PALETTE["neutral"],
+               hovertemplate="%{x}: at least %{y:.1%} stopped in the end<extra></extra>"),
+        go.Bar(x=years, y=table["observed_rate"], name="Really stopped, among trials that have ended (today)",
+               marker_color=PALETTE["bar"], hovertemplate="%{x}: %{y:.1%} of ended trials stopped<extra></extra>"),
+    ])
+    fig.update_layout(barmode="group", height=400, margin={"l": 10, "r": 10, "t": 30, "b": 60},
+                      legend={"orientation": "h", "y": -0.2, "x": 0}, xaxis_type="category")
+    fig.update_yaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero")
+    return fig
+
+
+def tab_tilt(scores):
+    """Show the check behind the test-year tilt in the tab "Can you trust it?".
+
+    It shows how many trials of each start year are still running (counted on ClinicalTrials.gov) and how much of
+    the gap between prediction and reality they can explain.
+
+    Input: scores is the table of test trials with their start year ("year") and risk ("risk").
+
+    Output: nothing; it writes the explanation, the chart and the caption on the page.
+    """
+    try:
+        counts = load_counts()
+    except (OSError, ValueError):
+        st.info("The counts of running trials (data/processed/open_trials_by_year.csv) are not available here.")
+        return
+    # Share still running per start year, over all years: shows that the training years are almost complete.
+    ended = counts[["completed", "terminated"]].sum(axis=1)
+    running = counts[["recruiting", "not_yet_recruiting", "active_not_recruiting", "enrolling_by_invitation",
+                      "suspended"]].sum(axis=1)
+    share = dict(zip(counts["start_year"], running / (ended + running)))
+    table = tilt_table(counts, scores.groupby("year")["risk"].mean())
+    last = table.iloc[-1]
+    st.markdown("##### Is it the trials that are still running? We counted them.")
+    st.write(
+        "Our explanation for the gap is that only trials that have ended are in the data, and that recent years still "
+        "miss many long trials that will complete. So we asked ClinicalTrials.gov how many trials of each start year "
+        f"are still running today. For the training years almost all trials have ended (still running: "
+        f"{share[2008]:.1%} of the 2008 trials, {share[2016]:.1%} of 2016). For the test years the share climbs: "
+        f"{share[2017]:.1%} (2017), {share[2018]:.1%} (2018), {share[2019]:.1%} (2019). The explanation holds."
+    )
+    chart(tilt_chart(table), key="tilt_chart")
+    st.write(
+        "But it explains only part of the gap. Even in the case most favourable to the model, where every trial that "
+        f"is still running completes, more {int(last['start_year'])} trials end up stopped than the model predicts: at "
+        f"least {last['rate_if_running_complete']:.1%} against {last['predicted']:.1%} (+{last['gap_if_running_complete']:.0%} "
+        f"instead of +{last['gap_observed']:.0%}). The rest is a real change the model did not see coming, or it "
+        f"hides in a group nobody can place: {last['unknown_share']:.0%} of the {int(last['start_year'])} trials "
+        "have an \"unknown\" status because the sponsor stopped updating the record."
+    )
+    st.caption("Counts from the ClinicalTrials.gov API on 2026-11-23 (src/open_trials.py). Still running = recruiting, "
+               "not yet recruiting, active, enrolling by invitation or suspended. Withdrawn trials never started and "
+               "are left out, as in training.")
 
 
 def tab_versions(metrics):

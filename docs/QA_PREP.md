@@ -86,10 +86,13 @@ Kavalci & Hartshorn also turn the eligibility text into thousands of yes/no feat
 
 **12. Why does the model predict too low on the test trials?**
 On the 2017-2019 trials it predicts 9.8% on average and 11.7% were stopped. The gap grows with the start year (real
-rate 9% above the prediction in 2017, 16% in 2018, 31% in 2019). Most likely a tilt in the data: only finished trials
-are included, a stopped trial ends early by definition, and many long trials from 2019 that will complete are still
-running, so they are missing. We say so on the model page and in the README; we have not yet counted the running
-trials to prove it.
+rate 9% above the prediction in 2017, 16% in 2018, 31% in 2019). Partly a tilt in the data: only finished trials
+are included, a stopped trial ends early by definition, and many long trials that will complete are still running,
+so they are missing. We checked it: we asked ClinicalTrials.gov how many trials of each start year are still running.
+For the training years it is under 4%, for 2017 5.6%, 2018 7.3%, 2019 10.3%. Even if all of them complete, 2019 still
+ends up at least 11.1% stopped against 9.4% predicted (+18% instead of +31%). So the tilt explains about half the gap;
+the rest is a real change or hidden among the 23% of 2019 trials whose status is "unknown". It is on the model page
+("Can you trust it?", "We counted them").
 
 **13. You tested a version 2. Why is it not in the app?**
 Version 2 adds condition areas (cancer, heart, ...). Before training we fixed a rule: switch only if test ROC-AUC rises
@@ -130,7 +133,7 @@ a review-budget slider, a cost slider with the confusion matrix, the model race,
 (guess which of two trials was stopped, against the model).
 
 **20. How do you know the app works?**
-47 offline tests (`pytest tests`): the feature function, the predictions, the model protocol, the database, the chart helpers and every page clicked
+48 offline tests (`pytest tests`): the feature function, the predictions, the model protocol, the database, the tilt check, the chart helpers and every page clicked
 through in Streamlit's test runner with the API mocked.
 
 ## Game questions (Raphael leads)
@@ -153,7 +156,10 @@ Answer from `docs/AI_USE.md`: which tool, for what, how we checked its output (t
 ## Course questions (everyone)
 
 These connect the project to what we learned: the CS course (Ecoreps summary chapters) and Data Science Fundamentals
-(DSF). The full list of DSF's ten "prediction protocol" questions, answered for our project, is in
+(DSF). DSF = *Data Science Fundamentals*, an additional HSG course outside Computer Science. Simon attended most of its lectures and brought its methods into the project where they solve a concrete problem of ours; the rest of the team learned them from him and from this file. If asked why we use material from another course: the CS course gives the basics (KNN,
+confusion matrix, cross-validation); a real prediction model needs more, and each DSF method we use answers a problem
+of our data (time-ordered split: the app scores newer trials; PR-AUC: stopped trials are rare; cost line: a missed
+stop costs more than a false alarm; model race: a justified choice of model). The full list of DSF's ten "prediction protocol" questions, answered for our project, is in
 `docs/PREDICTION_PROTOCOL.md`.
 
 **24. How did you choose between models?**

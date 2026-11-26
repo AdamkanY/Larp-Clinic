@@ -138,8 +138,8 @@ so we report ranking and precision-recall metrics, not accuracy.
 - Every imputer, scaler and encoder sits inside a scikit-learn `Pipeline`, so it is fitted on the training folds only.
 
 **How the model was chosen.** Six models ran a fair race on the same time-ordered folds with the same metric
-(PR-AUC), each with its standard settings and a small tuned grid (the "horse race" of the Data Science Fundamentals
-course): always the average rate, logistic regression, a decision tree, a random forest, k-nearest neighbours and
+(PR-AUC), each with its standard settings and a small tuned grid (the "horse race" of Data Science Fundamentals, an
+additional HSG course whose lectures Simon attended and whose methods we use where they solve a problem of ours): always the average rate, logistic regression, a decision tree, a random forest, k-nearest neighbours and
 gradient boosting. Gradient boosting scored best (validation PR-AUC 0.211), but the random forest is practically tied (0.210, within the spread across the folds); logistic regression (0.192), KNN (0.190) and a single tree (0.187) are behind, and all beat the baseline (0.109). We keep boosting, which also carries the calibration and the per-trial explanations. The race is on the model page ("Which model won?"). The ten questions of the course's prediction protocol are answered one by
 one in [`docs/PREDICTION_PROTOCOL.md`](docs/PREDICTION_PROTOCOL.md).
 
@@ -212,8 +212,11 @@ output was checked and what worked and what did not, is in [`docs/AI_USE.md`](do
   ends early by definition, while a long trial that will complete may still be running, so the later the start
   year, the more completions are missing. The share stopped early fell from 13.0% (start 2008) to 10.3% (2016)
   and then rose to 12.4% (2019), and the model's under-prediction grows the same way: real rate 9% above the
-  average prediction for 2017, 16% for 2018, 31% for 2019. We read this as a tilt in the test data more than a
-  model error, but we have not yet counted the 2017-2019 trials that are still running.
+  average prediction for 2017, 16% for 2018, 31% for 2019. We counted the trials that are still running on
+  ClinicalTrials.gov (`src/open_trials.py`): under 4% of every training year, but 5.6% of the 2017 trials, 7.3% of
+  2018 and 10.3% of 2019, so the tilt is real. It explains part of the gap, not all of it: even if every running
+  trial completes, the 2019 trials end up at least 18% above the prediction instead of 31%. The rest is a real change
+  or hides among trials with an "unknown" status (23% of the 2019 trials).
 - **Ongoing trials are new to the model.** It was trained only on finished trials, so scores for running ones, as in
   the search, are less certain.
 

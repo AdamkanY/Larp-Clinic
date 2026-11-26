@@ -69,6 +69,7 @@ the repository" shows where to look at the result.
 | Q&A preparation | Contributor | Contributor | Contributor | **Lead** | Contributor | `docs/QA_PREP.md` |
 | Course alignment: CS and DSF course material compared with the project; time-ordered cross-validation, model race, cost-based yes/no line, "prediction, not cause" wording (2026-11-23, with Claude) | Contributor | **Lead** | Support | Contributor | – | `src/train.py`, `src/horse_race.py`, `app/pages/4_How_the_Model_Works.py`, `docs/PREDICTION_PROTOCOL.md` |
 | SQL database for the Explore page (2026-11-23, with Claude) | – | **Lead** | – | Contributor | – | `src/database.py`, `app/pages/3_Explore_Data.py` |
+| Check of the test-year tilt: running trials counted per start year (2026-11-23, with Claude) | – | **Lead** | Support | Contributor | – | `src/open_trials.py`, `data/processed/open_trials_by_year.csv`, model page "Can you trust it?" |
 
 ## What the git history shows
 
@@ -113,8 +114,8 @@ each person answers for their own area in the Q&A (`docs/QA_PREP.md`).
   the evaluation: the time-ordered cross-validation, the model race and the SQL database of the Explore page.
 - **What git shows** (accounts `simonbse` and `Simon Seidl`, 9 commits, all on 2026-11-23): the course alignment with
   time-ordered cross-validation, the cost-based yes/no line and the "Which model won?" tab (pull request #23), the
-  horse race results, the SQL database that feeds the Explore page, the check of the test-year tilt (pull request #24,
-  still open) and the explanation of where the Data Science Fundamentals ideas come from in the README, the
+  horse race results, the SQL database that feeds the Explore page, the check of the test-year tilt (pull request #24)
+  and the explanation of where the Data Science Fundamentals ideas come from in the README, the
   prediction protocol and the Q&A preparation.
 - **In the Q&A:** answers the data questions (3 to 5: source, leakage, the split by start year), the database
   question (28) and the course questions.
