@@ -14,7 +14,7 @@ that record. Every source file points here in its first lines ("AI use: ...").
 |---|---|---|---|
 | Claude Code (coding agent) | Anthropic | Claude Sonnet 5.5, Claude Opus 5.5 | Writing and changing code, tests and documentation in this repository, running the tests, committing |
 | Claude (chat on claude.ai) | Anthropic | Claude Opus 5.5 | Explaining concepts (Git, APIs, leakage, calibration) to the team, planning, reviewing the project against the grading scheme |
-| **[team]** any other tool (ChatGPT, Copilot, DeepL, ...) | | | |
+| No other AI tool | | | Apart from Claude, no AI tool was used in this project (ChatGPT, Copilot, DeepL and similar were not used) |
 
 ## 2. How much of the code comes from the AI
 
@@ -220,6 +220,8 @@ Only docstrings and comments changed, no code. How this was checked: every file 
 `main` after removing the docstrings (the syntax trees are identical), `tools/check_docstrings.py` and
 `tools/ai_provenance.py --check` pass, and all five test files pass.
 
+**Every function is marked as AI-written for now.** Directly under the docstring of each of the 307 functions stands the comment `# AI use: written with Claude Code (Anthropic), see docs/AI_USE.md` (added on 2026-11-26, comments only, no code changed). The team will go through some functions, rewrite them by hand and then remove the comment from those functions and list them here.
+
 **[team]** The lecturer also asked that some simple parts are written by hand and listed here. List them: which
 functions did the team write without the AI, and who?
 
@@ -299,7 +301,7 @@ Draft from the repository history. **[team]** Confirm, correct and add your own 
 
 - Claude Code (coding agent) and Claude (chat), Anthropic; models Claude Sonnet 5.5 and Claude Opus 5.5: code
   generation, tests, documentation, explanations, review (see sections 1 to 3)
-- **[team]** other AI tools, if any (ChatGPT, Copilot, DeepL, ...); say "none" if none were used
+- No other AI tools: apart from Claude, no AI tool was used (no ChatGPT, Copilot, DeepL or similar)
 
 **Data**
 

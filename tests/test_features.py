@@ -61,6 +61,7 @@ def test_values():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Build the features and check the columns, then single values.
     row = build_features(STUDY)
     assert set(row) == set(META_COLUMNS + DISPLAY_COLS + FEATURE_COLUMNS)
@@ -81,6 +82,7 @@ def test_leaky_fields_ignored():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Copy the record and change every field that must not be used.
     changed = copy.deepcopy(STUDY)
     p = changed["protocolSection"]
@@ -101,6 +103,7 @@ def test_missing_and_ongoing():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # An empty record: no label, no start date, counts of zero, no maximum age filled with 120.
     row = build_features({})
     assert row["label"] is None and row["start_date"] is None and row["n_arms"] == 0
@@ -123,6 +126,7 @@ def test_display_cols():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The display values come from the record; the column lists do not overlap.
     row = build_features(STUDY)
     assert row["brief_title"] == "A test trial"
@@ -140,6 +144,7 @@ def test_condition_features():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Two conditions from two categories set two flags.
     flags = condition_features(["Metastatic Breast Cancer", "Type 2 Diabetes Mellitus"])
     assert flags["cond_oncology"] == 1 and flags["cond_metabolic"] == 1
@@ -168,6 +173,7 @@ def test_condition_features_missing():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Absent, empty and junk inputs all give zeros.
     for value in (None, [], [None, 3]):
         assert set(condition_features(value).values()) == {0}
@@ -184,6 +190,7 @@ def test_condition_backfill_matches_build_features():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     import pandas as pd  # tables (DataFrame)
     from build_dataset import backfill_conditions  # the function under test
     # A record with two conditions, and the features build_features gives for it.
@@ -210,6 +217,7 @@ def design_of_study():
 
     Output: a dict of design values (phase, allocation, masking, ages, counts, intervention types, conditions, ...).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return {
         "phase": "PHASE2/PHASE3", "allocation": "RANDOMIZED", "intervention_model": "PARALLEL",
         "primary_purpose": "TREATMENT", "masking": "DOUBLE", "sponsor_class": "INDUSTRY", "sex": "ALL",
@@ -227,6 +235,7 @@ def test_features_from_design_matches_build_features():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Features from the form design and from the real record.
     typed = features_from_design(design_of_study())
     real = build_features(STUDY)
@@ -242,6 +251,7 @@ def test_features_from_design_rules():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Change the design: no maximum age, no masking, one condition, no monitoring committee.
     design = design_of_study()
     design.update({"max_age_years": None, "masking": None, "conditions": ["Breast cancer"], "has_dmc": False})

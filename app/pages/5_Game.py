@@ -49,6 +49,7 @@ def get_trials():
 
     Output: a DataFrame with one row per test trial, or None if the data file is missing.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A missing data file means no game; the page then shows a message.
     try:
         return game.load_test_trials()
@@ -66,6 +67,7 @@ def model_accuracy():
 
     Output: the share of pairs the model got right (number between 0 and 1).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Draw the pairs with a fixed seed, then let the model pick in each.
     trials = get_trials()
     pairs = game.sample_pairs(trials, game.ACCURACY_PAIRS, seed=0)
@@ -83,6 +85,7 @@ def flag(value):
 
     Output: True if the value is 1, otherwise False.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return bool(pd.notna(value) and value == 1)
 
 
@@ -93,6 +96,7 @@ def age_range(row):
 
     Output: the age range as text, or "Not stated".
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     low = row["min_age_years"]
     high = row["max_age_years"]
     has_low = pd.notna(low)
@@ -119,6 +123,7 @@ def card_html(row, name, outcome=None):
 
     Output: the card content as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Missing values become "Not stated". label() does that itself when it gets None.
     conditions = "Not stated"
     if pd.notna(row["conditions"]) and row["conditions"]:
@@ -179,6 +184,7 @@ def start_game():
 
     Output: nothing. It writes the new game into st.session_state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state.game_rounds = game.new_game(get_trials(), ROUNDS)
     st.session_state.game_round = 0
     # The user's pick of every finished round: "terminated" (right) or "completed" (wrong).
@@ -193,6 +199,7 @@ def pick(outcome):
 
     Output: nothing. It stores the pick in st.session_state and switches to the answer view.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state.game_picks.append(outcome)
     st.session_state.game_revealed = True
 
@@ -204,6 +211,7 @@ def next_round():
 
     Output: nothing. It raises the round counter in st.session_state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state.game_round += 1
     st.session_state.game_revealed = False
 

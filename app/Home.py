@@ -73,6 +73,7 @@ def headline_numbers():
     Output: a dict with the keys "rate" (share of trials stopped early, 0 to 1), "total" (number of past trials) and
     "roc_auc" (test ROC-AUC), or None if the file is missing or incomplete.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # ---- 3. Read the metrics file ----
     try:
         metrics = json.loads(METRICS.read_text())
@@ -92,6 +93,7 @@ def home():
 
     Output: nothing. It draws the bands on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # ---- 4a. Styles and numbers ----
     inject_css()
     numbers = headline_numbers()

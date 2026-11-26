@@ -32,6 +32,7 @@ def test_labels():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Known codes, spelling variants, missing values and an unknown code.
     assert label("masking", "DOUBLE") == "Double blind"
     assert label("phase", "PHASE1/PHASE2") == "Phase 1/2" and label("phase", "Phase 1/Phase 2") == "Phase 1/2"
@@ -48,6 +49,7 @@ def make_trials(path):
 
     Output: nothing; it writes 120 invented trials to the file.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One dict per invented trial; the values follow the index so the counts in the tests are known.
     rows = []
     for i in range(120):
@@ -71,6 +73,7 @@ def test_viz():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Write the invented table and load it the way the app does.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "trials.parquet"
@@ -120,6 +123,7 @@ def test_viz_heatmap():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Write and load the invented table.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "trials.parquet"
@@ -149,6 +153,7 @@ def test_viz_more_views():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Write and load the invented table.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "trials.parquet"
@@ -188,6 +193,7 @@ def test_gain_curve():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A small example where the right order is known.
     curve = viz.gain_curve([1, 0, 1, 0, 0], [0.9, 0.8, 0.7, 0.1, 0.2], points=6)
     assert list(curve["reviewed"]) == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -208,6 +214,7 @@ def test_database():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Build a database from the invented table in a temporary folder.
     with tempfile.TemporaryDirectory() as tmp:
         parquet, db_path = Path(tmp) / "trials.parquet", Path(tmp) / "trials.db"
@@ -253,6 +260,7 @@ def test_tilt_table():
 
     Output: nothing; the test fails with an AssertionError if a number is wrong.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     counts = pd.DataFrame([{"start_year": 2019, "completed": 80, "terminated": 20, "withdrawn": 5, "recruiting": 10,
                             "not_yet_recruiting": 0, "active_not_recruiting": 10, "enrolling_by_invitation": 0,
                             "suspended": 5, "unknown": 25}])
@@ -276,6 +284,7 @@ class Response:
 
         Output: nothing; it sets self.payload.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         self.payload = payload
 
     def raise_for_status(self):
@@ -285,6 +294,7 @@ class Response:
 
         Output: nothing, because the invented request never fails.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
 
     def json(self):
         """Return the invented payload.
@@ -293,6 +303,7 @@ class Response:
 
         Output: the payload (dict) given when the object was created.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         return self.payload
 
 
@@ -303,6 +314,7 @@ def test_api_client():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Record what is sent; the first call fails, the second succeeds.
     sent = []
     outcomes = [requests.ConnectionError("offline"), Response({"studies": [{"protocolSection": {}}], "totalCount": 1})]
@@ -315,6 +327,7 @@ def test_api_client():
 
         Output: the next planned Response; raises the planned exception instead when the outcome is an error.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         sent.append(params)
         outcome = outcomes.pop(0)
         if isinstance(outcome, Exception):
@@ -357,6 +370,7 @@ def example_study(nct_id, title, conditions, phases, sponsor_class):
 
     Output: a study record (dict in the API v2 layout).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return {"protocolSection": {
         "identificationModule": {"nctId": nct_id, "briefTitle": title},
         "statusModule": {"overallStatus": "RECRUITING"},
@@ -373,6 +387,7 @@ def test_offline_examples():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Three invented trials for the snapshot.
     studies = [example_study("NCT1", "Drug A in adults", ["Asthma"], ["PHASE2"], "INDUSTRY"),
                example_study("NCT2", "Walking study", ["Depression"], None, "OTHER"),
@@ -403,6 +418,7 @@ def test_risk_colours():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Skip when the saved reference scores are missing.
     reference = ROOT / "models" / "score_reference.npy"
     if not reference.exists():
@@ -429,6 +445,7 @@ def make_game_trials():
 
     Output: a table (DataFrame) with one row per invented trial.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One row per trial: terminated trials get n_arms 3.0, completed ones 2.0.
     rows = []
     for phase, n_term, n_comp in (("Phase 2", 10, 30), ("Phase 3", 5, 5), ("Early", 4, 0)):
@@ -453,6 +470,7 @@ class StubModel:
 
     Output: an array with two columns, P(0) and P(1), one row per trial.
     """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # The score is n_arms scaled to the range 0 to 1.
         risk = frame["n_arms"].to_numpy() / 10
         return np.column_stack([1 - risk, risk])
@@ -465,6 +483,7 @@ def test_game_pairs():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Draw 12 pairs from the invented table and check them.
     trials = make_game_trials()
     pairs = game.sample_pairs(trials, 12, seed=1)
@@ -487,6 +506,7 @@ def test_game_scoring():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The model picks the trial with the higher score; a tie is decided at random.
     trials = make_game_trials()
     assert game.model_pick(0.3, 0.1) == "terminated" and game.model_pick(0.1, 0.3) == "completed"
@@ -509,6 +529,7 @@ def test_game_score_matches_predict():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Skip when the saved model or the data file is missing.
     if not (ROOT / "models" / "gbm.joblib").exists() or not (ROOT / "data" / "processed" / "trials.parquet").exists():
         print("skipped: models/gbm.joblib or data/processed/trials.parquet is missing")
@@ -529,6 +550,7 @@ def test_one_palette():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     import re  # regular expressions to find colour codes in the source files
     import tomllib  # reads the Streamlit config file
 
@@ -567,6 +589,7 @@ def test_ai_headers():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Load the checker from tools/ and expect no file with a missing header.
     sys.path.insert(0, str(ROOT / "tools"))
     import ai_provenance  # the script that lists files without the AI-use header

@@ -62,6 +62,7 @@ def label(kind, code):
 
     Output: the plain-English name as a string ("Not stated" if the value is missing).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Missing values come first, so they never reach the lookup.
     if code is None or code != code or code == "":  # None, NaN and the empty string
         return NOT_STATED
@@ -121,6 +122,7 @@ def feature_name(column):
 
     Output: the plain-English name as a string; for an unknown column the name with spaces and a capital letter.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Columns that are not in the table still get a readable name.
     return FEATURE_NAMES.get(column) or column.replace("_", " ").capitalize()
 
@@ -135,6 +137,7 @@ def feature_value(column, value):
 
     Output: the value in plain words as a string.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Categories have their own name tables.
     if column in NAMES:
         return label(column, value)

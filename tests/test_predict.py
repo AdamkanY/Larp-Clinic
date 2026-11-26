@@ -39,6 +39,7 @@ def typical():
 
     Output: a dict with a value for every model feature (categories None, numbers 0.0, a few typical values set).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Start with None for category features and 0.0 for the others.
     ref = {}
     for column in FEATURE_COLUMNS:
@@ -59,6 +60,7 @@ def typical_with(changes):
 
     Output: a dict like typical() with the changes applied.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Copy the typical trial and overwrite the given values.
     trial = typical()
     trial.update(changes)
@@ -72,6 +74,7 @@ def toy_model():
 
     Output: the fitted model pipeline; it is fitted on the first call only and reused afterwards.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Fit only once; fitting takes a few seconds.
     if "model" not in FITTED:
         # 4000 invented trials, all typical except the three columns changed below.
@@ -98,6 +101,7 @@ def test_explain_finds_known_drivers():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A trial with both known drivers set, explained against the typical trial.
     trial = typical_with({"has_dmc": 1.0, "masking": "DOUBLE"})
     drivers = explain(trial, model=toy_model(), reference=typical())
@@ -120,6 +124,7 @@ def test_explain_typical_trial_has_no_drivers():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The typical trial against itself: nothing pushes the risk.
     model = toy_model()
     assert explain(typical(), model=model, reference=typical()) == []
@@ -137,6 +142,7 @@ def test_explain_moves_linked_age_columns_together():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A trial without a maximum age (120 and the flag set to 0), with many drivers allowed.
     trial = typical_with({"has_dmc": 1.0, "max_age_years": MAX_AGE_FILL, "has_max_age": 0.0})
     drivers = explain(trial, top_n=40, model=toy_model(), reference=typical())
@@ -153,6 +159,7 @@ def test_model_inputs():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Only the requested columns come out, with numbers as floats.
     frame = to_model_frame([build_features(STUDY)], ["phase", "n_arms"])
     assert list(frame.columns) == ["phase", "n_arms"] and frame["n_arms"].dtype == "float64"
@@ -175,6 +182,7 @@ def test_every_feature_has_a_plain_name():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     assert set(FEATURE_COLUMNS) <= set(FEATURE_NAMES)
     assert all("_" not in feature_name(c) for c in FEATURE_COLUMNS)
     assert NO_MAX_AGE == MAX_AGE_FILL
@@ -187,6 +195,7 @@ def test_explain_saved_model():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Skip when the saved model files are not in the repository.
     if not ((ROOT / "models" / "gbm_uncalibrated.joblib").exists()
             and (ROOT / "models" / "explain_reference.json").exists()):
@@ -206,6 +215,7 @@ def test_score_frame_matches_score_and_ignores_extra_columns():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Three invented trials that differ in has_dmc and masking.
     rows = pd.DataFrame([typical()] * 3)
     rows["has_dmc"] = [0.0, 1.0, 0.0]

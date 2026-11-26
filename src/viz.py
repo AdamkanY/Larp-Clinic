@@ -58,6 +58,7 @@ def plain_names(codes, kind):
 
     Output: a list of plain-English names, one per code, in the same order.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     names = []
     for code in codes:
         names.append(labels.label(kind, code))
@@ -74,6 +75,7 @@ def load_trials(path=DATA_PATH):
 
     Output: a DataFrame with one row per trial, the plain-name columns and the three added columns.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     df = pd.read_parquet(path)
 
     # Codes -> plain names.
@@ -101,6 +103,7 @@ def filter_trials(df, phases=None, sponsor_classes=None, year_range=None, condit
 
     Output: a DataFrame with only the matching rows.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # We start with "keep every row" and every filter that is set removes rows.
     mask = pd.Series(True, index=df.index)
     if phases:
@@ -127,6 +130,7 @@ def rate_by(df, column, order=None):
 
     Output: a DataFrame with the columns column, n (trials), terminated (stopped trials) and rate (share stopped).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One row per value of the column, with the count, the sum of labels and their mean.
     out = df.groupby(column, observed=True)["label"].agg(n="size", terminated="sum", rate="mean").reset_index()
     if order:
@@ -148,6 +152,7 @@ def extremes(stats, column):
 
     Output: the sentence as text, or "" if fewer than two groups are big enough to compare.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # "Not stated" is a gap in the data and not a kind of trial, so it can never be the highest or the lowest.
     big = stats[(stats["n"] >= MIN_GROUP_N) & (stats[column] != NOT_STATED)]
     if len(big) < 2:
@@ -164,6 +169,7 @@ def top_conditions(df, k=15):
 
     Output: a DataFrame with the columns condition, n, terminated and rate, for the k most common conditions.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A trial can have several conditions in one cell ("Asthma; COPD"). We split the cell into a list and
     # explode() then makes one row per condition.
     exploded = df[["conditions", "label"]].copy()
@@ -184,6 +190,7 @@ def finish_rate_chart(fig):
 
     Output: the same figure, changed in place and returned.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The bottom margin (b) leaves room for the axis title under slanted labels.
     fig.update_layout(margin=dict(l=10, r=10, t=30, b=40), showlegend=False, bargap=0.35)
     fig.update_yaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero")
@@ -200,6 +207,7 @@ def add_average_line(fig, average):
 
     Output: nothing. The line is added to fig.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if average is not None:
         fig.add_hline(y=average, line_dash="dash")
 
@@ -212,6 +220,7 @@ def rate_bar(stats, column, x_title, average=None):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A very small group gets a pale bar without a number on it. Otherwise "1 of 2 trials" would look like a
     # finding of 50%.
     bar_texts = []
@@ -252,6 +261,7 @@ def rate_over_time(df, average=None):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One point per start year, in time order.
     stats = rate_by(df, "start_year").sort_values("start_year")
     fig = px.line(stats, x="start_year", y="rate", markers=True, custom_data=["n", "terminated"])
@@ -273,6 +283,7 @@ def conditions_bar(df, k=15, name_width=34, stats=None):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if stats is None:
         stats = top_conditions(df, k)
     # Plotly draws the first row at the bottom, so the highest share must come last.
@@ -321,6 +332,7 @@ def values_in_order(sizes, order):
 
     Output: a list of the values in the order they are shown.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     present = list(sizes.index)
     values = []
     if order:
@@ -345,6 +357,7 @@ def rate_matrix(df, rows, cols, row_order=None, col_order=None):
 
     Output: two DataFrames (rate, n) with the same rows and columns.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     stats = df.groupby([rows, cols], observed=True)["label"].agg(n="size", rate="mean").reset_index()
     # pivot() turns the long list of combinations into a grid.
     rate = stats.pivot(index=rows, columns=cols, values="rate")
@@ -368,6 +381,7 @@ def rate_heatmap(df, rows, cols, row_order=None, col_order=None, x_title="", y_t
 
     Output: a Plotly figure, or None if no cell has enough trials.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     rate, n = rate_matrix(df, rows, cols, row_order, col_order)
     shown = rate.where(n >= MIN_GROUP_N)
 
@@ -415,6 +429,7 @@ def condition_treemap(df, k=30, stats=None):
 
     Output: a Plotly figure, or None if no condition has enough trials.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The most common conditions, without the thin ones.
     if stats is None:
         stats = top_conditions(df, k)
@@ -445,6 +460,7 @@ def condition_bubbles(df, k=40, stats=None):
 
     Output: a Plotly figure, or None if no condition has enough trials.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The most common conditions, without the thin ones.
     if stats is None:
         stats = top_conditions(df, k)
@@ -481,6 +497,7 @@ def trials_per_year_area(df):
 
     Output: a Plotly figure, or None if fewer than two years or no phase has enough trials.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Number of trials for every year and phase.
     counts = df.groupby(["start_year", "phase_label"], observed=True).size().reset_index(name="n")
     # Thin phases would only add a hairline layer, so they go.
@@ -509,6 +526,7 @@ def flow_sankey(df):
 
     Output: a Plotly figure, or None if nothing is left.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Drop the thin phases and blinding groups.
     kept = df
     for column in ["phase_label", "masking"]:
@@ -559,6 +577,7 @@ def gain_curve(labels, risks, points=101):
     riskiest first), caught (share of all stopped trials that are among them) and precision (share of the
     reviewed trials that were stopped).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Sort the trials from the riskiest to the safest. kind="mergesort" keeps trials with the same score in
     # their old order, so the result does not depend on chance.
     frame = pd.DataFrame({"y": list(labels), "p": list(risks)}).sort_values("p", ascending=False, kind="mergesort")
@@ -597,6 +616,7 @@ def eligibility_stats(df):
 
     Output: the table from rate_by(), one row per length group.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return rate_by(df, "eligibility_group", ELIGIBILITY_LABELS)
 
 
@@ -608,6 +628,7 @@ def trials_table(df):
 
     Output: a DataFrame with the column "link" first, then title, phase, sponsor and status (no nct_id).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     out = df[["nct_id", "brief_title", "phase_label", "lead_sponsor_name", "overall_status"]].copy()
     out.insert(0, "link", STUDY_URL + out["nct_id"])
     return out.drop(columns="nct_id")

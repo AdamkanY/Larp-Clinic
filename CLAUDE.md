@@ -96,7 +96,9 @@ Update the status column when a milestone moves.
   Record new prompts and what the team changed in `docs/AI_USE.md`.
 - **Docstrings (lecturer's format):** every function, method and nested function has one: a one-line summary, an
   empty line, `Input:` (what comes in, "none." if nothing), an empty line, `Output:` (what comes back). Check with
-  the script described in `tools/CLAUDE.md`.
+  the script described in `tools/CLAUDE.md`. Under the docstring of every function stands the comment
+  `# AI use: written with Claude Code (Anthropic), see docs/AI_USE.md`; remove it only from a function the team
+  rewrote by hand, and list that function in `docs/AI_USE.md` section 3.7.
 - Comments: a short comment before every logical block (what it does and why), not only docstrings; every import says
   what the library is for.
 

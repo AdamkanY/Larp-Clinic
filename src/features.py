@@ -151,6 +151,7 @@ def get_field(record, *keys):
 
     Output: the value at the end of the path. None as soon as a key is missing or a level is not a dictionary.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Follow the path one key at a time and stop with None if the path breaks.
     value = record
     for key in keys:
@@ -167,6 +168,7 @@ def count_items(items):
 
     Output: the length of the list as an int, or 0 if it is not a list.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if isinstance(items, list):
         return len(items)
     return 0
@@ -179,6 +181,7 @@ def yes_no_flag(value):
 
     Output: 1 for true, 0 for false, None for anything else.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A real bool first, then the text form.
     if isinstance(value, bool):
         return int(value)
@@ -198,6 +201,7 @@ def phase_label(phases):
 
     Output: the readable names joined by "/" (a text), or None if there are no phases.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if not phases:
         return None
     # Sorted, so the same phases always give the same text.
@@ -214,6 +218,7 @@ def parse_age_years(text):
 
     Output: the age in years as a float. None for 'N/A', for other texts or for a missing value.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if not isinstance(text, str):
         return None
     match = AGE_PATTERN.match(text)
@@ -234,6 +239,7 @@ def parse_start_date(text):
 
     Output: a datetime.date, or None if the text is missing or not a valid date.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if not isinstance(text, str):
         return None
     match = DATE_PATTERN.match(text.strip())
@@ -261,6 +267,7 @@ def condition_features(conditions):
 
     Output: a dictionary with the columns "cond_<category>" (0 or 1) and "n_condition_categories" (the sum).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Keep only real texts.
     texts = []
     for condition in conditions or []:
@@ -295,6 +302,7 @@ def build_features(study_json):
 
     Output: a flat dictionary with one entry per column (meta, design features and display columns).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     proto = get_field(study_json, "protocolSection") or {}
 
     # Read every part of the record once. Each read names its exact path (the leakage rule above).
@@ -398,6 +406,7 @@ def empty_entries(n):
 
     Output: a list of n empty dictionaries.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return [{}] * int(n or 0)
 
 
@@ -408,6 +417,7 @@ def age_text(years):
 
     Output: the age text (for example "18 Years"), or None if years is None.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if years is None:
         return None
     return f"{float(years):g} Years"
@@ -429,6 +439,7 @@ def study_from_design(design):
 
     Output: a dictionary shaped like one study record of the API ({"protocolSection": {...}}).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # "PHASE1/PHASE2" -> ["PHASE1", "PHASE2"], the form the API uses.
     phases = None
     if design.get("phase"):
@@ -494,4 +505,5 @@ def features_from_design(design):
 
     Output: the flat feature dictionary from build_features().
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return build_features(study_from_design(design))

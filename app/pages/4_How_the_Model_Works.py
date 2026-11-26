@@ -63,6 +63,7 @@ def load_metrics(name="gbm"):
 
     Output: the metrics as a dictionary, or None if the file is missing or cannot be read.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A missing or broken file is not an error: the page then shows a message instead.
     try:
         text = (MODELS / f"{name}_metrics.json").read_text()
@@ -79,6 +80,7 @@ def load_horse_race():
 
     Output: the race as a dictionary, or None if the file is missing or cannot be read.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Same pattern as load_metrics: None means "not available".
     try:
         text = (MODELS / "horse_race.json").read_text()
@@ -97,6 +99,7 @@ def load_directions(features):
 
     Output: a dictionary {feature name: direction text}, or None if the data file is missing.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Read only the training trials and only the columns we need.
     try:
         data = pd.read_parquet(TRIALS_FILE, columns=list(features) + ["split", "label"],
@@ -140,6 +143,7 @@ def load_importance():
     Output: a DataFrame with one row per factor (columns of the csv plus "Factor" and "Direction"), or None if the
     file is missing.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Read the saved importance table.
     try:
         table = pd.read_csv(MODELS / "feature_importance.csv")
@@ -175,6 +179,7 @@ def load_test_scores():
     Output: a DataFrame with one row per test trial (label, risk, raw = the score before calibration, year, phase),
     or None if the data or the model is missing.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The calibrated risk of every test trial.
     try:
         test = pd.read_parquet(TRIALS_FILE, columns=FEATURE_COLUMNS + ["split", "label", "start_date", "phase_label"],
@@ -221,6 +226,7 @@ def phase_table(scores):
 
     Output: a DataFrame with one row per phase, in clinical order (Early phase 1 ... Phase 4).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One row per phase that is big enough.
     rows = []
     for phase, group in scores.groupby("phase"):
@@ -256,6 +262,7 @@ def year_table(scores):
     Output: a DataFrame with the columns year, trials, real, predicted and too_low. too_low says how much higher the
     real share is than the prediction (0.25 = 25% higher).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Count, real rate and mean prediction for each start year.
     table = scores.groupby("year").agg(
         trials=("label", "size"), real=("label", "mean"), predicted=("risk", "mean")
@@ -271,6 +278,7 @@ def calibration_curve(predicted, observed):
 
     Output: a DataFrame with one row per group and the columns mean_predicted and observed_rate.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     frame = pd.DataFrame({"p": predicted, "y": observed}).dropna()
     # Many trials have exactly the same calibrated score. Ranking first gives every trial its own place, so the
     # ten groups really get the same number of trials.
@@ -287,6 +295,7 @@ def confusion_counts(labels, risks, threshold):
 
     Output: a dictionary with the counts tp, fp, fn and tn.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A trial is flagged if its risk reaches the line.
     flagged = risks >= threshold
     stopped = labels == 1
@@ -305,6 +314,7 @@ def version_table(v1, v2):
 
     Output: a DataFrame with one row per model, with the numbers already written as text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The name and status that are shown for each model.
     versions = [
         ("v1: design features", v1, "Used in the app"),
@@ -331,6 +341,7 @@ def ablation_table(ablations):
 
     Output: a DataFrame with one row per run, with the numbers already written as text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Build one table row from each run.
     rows = []
     for run in ablations["runs"]:
@@ -368,6 +379,7 @@ def risk_group_chart(bins, average):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The ten groups are already computed in gbm_metrics.json.
     groups = [str(number) for number in range(1, len(bins) + 1)]
     predicted = [group["mean_predicted"] for group in bins]
@@ -403,6 +415,7 @@ def calibration_chart(after, before):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Both axes get the same range with a little room on top, so the diagonal is a real 45-degree line.
     top = max(after["mean_predicted"].max(), after["observed_rate"].max())
     if before is not None:
@@ -445,6 +458,7 @@ def gain_chart(curve, share):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The row of the curve that is closest to the slider value.
     point = curve.iloc[(curve["reviewed"] - share).abs().argmin()]
 
@@ -482,6 +496,7 @@ def score_violin(scores):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One half-violin per outcome. Completed comes first, so the stopped trials are drawn above it.
     outcomes = [("Completed", 0, PALETTE["neutral"]), ("Stopped early", 1, PALETTE["up"])]
     fig = go.Figure()
@@ -511,6 +526,7 @@ def importance_chart(importance):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Plotly draws the first row at the bottom. Turned around, the strongest factor ends up on top.
     ordered = importance.iloc[::-1]
 
@@ -550,6 +566,7 @@ def confusion_chart(counts):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # z only picks the colour of a cell: 0 = correct, 1 = false alarm, 2 = missed.
     z = [[0, 1],
          [2, 0]]
@@ -580,6 +597,7 @@ def horse_race_chart(race):
 
     Output: a Plotly figure.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     horses = race["horses"]
     winner = race["verdict"]["winner"]
     # Plotly draws the first row at the bottom, so we turn the ranking around: the winner ends up on top.
@@ -636,6 +654,7 @@ def in_short_box(metrics, phases):
 
     Output: nothing; it draws the box on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The numbers used in the sentences below.
     test = metrics["split"]["test"]
     top_group = metrics["test"]["calibration_bins"][-1]["observed_rate"]  # real rate in the riskiest tenth
@@ -672,6 +691,7 @@ def read_a_score_box(metrics):
 
     Output: nothing; it draws the box on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # All numbers come from the metrics file, so the text follows a retrained model.
     test = metrics["split"]["test"]
     predicted = metrics["calibration"]["test_after"]["mean_predicted"]
@@ -717,6 +737,7 @@ def tab_predicted(metrics):
 
     Output: nothing; it writes the tab content on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Add up both splits: the size of the whole data set.
     train = metrics["split"]["train"]
     test = metrics["split"]["test"]
@@ -747,6 +768,7 @@ def quality_numbers(metrics):
 
     Output: nothing; it writes the numbers and their explanations on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The pieces of the metrics file that are used below.
     train = metrics["split"]["train"]
     test = metrics["split"]["test"]
@@ -816,6 +838,7 @@ def cost_slider_part(metrics, scores):
 
     Output: nothing; it draws the slider, a sentence, the confusion matrix and a caption on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The slider and the yes/no line that follows from it.
     ratio = st.slider("A missed stopped trial costs how many times as much as a false alarm?", 1, 20,
                       DEFAULT_COST_RATIO, key="cost_ratio")
@@ -858,6 +881,7 @@ def review_slider_part(scores):
 
     Output: nothing; it draws the slider, a sentence, the gain chart and a caption on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The slider shows whole percent, the chart functions work with shares (0.2 = 20%).
     share = st.slider("Share of trials you have time to review", 5, 50, 20, step=5, format="%d%%",
                       key="gain_share") / 100
@@ -887,6 +911,7 @@ def phase_part(metrics, phases):
 
     Output: nothing; it writes a sentence, a table and a caption on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The best and the worst phase, and the phase where the predictions are too low by the most.
     aucs = phases["ROC-AUC inside the phase"]
     best = phases.loc[aucs.idxmax()]
@@ -920,6 +945,7 @@ def tab_quality(metrics, phases, scores):
 
     Output: nothing; it writes the tab content on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Part 1: the three test numbers.
     quality_numbers(metrics)
 
@@ -961,6 +987,7 @@ def tab_race():
 
     Output: nothing; it writes the tab content on the page (or a message if the race file is missing).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Without the race file the tab says so and stops.
     race = load_horse_race()
     if race is None:
@@ -1032,6 +1059,7 @@ def tab_factors():
 
     Output: nothing; it writes the tab content on the page (or a message if the importance file is missing).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The importance numbers come from models/feature_importance.csv. Without the file the tab says so.
     importance = load_importance()
     if importance is None or importance.empty:
@@ -1060,6 +1088,7 @@ def tab_trust(metrics, scores):
 
     Output: nothing; it writes the tab content on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # ---- The average prediction before and after calibration against the real rate ----
     mean_before = metrics["calibration"]["test_before"]["mean_predicted"]
     mean_after = metrics["calibration"]["test_after"]["mean_predicted"]
@@ -1129,6 +1158,7 @@ def tilt_chart(table):
 
     Output: a Plotly figure with three bars per start year.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     years = table["start_year"].astype(str)
     fig = go.Figure([
         go.Bar(x=years, y=table["predicted"], name="Model predicted",
@@ -1156,6 +1186,7 @@ def tab_tilt(scores):
 
     Output: nothing; it writes the explanation, the chart and the caption on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     try:
         counts = load_counts()
     except (OSError, ValueError):
@@ -1199,6 +1230,7 @@ def tab_versions(metrics):
 
     Output: nothing; it writes the tab content on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # ---- Version 1 or version 2 ----
     st.markdown("##### Version 1 or version 2?")
     v2 = load_metrics("gbm_v2")

@@ -81,6 +81,7 @@ def build_database(parquet_path=viz.DATA_PATH, db_path=DB_PATH):
 
     Output: the Path of the finished database file.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Load the trials with the plain names the page uses.
     trials = viz.load_trials(parquet_path)
 
@@ -119,6 +120,7 @@ def ensure_database(parquet_path=viz.DATA_PATH, db_path=DB_PATH):
 
     Output: the Path of an up-to-date database file.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Rebuild only when there is no file or the trials file is newer.
     db_path = Path(db_path)
     parquet_path = Path(parquet_path)
@@ -140,6 +142,7 @@ def where_clause(phases=None, sponsor_classes=None, year_range=None, condition_k
 
     Output: a tuple (SQL text, list of parameters). The text is "" if no filter is set.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The column names get the table name in front when a JOIN needs it.
     prefix = ""
     if table:
@@ -189,6 +192,7 @@ class TrialDatabase:
 
         Output: nothing (the object is created).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # Store the file and the filters.
         self.db_path = Path(db_path)
         self.phases = phases
@@ -204,6 +208,7 @@ class TrialDatabase:
 
         Output: a tuple (SQL text, list of parameters).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # Hand the stored filters to the function.
         return where_clause(self.phases, self.sponsor_classes, self.year_range, self.condition_kw, table)
 
@@ -215,6 +220,7 @@ class TrialDatabase:
 
         Output: the result as a pandas DataFrame.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # Write the query into the log. split() and join() remove the line breaks and extra spaces.
         self.log.append((purpose, " ".join(sql.split()), list(params)))
         # "mode=ro" opens the file read-only: the page can look at the data but can never change it.
@@ -231,6 +237,7 @@ class TrialDatabase:
         Output: a dictionary with "phases" (set of names), "sponsors" (list, biggest group first) and "years"
         (tuple of the first and the last start year).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # Three small queries on the whole table (the filters do not apply here).
         phases = self.query("Filter choices: phases", "SELECT DISTINCT phase_label FROM trials")
         sponsors = self.query(
@@ -258,6 +265,7 @@ class TrialDatabase:
         Output: a dictionary with "n" (number of trials, integer) and "rate" (share stopped early between 0 and 1,
         or None if no trial matches).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # With or without the filters.
         if filtered:
             where, params = self.where()
@@ -279,6 +287,7 @@ class TrialDatabase:
 
         Output: a DataFrame with the columns of the table trials plus "eligibility_group".
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # SELECT all matching rows in a fixed order.
         where, params = self.where()
         frame = self.query("Matching trials", f"SELECT * FROM trials {where} ORDER BY start_year, nct_id", params)
@@ -298,6 +307,7 @@ class TrialDatabase:
 
         Output: a DataFrame with the columns of column, "n", "terminated" and "rate" (share between 0 and 1).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # The column name goes into the SQL text, so it must be one of our four known names (see GROUP_COLUMNS).
         if column not in GROUP_COLUMNS:
             raise ValueError(f"cannot group by {column!r}")
@@ -324,6 +334,7 @@ class TrialDatabase:
 
         Output: a DataFrame with the columns "condition", "n", "terminated" and "rate" (share between 0 and 1).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # Both tables of the JOIN have a column nct_id. So the filters must name the trials table by its short
         # name t.
         where, params = self.where(table="t")

@@ -41,6 +41,7 @@ def count(year: int, status: str) -> int:
 
     Output: the number of trials as an integer.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     import requests  # only needed when refreshing the counts
 
     params = {"filter.overallStatus": status.upper(),
@@ -59,6 +60,7 @@ def fetch_counts() -> pd.DataFrame:
 
     Output: a table with one row per start year and one column per status.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     rows = []
     for year in YEARS:
         row = {"start_year": year}
@@ -76,6 +78,7 @@ def load_counts(path=COUNTS_PATH) -> pd.DataFrame:
 
     Output: the table of counts, one row per start year.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return pd.read_csv(path)
 
 
@@ -90,6 +93,7 @@ def tilt_table(counts: pd.DataFrame, predicted: pd.Series) -> pd.DataFrame:
     data shows), ``rate_if_running_complete`` (the lowest the final rate can be: every running trial completes),
     ``predicted``, and the gaps ``gap_observed`` / ``gap_if_running_complete`` (real rate above the prediction).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     c = counts.set_index("start_year")
     ended = c[ENDED].sum(axis=1)
     running = c[RUNNING].sum(axis=1)

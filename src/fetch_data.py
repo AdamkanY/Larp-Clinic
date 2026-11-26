@@ -52,6 +52,7 @@ def base_params(full):
 
     Output: a dictionary with the query parameters of the API.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Every interventional trial that is completed or terminated, 1,000 per page.
     params = {
         "format": "json",
@@ -76,6 +77,7 @@ def get_with_retry(session, params):
 
     Output: the page as a dictionary (the parsed JSON). The script stops with an error message if all tries fail.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Try the download again and again until it works or the tries are used up.
     for attempt in range(MAX_RETRIES + 1):
         # We wait longer after every failed try: 2, 4, 8, ... seconds.
@@ -112,6 +114,7 @@ def write_json(path, content):
 
     Output: nothing. It writes the file.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Write under a temporary name, then rename.
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(content), encoding="utf-8")
@@ -129,6 +132,7 @@ def resume_state(params, restart):
     Output: a tuple (page number, token) for the next page to download. The token is None for page 1 and also
     after the last page, when there is nothing more to download.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Find the saved pages; with --restart delete them and the manifest.
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     pages = sorted(PAGES_DIR.glob("page_*.json"))
@@ -163,6 +167,7 @@ def main():
 
     Output: nothing. It saves the pages in data/raw/pages/ and prints the progress.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Read the command-line options.
     parser = argparse.ArgumentParser(
         description="Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.")

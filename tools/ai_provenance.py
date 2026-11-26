@@ -39,6 +39,7 @@ def git(*args):
 
     Output: the text that git printed. An error in git stops the script.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True)
     return result.stdout
 
@@ -50,6 +51,7 @@ def ai_commits():
 
     Output: a set with the ids of these commits.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One record per commit: id, author name and the co-author lines. \x1f separates the three parts and \x1e
     # the commits, because these characters never occur in names.
     log = git("log", "--format=%H%x1f%an%x1f%(trailers:key=Co-Authored-By,valueonly,separator=;)%x1e")
@@ -77,6 +79,7 @@ def source_files():
 
     Output: a sorted list of paths, relative to the project folder.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Collect every file that matches one of the patterns.
     found = set()
     for pattern in SOURCE_GLOBS:
@@ -105,6 +108,7 @@ def share(path, ai):
 
     Output: a pair (number of lines, number of lines last changed in an AI-assisted commit).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     blame = git("blame", "--line-porcelain", "--", path)
     total = 0
     from_ai = 0
@@ -127,6 +131,7 @@ def missing_headers():
 
     Output: a list with the paths of the files without the header (empty if all have it).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     missing = []
     for path in source_files():
         head = (ROOT / path).read_text(encoding="utf-8")[:2000]
@@ -146,6 +151,7 @@ def table():
 
     Output: the table as one Markdown text, with a first line that says when and at which commit it was measured.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     ai = ai_commits()
     commit = git("rev-parse", "--short", "HEAD").strip()
     n_commits = len(git("rev-list", "HEAD").split())
@@ -168,6 +174,7 @@ def main():
 
     Output: nothing returned; the table or the result of the check is printed.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if "--check" in sys.argv:
         missing = missing_headers()
         if missing:
