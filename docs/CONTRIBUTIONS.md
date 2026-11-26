@@ -50,18 +50,18 @@ the repository" shows where to look at the result.
 |---|---|---|---|---|---|---|
 | Project idea and pitch to the tutor | Contributor | Contributor | Contributor | Contributor | Contributor | project mail of 2026-10-21 |
 | Project coordination (planning, roadmap, deadlines) | Support | Support | Support | **Lead** | Support | `CLAUDE.md` roadmap |
-| Data pipeline: download and dataset | Support | **Lead** | Support | Support | Support | `src/fetch_data.py`, `src/build_dataset.py` |
+| Data pipeline: download and dataset | Contributor | **Lead** | Support | Support | Support | `src/fetch_data.py`, `src/build_dataset.py` |
 | Features and leakage rules | Contributor | **Lead** | Support | Support | – | `src/features.py`, `data/raw/CLAUDE.md` |
-| Model training, tuning, calibration | **Lead** | Contributor | Support | Support | – | `src/train.py`, `models/` |
-| Evaluation and explainability | Contributor | Support | **Lead** | Support | – | `src/evaluate.py`, `src/predict.py` (`explain`) |
-| Exploratory analysis | Support | **Lead** | Support | – | Contributor | `notebooks/01_eda.ipynb` |
+| Model training, tuning, calibration | **Lead** | Contributor | Support | Contributor | – | `src/train.py`, `models/` |
+| Evaluation and explainability | Contributor | Support | **Lead** | Contributor | – | `src/evaluate.py`, `src/predict.py` (`explain`) |
+| Exploratory analysis | **Lead** | Support | Support | – | Support | `notebooks/01_eda.ipynb` |
 | App: Find a trial (live API) | Support | Support | Support | **Lead** | – | `app/pages/1_Find_a_Trial.py`, `src/api_client.py` |
 | App: Check your own trial | Support | – | Support | **Lead** | – | `app/pages/2_Check_Your_Trial.py` |
 | App: Explore the data (charts) | Contributor | Contributor | – | **Lead** | Contributor | `app/pages/3_Explore_Data.py`, `src/viz.py` |
 | App: How the model works | Contributor | Contributor | Contributor | **Lead** | – | `app/pages/4_How_the_Model_Works.py` |
-| App: game | Support | – | – | Support | **Lead** | `app/pages/5_Game.py`, `src/game.py` |
+| App: game | Contributor | – | – | Contributor | **Lead** | `app/pages/5_Game.py`, `src/game.py` |
 | Visual design and UX (look, wording) | – | – | – | **Lead** | Contributor | `app/ui.py`, `app/style.css` |
-| Visualisations | Contributor | – | Support | Contributor | **Lead** | charts in `src/viz.py` and the pages |
+| Visualisations | Contributor | Contributor | Support | Contributor | **Lead** | charts in `src/viz.py` and the pages |
 | Tests | Contributor | Contributor | Support | **Lead** | – | `tests/` |
 | Documentation (README, `CLAUDE.md` files, comments) | Support | Support | Support | **Lead** | Support | `README.md`, `*/CLAUDE.md` |
 | AI use record and reflection | Support | Support | Support | **Lead** | Support | `docs/AI_USE.md` |
@@ -75,41 +75,92 @@ the repository" shows where to look at the result.
 This is evidence, not the whole picture: work in calls, reviews, testing, design decisions and the video leave no
 commits, and an AI session can commit for the person who ran it.
 
-| GitHub account | Commits | Of which AI-assisted |
+| GitHub account | Commits (with merges) | Of which AI-assisted |
 |---|---|---|
-| `matteo-kaufmann` (Matteo) | 97 | 71 |
-| `AdamkanY` (Adam) | 20 | 12 |
-| `Claude` (AI agent, run by a team member) | 11 | 11 |
-| `simonbse` (Simon) | 7 (all on 2026-11-23: branch `course-alignment`, its merge and two edits of this file) | 4 |
+| `matteo-kaufmann` (Matteo) | 148 | 111 |
+| `AdamkanY` (Adam, owner of the repository) | 20 | 10 |
+| `simonbse` / `Simon Seidl` (Simon) | 9, all on 2026-11-23 | 6 |
+| `Claude` (AI agent, run by a team member) | 30 | 30 |
 
-Until 2026-11-23 Simon, Dominic and Raphael had no commits under their own accounts; Simon's first ones are the
-course-alignment branch. Work in calls, on reviews, in testing and on the video leaves no commits, so the git history does not show all of it; the matrix above is the team's account of who did what.
+Counted on 2026-11-26 over all branches (207 commits). Dominic and Raphael have no commits under their own accounts.
+Work in calls, on reviews, in testing and on the video leaves no commits, so the git history does not show all of it;
+the matrix above is the team's account of who did what. Pull requests were merged from the owner's account, and an AI
+session commits for the person who ran it, so a commit does not always say who had the idea.
 
-## Per person: the area, why it sits with them, where to look
+## Per person: the area, why it sits with them, what git shows, where to look
 
 The areas come from the role table the team wrote in the README. The reasons say why each area needed one owner, and
-each person answers for their own area in the Q&A.
+each person answers for their own area in the Q&A (`docs/QA_PREP.md`).
 
-- **Adam Kanouni, ML model.** The model is the part where wrong choices stay invisible in the app: a leaking feature
-  or a random split would only show up as numbers that look too good. It needed one owner who keeps the rules in one
-  place and decides what counts as a better model, so training, tuning and calibration sit with Adam. Look at:
-  `src/train.py` and the saved models in `models/`.
-- **Simon Seidl, data pipeline.** Everything starts from the data. The download, the label and the 2008-2019 window
-  decide what the model can learn, so they needed one owner. Simon also took the questions that sit between the data
-  and the evaluation: the time-ordered cross-validation, the model race and the SQL database of the Explore page.
-  Look at: `src/fetch_data.py`, `src/build_dataset.py`, `src/database.py`, `src/horse_race.py`.
-- **Dominic Haibach, evaluation and explainability.** A model is only useful if people can see how far to trust it.
-  Testing on the later years, the metrics, the calibration and the per-trial explanations are kept apart from
-  training, so the person who checks the model is not the one who built it. That is why they sit with Dominic.
-  Look at: `src/evaluate.py` and `explain()` in `src/predict.py`.
-- **Matteo Kaufmann, app and UX.** The app is where all parts meet and where users judge the project. The live
-  search, the design checker and the model page need one view of wording, look and what a number means, so that the
-  app never claims more than the model can. That is why the pages and their look sit with Matteo. Look at:
-  `app/pages/1_Find_a_Trial.py`, `2_Check_Your_Trial.py`, `4_How_the_Model_Works.py`, `app/ui.py`, `src/api_client.py`.
-- **Raphael Schmid, visuals, game, video.** Charts, the game and the video are how people understand the model
-  without reading code, and the grading looks at them as parts of their own. One owner keeps them in one visual
-  language and tells one story from the idea to the demo. Look at: `app/pages/5_Game.py`, `src/game.py`,
-  `docs/VIDEO_SCRIPT.md`.
+### Adam Kanouni: ML model
+
+- **Why it sits with him.** The model is the part where wrong choices stay invisible in the app: a leaking feature or
+  a random split would only show up as numbers that look too good. It needed one owner who keeps the rules in one
+  place and decides what counts as a better model, so training, tuning and calibration sit with Adam.
+- **What git shows** (account `AdamkanY`, 20 commits, 2026-10-29 to 2026-11-05): the set-up of the repository with the
+  `CLAUDE.md` guides, the first dataset and the feature fixes (zero counts, the max-age flag, no FDA flags: pull
+  requests #2 and #3), model v2 with condition categories, which was tested and not promoted, and the per-trial
+  `explain()` (#18), the drivers charts, the first version of the game page (#19), the README, the pinned
+  requirements and the EDA notebook (#20). As owner of the repository he merged #15, #18, #19 and #20.
+- **In the Q&A:** leads the model questions (8 to 16: model choice, tuning without the test set, calibration, why 0.71,
+  version 2, per-trial explanations).
+- **Look at:** `src/train.py`, `src/predict.py`, `models/`, `notebooks/01_eda.ipynb`.
+
+### Simon Seidl: data pipeline
+
+- **Why it sits with him.** Everything starts from the data. The download, the label and the 2008-2019 window decide
+  what the model can learn, so they needed one owner. Simon also took the questions that sit between the data and
+  the evaluation: the time-ordered cross-validation, the model race and the SQL database of the Explore page.
+- **What git shows** (accounts `simonbse` and `Simon Seidl`, 9 commits, all on 2026-11-23): the course alignment with
+  time-ordered cross-validation, the cost-based yes/no line and the "Which model won?" tab (pull request #23), the
+  horse race results, the SQL database that feeds the Explore page, the check of the test-year tilt (pull request #24,
+  still open) and the explanation of where the Data Science Fundamentals ideas come from in the README, the
+  prediction protocol and the Q&A preparation.
+- **In the Q&A:** answers the data questions (3 to 5: source, leakage, the split by start year), the database
+  question (28) and the course questions.
+- **Look at:** `src/fetch_data.py`, `src/build_dataset.py`, `src/database.py`, `src/horse_race.py`,
+  `docs/PREDICTION_PROTOCOL.md`.
+
+### Dominic Haibach: evaluation and explainability
+
+- **Why it sits with him.** A model is only useful if people can see how far to trust it. Testing on the later years,
+  the metrics, the calibration and the per-trial explanations are kept apart from training, so the person who
+  checks the model is not the one who built it.
+- **What git shows:** no commits under his own account. His area is the code in `src/evaluate.py` (test metrics,
+  confusion matrix, calibration before and after, permutation importance, the ablations) and `explain()` in
+  `src/predict.py`, which the team's file tables list as "Adam / Dominic". His work shows in the model page and in
+  the Q&A rather than in commits.
+- **In the video:** presents the contribution matrix and the AI slide (`docs/VIDEO_SCRIPT.md`).
+- **In the Q&A:** backs up the model questions (8 to 16), above all calibration, the metrics and "can you trust it".
+- **Look at:** `src/evaluate.py`, `models/gbm_metrics.json`, the tabs "How good is it?" and "Can you trust it?" of the
+  model page.
+
+### Matteo Kaufmann: app and UX
+
+- **Why it sits with him.** The app is where all parts meet and where users judge the project. The live search, the
+  design checker and the model page need one view of wording, look and what a number means, so that the app never
+  claims more than the model can.
+- **What git shows** (account `matteo-kaufmann`, 148 commits, 111 AI-assisted): the pages Find a trial, Check your own
+  trial and How the model works, the shared look in `app/ui.py` and `app/style.css`, the redesign rounds (#15) and the
+  polish, the honest wording of the estimates, the offline fallback of the search, the tests, the grading documents
+  and the AI record, the simpler code (#26), the docstring format (#27), the grading documents (#28) and the four extra
+  Explore views (#29).
+- **In the Q&A:** leads the app questions (17 to 20: Streamlit, API outage, the five pages, how we know it works) and
+  answers for the AI use record.
+- **Look at:** `app/pages/1_Find_a_Trial.py`, `2_Check_Your_Trial.py`, `4_How_the_Model_Works.py`, `app/ui.py`,
+  `src/api_client.py`, `tests/`.
+
+### Raphael Schmid: visuals, game, video
+
+- **Why it sits with him.** Charts, the game and the video are how people understand the model without reading code,
+  and the grading looks at them as parts of their own. One owner keeps them in one visual language and tells one
+  story from the idea to the demo.
+- **What git shows:** no commits under his own account. The first version of the game page and `src/game.py` went in
+  with pull request #19, and the charts with the redesign rounds, committed from other accounts.
+- **In the video:** speaks the Explore and the game parts (`docs/VIDEO_SCRIPT.md`) and is the lead for the whole video.
+- **In the Q&A:** leads the game question (21: how the game works and how good the model is at it) and the questions
+  about the charts.
+- **Look at:** `app/pages/5_Game.py`, `src/game.py`, `src/viz.py`, `docs/VIDEO_SCRIPT.md`.
 
 ## How we will use AI in future projects
 
