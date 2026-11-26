@@ -31,15 +31,14 @@ started after every training trial. Under comparable rules (leakage controls and
 reports ROC-AUC 0.74 [4], so our 0.71 is in the expected range, with some room left; the higher published numbers
 come from looser set-ups and are not directly comparable.
 
-[1] Williams RJ, Tse T, DiPiazza K, Zarin DA (2015). Terminated trials in the ClinicalTrials.gov results database:
-evaluation of availability of primary outcome data and reasons for termination. *PLOS ONE* 10(5): e0127242.
-https://doi.org/10.1371/journal.pone.0127242
-[2] Elkin ME, Zhu X (2021). Predictive modeling of clinical trial terminations using feature engineering and
-embedding learning. *Scientific Reports* 11. https://doi.org/10.1038/s41598-021-82840-x
-[3] Kavalci E, Hartshorn A (2023). Improving clinical trial design using interpretable machine learning based
-prediction of early trial termination. *Scientific Reports* 13: 121. https://doi.org/10.1038/s41598-023-27416-7
-[4] Kaushik S (2026). What are we actually predicting? A leakage audit of clinical trial outcome prediction.
-NeurIPS 2026, WiML workshop poster. https://neurips.cc/virtual/2026/163735
+**The four papers we build on**
+
+| | Paper | What it predicts | Its result | How we differ |
+|---|---|---|---|---|
+| [1] | Williams RJ, Tse T, DiPiazza K, Zarin DA (2015). Terminated trials in the ClinicalTrials.gov results database. *PLOS ONE* 10(5): e0127242. [doi](https://doi.org/10.1371/journal.pone.0127242) | Nothing: it describes terminated trials and why they stopped | About 12% of the trials were terminated; insufficient recruitment was the most common reason among trials not stopped because of their data | We turn the problem into a prediction: how likely is a new trial to stop, using only what is known at registration |
+| [2] | Elkin ME, Zhu X (2021). Predictive modeling of clinical trial terminations using feature engineering and embedding learning. *Scientific Reports* 11. [doi](https://doi.org/10.1038/s41598-021-82840-x) | Whether a trial will be terminated | ROC-AUC about 0.73 | A paper only. We add a live search of running trials, a design checker and per-trial explanations in an app |
+| [3] | Kavalci E, Hartshorn A (2023). Improving clinical trial design using interpretable machine learning based prediction of early trial termination. *Scientific Reports* 13: 121. [doi](https://doi.org/10.1038/s41598-023-27416-7) | Whether a trial will be terminated early, with interpretable models | ROC-AUC up to 0.80 | It uses the number of sites and a random train/test split. We leave sites out and split by start date, so our number is lower but fairer |
+| [4] | Kaushik S (2026). What are we actually predicting? A leakage audit of clinical trial outcome prediction. NeurIPS 2026, WiML workshop poster. [link](https://neurips.cc/virtual/2026/163735) | Nothing new: it audits how leakage inflates such predictions | ROC-AUC 0.70 rises to 0.85 once actual enrollment is allowed; 0.74 under leakage controls and a temporal split | We follow its rules (no enrollment, temporal split) and compare our 0.71 with its 0.74 |
 
 ## Features
 
@@ -50,6 +49,19 @@ NeurIPS 2026, WiML workshop poster. https://neurips.cc/virtual/2026/163735
 | Explore the data | Interactive charts of the past trials the model learned from: which kinds get stopped early more often, and a heatmap of two traits at once (for example phase x sponsor) to spot risky combinations. Filters apply to every chart. The numbers come from a SQLite database with SQL queries, which a folded box on the page shows. |
 | How the model works | How to read a risk score, what is predicted, how good it is (with a review-budget slider: "if I can check 20% of trials, how many stopped ones do I find?" and the score distributions of stopped vs completed trials), which factors matter most, how far to trust the percentages (calibration plot), and model v1 vs v2 plus the robustness checks. |
 | Play the game | Two past trials from the same phase, one was stopped early: guess which, ten rounds, scored against the model. |
+
+## Our main choices, and why
+
+| Decision | What we chose | Why |
+|---|---|---|
+| **Data** | Finished interventional trials from the ClinicalTrials.gov API v2 | It is the official public registry, free to use, and every finished trial has a clear outcome (completed or terminated). A registry also holds the design of each trial, which is what we want to learn from. |
+| **Label** | Terminated = 1, completed = 0; withdrawn and running trials are not used for training | Only these two outcomes say what really happened. Running trials have no outcome yet, so the app only scores them. |
+| **Features** | Only facts known when a trial is registered (design, sponsor type, eligibility, age limits) | The model must work for a new trial. Facts such as enrollment, locations or later dates reveal the outcome and would make the numbers look better than they are (leakage). |
+| **Split** | Train on trials that started 2008-2016, test on 2017-2019, never a random split | A real user asks about a future trial. Testing on later trials copies that, while a random split lets the model see trials from the same years and gives too good a result. |
+| **Metrics** | ROC-AUC and PR-AUC, not accuracy | Only 11.3% of the trials were stopped. A model that always says "completed" would be 89% accurate and useless. |
+| **Model** | Calibrated gradient boosting | It won the race of six models on the same time-ordered folds (the random forest is practically tied), and it handles our mix of numbers and categories. Calibration makes "10%" mean about 10%. |
+| **Database and API** | The Explore page reads a local SQLite database; the search asks the live API | Charts over 162,457 trials need fast queries that also work offline. Ongoing trials change every day, so they come live. If the API cannot be reached, a saved snapshot is shown. |
+| **Pages** | Find a trial, Check your own trial, Explore the data, How the model works, Play the game | Each page serves one question of our two users: investors screen running trials (Find), sponsors test a design (Check), both want to see the data (Explore) and know how far to trust the model (How the model works). The game lets anyone compare their own guess with the model. |
 
 ## Setup
 
@@ -142,7 +154,7 @@ one in [`docs/PREDICTION_PROTOCOL.md`](docs/PREDICTION_PROTOCOL.md).
 | `tests/` | Offline checks (no network) |
 | `notebooks/` | Exploration only; nothing in `src/` or `app/` imports from here |
 | `docs/` | For the grading and the submission: AI use record, contribution matrix, video script, Q&A preparation, submission checklist |
-| `tools/` | `ai_provenance.py`: share of AI-written lines per file and the check that every file cites the AI |
+| `tools/` | `ai_provenance.py`: share of AI-written lines per file and the check that every file cites the AI; `check_docstrings.py`: the check of our docstring format |
 
 ## Deploy on Streamlit Community Cloud
 

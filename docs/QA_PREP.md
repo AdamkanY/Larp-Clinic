@@ -196,3 +196,36 @@ in as `?` parameters, never pasted into the SQL text, so typing `'; DROP TABLE t
 just a search that finds nothing (no SQL injection). The folded box "Under the hood" at the bottom of the page shows
 every query. The model still trains from the parquet file: the database is for asking questions, the parquet for
 training.
+
+## Questions from the lecturer call of 2026-11-26 (everyone)
+
+**29. Why do you have both a database and the API?**
+They answer different questions. The model learns from finished trials, because only those have a known outcome, so
+the 162,457 finished trials live in a local SQLite database: it is fast for charts and filters, works offline and
+does not change between sessions. The app scores ongoing trials, which change every day, so the search asks the live
+API. The API is too slow and limited for hundreds of thousands of rows and many filter changes, and the database
+cannot show new trials.
+
+**30. Is all your data from the USA?**
+All of it comes from one source, the ClinicalTrials.gov API v2. That registry is run by the U.S. National Library of
+Medicine, but it holds trials from everywhere: counted with the same filters (interventional, completed or
+terminated, start 2008-2019), about 42% of the trials have at least one site in the USA and about 58% have no site there (this includes trials with no listed site).
+Country is not a feature of the model: sites are added after a trial starts, so they are left out (leakage rule).
+
+**31. What do you show if the API cannot be reached?**
+The saved snapshot `data/examples/ongoing_trials.json` (28 real ongoing trials, saved on 2026-11-26 by
+`src/save_examples.py`), under a warning that says they are saved examples and when they were downloaded. Re-run the
+script shortly before the Q&A.
+
+**32. Is the 11.3% an estimate of your model?**
+No. It is a count: 18,350 of the 162,457 finished trials were terminated. The model gives each single trial its own
+probability; on the test trials its mean prediction is 9.8% (real: 11.7%), see question 12.
+
+**33. Why is `PAGES` or `AUDIENCES` a list and not a tuple?**
+A style choice without effect: the data are constants that are only read, so a tuple would be just as correct and
+would show that they never change. The entries inside are already tuples.
+
+**34. How do you show which code the AI wrote and which the team wrote?**
+Every Python file starts with a docstring that cites the AI, and `docs/AI_USE.md` has the share of AI-written lines
+per file (`tools/ai_provenance.py`), the prompts, and the list of the simple parts the team wrote by hand (section
+3.7, filled in by the team).

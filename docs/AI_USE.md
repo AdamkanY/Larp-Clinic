@@ -258,18 +258,58 @@ Draft from the repository history. **[team]** Confirm, correct and add your own 
 - Fixed decision rules before experiments (model v2).
 - **[team]** anything else (for example: smaller tasks per prompt, reviewing every diff, asking for explanations).
 
-**Conclusions for future projects** **[team]**
+**How we will use AI in future projects** **[team]** Draft from what went wrong and right here; confirm it.
 
 - Write down the rules and the facts (deadlines, grading criteria) first, and check them against the source.
 - Treat every number and every claim the AI writes as a draft until someone has checked it.
 - Keep a short prompt log from day one; reconstructing it at the end is hard.
+- Write the simple parts ourselves and let the AI do the repetitive work (docstrings, tests, moving code around), so
+  that every member can explain every part of the code in the Q&A.
+- Ask for small tasks and read every change before it is merged, and let a script check it where possible. For the
+  rewrite of 2026-11-23 and the docstrings of 2026-11-26 we compared the old and the new code by machine, so we knew
+  that nothing but the style had changed.
+- Say in the project from the start which parts are AI-written, instead of measuring it at the end.
 
-## 6. List of aids (for the video slide)
+**What AI could do next for Trial-Radar** **[team]** Ideas, none of them built.
 
-- Claude Code and Claude (Anthropic): code generation, tests, documentation, explanations, review (see above)
-- **[team]** other AI tools, if any
-- ClinicalTrials.gov API v2 (U.S. National Library of Medicine): all trial data
-- Python libraries: pandas, NumPy, scikit-learn, Streamlit, Plotly, requests, joblib, PyArrow, Matplotlib, pytest
-- Fonts: Bricolage Grotesque and IBM Plex Sans (SIL Open Font License), via Google Fonts
-- Prior work cited in the README: Williams et al. (2015), Elkin & Zhu (2021), Kavalci & Hartshorn (2023),
+- Refresh the data and the saved example trials on a schedule and flag when the model's error grows, because new
+  trials end and the years we tested on keep changing.
+- Explain a score to a non-expert in a few plain sentences, based on the drivers the model already computes. It must
+  keep saying "a pattern, not a cause".
+- Help a sponsor to compare design options and read the trade-offs, with the same leakage rules as the model.
+- Use the text of the eligibility criteria, which we now only count by length, as an extra input, and test whether
+  it beats the 0.71 under the same time-ordered protocol.
+
+## 6. List of aids (for the video slide and the declaration of authorship)
+
+**AI tools**
+
+- Claude Code (coding agent) and Claude (chat), Anthropic; models Claude Sonnet 5.5 and Claude Opus 5.5: code
+  generation, tests, documentation, explanations, review (see sections 1 to 3)
+- **[team]** other AI tools, if any (ChatGPT, Copilot, DeepL, ...); say "none" if none were used
+
+**Data**
+
+- ClinicalTrials.gov API v2 (U.S. National Library of Medicine): all trial data. Public records; the project is not
+  endorsed by the NLM.
+
+**Software**
+
+- Python 3.12 with pandas 3.1.1, NumPy 2.5.4, scikit-learn 1.9.1, Streamlit 1.66.1, Plotly, requests, joblib,
+  PyArrow, Matplotlib and pytest (exact versions in `requirements.txt`)
+- Git and GitHub (code and pull requests), GitHub Desktop, Visual Studio Code, Streamlit Community Cloud (hosting)
+- SQLite (the database of the Explore page, part of Python)
+
+**Fonts**
+
+- Bricolage Grotesque and IBM Plex Sans (SIL Open Font License), via Google Fonts
+
+**Literature**
+
+- The four papers cited in the README: Williams et al. (2015), Elkin & Zhu (2021), Kavalci & Hartshorn (2023),
   Kaushik (2026)
+
+**Course material**
+
+- The slides and exercises of the Computer Science course and of the Data Science Fundamentals course (time-ordered
+  cross-validation, horse race, prediction protocol, SQL)

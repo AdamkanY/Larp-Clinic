@@ -17,6 +17,12 @@ able to talk about their own rows.
   and `src/predict.py` (`score`, `percentile`, `explain`). Either strand could move on without waiting for the other.
 - **One owner per area.** Each area has one lead who decides and answers for it, so nothing falls between two people.
   Other members contribute or support.
+- **Why we split it this way.** The areas follow the path of the data: download and dataset (Simon), model (Adam),
+  evaluation and explanations (Dominic), the app (Matteo), charts, game and video (Raphael). Each step ends in one
+  thing the next step uses: the table `trials.parquet`, the saved model, the metrics and `explain()`, the pages.
+  Because these hand-over points are small and written down, a lead could work without waiting for the others,
+  and in the Q&A each person can answer for exactly the part they own. **[team]** Add why each person took their
+  area (own skills, interest, what they wanted to learn), one sentence each, in "Per person" below.
 - **Branches and pull requests.** Work happened on branches named after the area (`data/api-pipeline`,
   `data/display-cols`, `model/baseline`, `app/search`, `app/explore`, `app/check-trial`, `app/explain-and-polish`,
   `app/honest-wording`, `app/risk-bar`, `app/ui-redesign`, `app/visual-redesign`, `app/explain-honest`, `app/redesign`,
@@ -29,10 +35,13 @@ able to talk about their own rows.
 
 | Level | Meaning |
 |---|---|
-| **Lead** | Owns the area: decided how it is done, did most of the work or directed it, can explain every part of it |
-| **Contributor** | Did a clear, nameable part of the work |
+| **Lead** | Owns the area: decided how it is done, did most of the work or directed it, can explain every part of it, and answers for it in the Q&A. Lead does not mean "did everything alone". |
+| **Contributor** | Did a clear, nameable part of the work (for example one page, one chart, one section of the video) and can explain that part |
 | **Support** | Reviewed, tested, gave feedback or helped with a smaller piece |
 | – | Not involved |
+
+How to read the matrix: one row is one area of the project, one column is one person. A row has one lead. "Where in
+the repository" shows where to look at the result.
 
 ## Matrix
 
@@ -79,8 +88,27 @@ concrete example each. The tutor will ask.
 
 ## Per person, in one or two sentences **[team]**
 
-- **Adam Kanouni:**
-- **Simon Seidl:** 
-- **Dominic Haibach:**
-- **Matteo Kaufmann:**
-- **Raphael Schmid:**
+For each person: what they did, **why they took this area**, and one concrete example (a file, a pull request, a decision).
+
+- **Adam Kanouni:** ML model. Why this area: 
+- **Simon Seidl:** Data pipeline. Why this area: 
+- **Dominic Haibach:** Evaluation and explainability. Why this area: 
+- **Matteo Kaufmann:** App and UX. Why this area: 
+- **Raphael Schmid:** Visuals, game, video. Why this area: 
+
+## How we will use AI in future projects
+
+Short version of the reflection in `docs/AI_USE.md`, section 5 **[team]**:
+
+- Write down the rules and facts first and check them against the source; treat every AI number as a draft.
+- Keep the prompt log from day one, and write down which parts the AI wrote.
+- Write the simple parts ourselves, so everyone can explain their code without the AI; use the AI for repetitive
+  work and let a script check that nothing else changed.
+- Ask for small tasks and read every change before it is merged.
+
+## What to say in the video (3 seconds on screen are enough)
+
+Show the matrix as a picture for about three seconds and say: who led which area, **why** we split the work along
+the path of the data (each step ends in one thing the next uses, so everyone could work in parallel and answer for
+their own part), and in one sentence per person why they took their area. Then one sentence on how we would use AI
+next time. The full text is in `docs/VIDEO_SCRIPT.md`.
