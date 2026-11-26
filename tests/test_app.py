@@ -142,6 +142,45 @@ def test_viz_heatmap():
     assert viz.rate_heatmap(df.head(10), "phase_label", "sponsor_class") is None
 
 
+def test_viz_more_views():
+    """Check the four extra charts: treemap, bubbles, stacked areas and Sankey, and None for too little data.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Write and load the invented table.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "trials.parquet"
+        make_trials(path)
+        df = viz.load_trials(path)
+
+    # Treemap and bubbles: one trace, one rectangle or bubble per condition (Asthma and Pain).
+    treemap = viz.condition_treemap(df)
+    assert treemap.data[0].type == "treemap" and sorted(treemap.data[0].labels) == ["Asthma", "Pain"]
+    bubbles = viz.condition_bubbles(df)
+    assert bubbles.data[0].type == "scatter" and len(bubbles.data[0].x) == 2 and bubbles.layout.xaxis.type == "log"
+    # Pain: 120 trials, 30 stopped. Asthma: 40 trials, 10 stopped (every fourth trial).
+    assert dict(zip(bubbles.data[0].x, bubbles.data[0].y)) == {120: 0.25, 40: 0.25}
+
+    # Stacked areas: one layer per phase with enough trials, in clinical order ("Not stated" has 5 and is left out).
+    area = viz.trials_per_year_area(df)
+    assert [trace.name for trace in area.data] == ["Phase 2", "No phase"]
+    assert sum(sum(trace.y) for trace in area.data) == 115
+
+    # Sankey: 2 phases + 1 blinding group ("Not stated", 20 trials, is too thin) + 2 outcomes = 5 boxes.
+    sankey = viz.flow_sankey(df)
+    assert sankey.data[0].type == "sankey" and len(sankey.data[0].node.label) == 5
+    assert sum(sankey.data[0].link.value) == 2 * 100  # every kept trial crosses two links
+
+    # Too little data gives None for all four, so the page can show a sentence.
+    tiny = df.head(10)
+    assert viz.condition_treemap(tiny) is None and viz.condition_bubbles(tiny) is None
+    assert viz.trials_per_year_area(tiny) is None and viz.flow_sankey(tiny) is None
+    # A single start year cannot make an area chart.
+    assert viz.trials_per_year_area(df[df["start_year"] == 2010]) is None
+
+
 def test_gain_curve():
     """Check the cumulative gain curve: riskiest first, 0% to 100% found, random for a useless score.
 
