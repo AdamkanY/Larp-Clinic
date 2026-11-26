@@ -423,11 +423,12 @@ def condition_treemap(df, k=30, stats=None):
         return None
 
     # One rectangle per condition. The colour scale comes from the app's Plotly template (same as the heatmap).
-    fig = px.treemap(stats, path=["condition"], values="n", color="rate", custom_data=["terminated"])
+    # The share and the number of stopped trials travel in customdata: a treemap text cannot read "color" (it showed NaN).
+    fig = px.treemap(stats, path=["condition"], values="n", color="rate", custom_data=["terminated", "rate"])
     fig.update_traces(
-        texttemplate="<b>%{label}</b><br>%{color:.0%}",
+        texttemplate="<b>%{label}</b><br>%{customdata[1]:.0%}",
         hovertemplate="<b>%{label}</b><br>%{value:,} trials, %{customdata[0]:,} stopped early"
-                      "<br>Stopped early: %{color:.1%}<extra></extra>",
+                      "<br>Stopped early: %{customdata[1]:.1%}<extra></extra>",
     )
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=520,
                       coloraxis_colorbar=dict(title="Stopped<br>early", tickformat=".0%", thickness=14))
@@ -463,9 +464,11 @@ def condition_bubbles(df, k=40, stats=None):
         hovertemplate="<b>%{customdata[0]}</b><br>%{x:,} trials, %{customdata[1]:,} stopped early"
                       "<br>Stopped early: %{y:.1%}<extra></extra>",
     )
-    fig.update_xaxes(title="Number of trials (log scale)")
+    # On a log axis Plotly would print 2, 3, 4, 5 between the powers of ten; fixed ticks read better.
+    fig.update_xaxes(title="Number of trials (log scale)", tickvals=[100, 300, 1000, 3000, 10000],
+                     ticktext=["100", "300", "1,000", "3,000", "10,000"])
     fig.update_yaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero")
-    fig.update_layout(margin=dict(l=10, r=10, t=30, b=40), showlegend=False, height=480)
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=60), showlegend=False, height=480)
     return fig
 
 
