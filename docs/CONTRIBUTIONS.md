@@ -21,15 +21,15 @@ able to talk about their own rows.
   evaluation and explanations (Dominic), the app (Matteo), charts, game and video (Raphael). Each step ends in one
   thing the next step uses: the table `trials.parquet`, the saved model, the metrics and `explain()`, the pages.
   Because these hand-over points are small and written down, a lead could work without waiting for the others,
-  and in the Q&A each person can answer for exactly the part they own. **[team]** Add why each person took their
-  area (own skills, interest, what they wanted to learn), one sentence each, in "Per person" below.
+  and in the Q&A each person can answer for exactly the part they own. The reason each area needed one owner is
+  given per person below.
 - **Branches and pull requests.** Work happened on branches named after the area (`data/api-pipeline`,
   `data/display-cols`, `model/baseline`, `app/search`, `app/explore`, `app/check-trial`, `app/explain-and-polish`,
   `app/honest-wording`, `app/risk-bar`, `app/ui-redesign`, `app/visual-redesign`, `app/explain-honest`, `app/redesign`,
   the game and model v2) and reached `main` as pull requests #2 to #20.
 - **Written rules for people and the AI.** The `CLAUDE.md` files hold the decisions (label, leakage rules, split,
   conventions), so every member and every AI session worked from the same rules.
-- **[team]** How you met (weekly call? channel?) and how decisions were taken.
+- **Decisions in writing.** Open questions were settled in pull requests and written into the `CLAUDE.md` files (label, leakage rules, split, conventions), so the reason for a decision can be read in the repository.
 
 ## Levels
 
@@ -82,23 +82,37 @@ commits, and an AI session can commit for the person who ran it.
 | `simonbse` (Simon) | 7 (all on 2026-11-23: branch `course-alignment`, its merge and two edits of this file) | 4 |
 
 Until 2026-11-23 Simon, Dominic and Raphael had no commits under their own accounts; Simon's first ones are the
-course-alignment branch. **[team]** If they worked through someone else's
-account or session, or outside git (for example in calls, on the video, on reviews), say so here, per person, with one
-concrete example each. The tutor will ask.
+course-alignment branch. Work in calls, on reviews, in testing and on the video leaves no commits, so the git history does not show all of it; the matrix above is the team's account of who did what.
 
-## Per person, in one or two sentences **[team]**
+## Per person: the area, why it sits with them, where to look
 
-For each person: what they did, **why they took this area**, and one concrete example (a file, a pull request, a decision).
+The areas come from the role table the team wrote in the README. The reasons say why each area needed one owner, and
+each person answers for their own area in the Q&A.
 
-- **Adam Kanouni:** ML model. Why this area: 
-- **Simon Seidl:** Data pipeline. Why this area: 
-- **Dominic Haibach:** Evaluation and explainability. Why this area: 
-- **Matteo Kaufmann:** App and UX. Why this area: 
-- **Raphael Schmid:** Visuals, game, video. Why this area: 
+- **Adam Kanouni, ML model.** The model is the part where wrong choices stay invisible in the app: a leaking feature
+  or a random split would only show up as numbers that look too good. It needed one owner who keeps the rules in one
+  place and decides what counts as a better model, so training, tuning and calibration sit with Adam. Look at:
+  `src/train.py` and the saved models in `models/`.
+- **Simon Seidl, data pipeline.** Everything starts from the data. The download, the label and the 2008-2019 window
+  decide what the model can learn, so they needed one owner. Simon also took the questions that sit between the data
+  and the evaluation: the time-ordered cross-validation, the model race and the SQL database of the Explore page.
+  Look at: `src/fetch_data.py`, `src/build_dataset.py`, `src/database.py`, `src/horse_race.py`.
+- **Dominic Haibach, evaluation and explainability.** A model is only useful if people can see how far to trust it.
+  Testing on the later years, the metrics, the calibration and the per-trial explanations are kept apart from
+  training, so the person who checks the model is not the one who built it. That is why they sit with Dominic.
+  Look at: `src/evaluate.py` and `explain()` in `src/predict.py`.
+- **Matteo Kaufmann, app and UX.** The app is where all parts meet and where users judge the project. The live
+  search, the design checker and the model page need one view of wording, look and what a number means, so that the
+  app never claims more than the model can. That is why the pages and their look sit with Matteo. Look at:
+  `app/pages/1_Find_a_Trial.py`, `2_Check_Your_Trial.py`, `4_How_the_Model_Works.py`, `app/ui.py`, `src/api_client.py`.
+- **Raphael Schmid, visuals, game, video.** Charts, the game and the video are how people understand the model
+  without reading code, and the grading looks at them as parts of their own. One owner keeps them in one visual
+  language and tells one story from the idea to the demo. Look at: `app/pages/5_Game.py`, `src/game.py`,
+  `docs/VIDEO_SCRIPT.md`.
 
 ## How we will use AI in future projects
 
-Short version of the reflection in `docs/AI_USE.md`, section 5 **[team]**:
+Short version of the reflection in `docs/AI_USE.md`, section 5:
 
 - Write down the rules and facts first and check them against the source; treat every AI number as a draft.
 - Keep the prompt log from day one, and write down which parts the AI wrote.
