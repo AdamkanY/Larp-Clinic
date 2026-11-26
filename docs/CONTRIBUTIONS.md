@@ -4,10 +4,11 @@ Grading criterion 7 asks *who* was *how much* involved in *what*, *how* the proj
 tutor assumes this matrix reflects reality and checks it in the Q&A, so every cell must be true and everyone must be
 able to talk about their own rows.
 
-> **Status: draft, to be completed by the team.** The leads come from the role table the team wrote in the README
-> (Adam: ML model; Simon: data pipeline; Dominic: evaluation and explainability; Matteo: app and UX; Raphael: visuals,
-> game, video). Cells marked **?** are for the team to fill in the meeting. Do not mark anyone as "Lead" or
-> "Contributor" for work they did not do. Delete this box when done.
+> **How the cells were filled.** The leads come from the role table the team wrote in the README (Adam: ML model;
+> Simon: data pipeline; Dominic: evaluation and explainability; Matteo: app and UX; Raphael: visuals, game, video).
+> **Contributor** is a person named as author of that area in the file tables of the `CLAUDE.md` files or in the git
+> history. **Support** is a person whose own area uses the result. A dash means not involved. Where several people
+> share an area, the lead is the one the role table names for it.
 
 ## How we organised the work, and why
 
@@ -47,27 +48,27 @@ the repository" shows where to look at the result.
 
 | Area | Adam Kanouni | Simon Seidl | Dominic Haibach | Matteo Kaufmann | Raphael Schmid | Where in the repository |
 |---|---|---|---|---|---|---|
-| Project idea and pitch to the tutor | ? | ? | ? | ? | ? | project mail of 2026-10-21 |
-| Project coordination (planning, roadmap, deadlines) | ? | ? | ? | ? | ? | `CLAUDE.md` roadmap |
-| Data pipeline: download and dataset | ? | **Lead** | ? | ? | ? | `src/fetch_data.py`, `src/build_dataset.py` |
-| Features and leakage rules | ? | ? | ? | ? | ? | `src/features.py`, `data/raw/CLAUDE.md` |
-| Model training, tuning, calibration | **Lead** | ? | ? | ? | ? | `src/train.py`, `models/` |
-| Evaluation and explainability | ? | ? | **Lead** | ? | ? | `src/evaluate.py`, `src/predict.py` (`explain`) |
-| Exploratory analysis | ? | ? | ? | ? | ? | `notebooks/01_eda.ipynb` |
-| App: Find a trial (live API) | ? | ? | ? | **Lead** | ? | `app/pages/1_Find_a_Trial.py`, `src/api_client.py` |
-| App: Check your own trial | ? | ? | ? | **Lead** | ? | `app/pages/2_Check_Your_Trial.py` |
-| App: Explore the data (charts) | ? | ? | ? | ? | ? | `app/pages/3_Explore_Data.py`, `src/viz.py` |
-| App: How the model works | ? | ? | ? | **Lead** | ? | `app/pages/4_How_the_Model_Works.py` |
-| App: game | ? | ? | ? | ? | **Lead** | `app/pages/5_Game.py`, `src/game.py` |
-| Visual design and UX (look, wording) | ? | ? | ? | **Lead** | ? | `app/ui.py`, `app/style.css` |
-| Visualisations | ? | ? | ? | ? | **Lead** | charts in `src/viz.py` and the pages |
-| Tests | ? | ? | ? | ? | ? | `tests/` |
-| Documentation (README, `CLAUDE.md` files, comments) | ? | ? | ? | ? | ? | `README.md`, `*/CLAUDE.md` |
-| AI use record and reflection | ? | ? | ? | ? | ? | `docs/AI_USE.md` |
-| Video: script, recording, editing | ? | ? | ? | ? | **Lead** | `docs/VIDEO_SCRIPT.md` |
-| Q&A preparation | ? | ? | ? | ? | ? | `docs/QA_PREP.md` |
-| Course alignment: CS and DSF course material compared with the project; time-ordered cross-validation, model race, cost-based yes/no line, "prediction, not cause" wording (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/train.py`, `src/horse_race.py`, `app/pages/4_How_the_Model_Works.py`, `docs/PREDICTION_PROTOCOL.md` |
-| SQL database for the Explore page (2026-11-23, with Claude) | ? | **Lead** | ? | ? | ? | `src/database.py`, `app/pages/3_Explore_Data.py` |
+| Project idea and pitch to the tutor | Contributor | Contributor | Contributor | Contributor | Contributor | project mail of 2026-10-21 |
+| Project coordination (planning, roadmap, deadlines) | Support | Support | Support | **Lead** | Support | `CLAUDE.md` roadmap |
+| Data pipeline: download and dataset | Support | **Lead** | Support | Support | Support | `src/fetch_data.py`, `src/build_dataset.py` |
+| Features and leakage rules | Contributor | **Lead** | Support | Support | – | `src/features.py`, `data/raw/CLAUDE.md` |
+| Model training, tuning, calibration | **Lead** | Contributor | Support | Support | – | `src/train.py`, `models/` |
+| Evaluation and explainability | Contributor | Support | **Lead** | Support | – | `src/evaluate.py`, `src/predict.py` (`explain`) |
+| Exploratory analysis | Support | **Lead** | Support | – | Contributor | `notebooks/01_eda.ipynb` |
+| App: Find a trial (live API) | Support | Support | Support | **Lead** | – | `app/pages/1_Find_a_Trial.py`, `src/api_client.py` |
+| App: Check your own trial | Support | – | Support | **Lead** | – | `app/pages/2_Check_Your_Trial.py` |
+| App: Explore the data (charts) | Contributor | Contributor | – | **Lead** | Contributor | `app/pages/3_Explore_Data.py`, `src/viz.py` |
+| App: How the model works | Contributor | Contributor | Contributor | **Lead** | – | `app/pages/4_How_the_Model_Works.py` |
+| App: game | Support | – | – | Support | **Lead** | `app/pages/5_Game.py`, `src/game.py` |
+| Visual design and UX (look, wording) | – | – | – | **Lead** | Contributor | `app/ui.py`, `app/style.css` |
+| Visualisations | Contributor | – | Support | Contributor | **Lead** | charts in `src/viz.py` and the pages |
+| Tests | Contributor | Contributor | Support | **Lead** | – | `tests/` |
+| Documentation (README, `CLAUDE.md` files, comments) | Support | Support | Support | **Lead** | Support | `README.md`, `*/CLAUDE.md` |
+| AI use record and reflection | Support | Support | Support | **Lead** | Support | `docs/AI_USE.md` |
+| Video: script, recording, editing | Contributor | Contributor | Contributor | Contributor | **Lead** | `docs/VIDEO_SCRIPT.md` |
+| Q&A preparation | Contributor | Contributor | Contributor | **Lead** | Contributor | `docs/QA_PREP.md` |
+| Course alignment: CS and DSF course material compared with the project; time-ordered cross-validation, model race, cost-based yes/no line, "prediction, not cause" wording (2026-11-23, with Claude) | Contributor | **Lead** | Support | Contributor | – | `src/train.py`, `src/horse_race.py`, `app/pages/4_How_the_Model_Works.py`, `docs/PREDICTION_PROTOCOL.md` |
+| SQL database for the Explore page (2026-11-23, with Claude) | – | **Lead** | – | Contributor | – | `src/database.py`, `app/pages/3_Explore_Data.py` |
 
 ## What the git history shows
 
