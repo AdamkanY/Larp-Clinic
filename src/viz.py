@@ -405,6 +405,148 @@ def rate_heatmap(df, rows, cols, row_order=None, col_order=None, x_title="", y_t
     return fig
 
 
+def condition_treemap(df, k=30, stats=None):
+    """Draw a treemap of the k most common conditions: size = number of trials, colour = share stopped early.
+
+    Conditions with fewer than MIN_GROUP_N trials are left out, because their share is mostly chance.
+
+    Input: df is a table of trials with the columns "conditions" and "label"; k is how many conditions to show;
+    stats is an optional ready-made table like the one from top_conditions(), for example from the SQL query.
+
+    Output: a Plotly figure, or None if no condition has enough trials.
+    """
+    # The most common conditions, without the thin ones.
+    if stats is None:
+        stats = top_conditions(df, k)
+    stats = stats[stats["n"] >= MIN_GROUP_N]
+    if stats.empty:
+        return None
+
+    # One rectangle per condition. The colour scale comes from the app's Plotly template (same as the heatmap).
+    # The share and the number of stopped trials travel in customdata: a treemap text cannot read "color" (it showed NaN).
+    fig = px.treemap(stats, path=["condition"], values="n", color="rate", custom_data=["terminated", "rate"])
+    fig.update_traces(
+        texttemplate="<b>%{label}</b><br>%{customdata[1]:.0%}",
+        hovertemplate="<b>%{label}</b><br>%{value:,} trials, %{customdata[0]:,} stopped early"
+                      "<br>Stopped early: %{customdata[1]:.1%}<extra></extra>",
+    )
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=520,
+                      coloraxis_colorbar=dict(title="Stopped<br>early", tickformat=".0%", thickness=14))
+    return fig
+
+
+def condition_bubbles(df, k=40, stats=None):
+    """Draw a bubble chart of the k most common conditions: how many trials (x, log axis) against how risky (y).
+
+    The bubble size is the number of stopped trials. The biggest bubbles carry their name.
+
+    Input: df is a table of trials with the columns "conditions" and "label"; k is how many conditions to show;
+    stats is an optional ready-made table like the one from top_conditions(), for example from the SQL query.
+
+    Output: a Plotly figure, or None if no condition has enough trials.
+    """
+    # The most common conditions, without the thin ones.
+    if stats is None:
+        stats = top_conditions(df, k)
+    stats = stats[stats["n"] >= MIN_GROUP_N].copy()
+    if stats.empty:
+        return None
+
+    # Only the eight bubbles with the most stopped trials get a name, so the labels do not pile up.
+    biggest = stats.nlargest(8, "terminated")["condition"]
+    stats["name"] = stats["condition"].where(stats["condition"].isin(biggest), "")
+
+    # The bubbles. size = stopped trials; the size is capped so one huge bubble does not cover the others.
+    fig = px.scatter(stats, x="n", y="rate", size="terminated", size_max=45, text="name", log_x=True,
+                     custom_data=["condition", "terminated"])
+    fig.update_traces(
+        textposition="top center", cliponaxis=False,
+        hovertemplate="<b>%{customdata[0]}</b><br>%{x:,} trials, %{customdata[1]:,} stopped early"
+                      "<br>Stopped early: %{y:.1%}<extra></extra>",
+    )
+    # On a log axis Plotly would print 2, 3, 4, 5 between the powers of ten; fixed ticks read better.
+    fig.update_xaxes(title="Number of trials (log scale)", tickvals=[100, 300, 1000, 3000, 10000],
+                     ticktext=["100", "300", "1,000", "3,000", "10,000"])
+    fig.update_yaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero")
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=60), showlegend=False, height=480)
+    return fig
+
+
+def trials_per_year_area(df):
+    """Draw a stacked area chart: trials per start year, one layer per phase in clinical order.
+
+    Phases with fewer than MIN_GROUP_N trials in total are left out.
+
+    Input: df is a table of trials with the columns "start_year" and "phase_label".
+
+    Output: a Plotly figure, or None if fewer than two years or no phase has enough trials.
+    """
+    # Number of trials for every year and phase.
+    counts = df.groupby(["start_year", "phase_label"], observed=True).size().reset_index(name="n")
+    # Thin phases would only add a hairline layer, so they go.
+    totals = counts.groupby("phase_label")["n"].sum()
+    counts = counts[counts["phase_label"].isin(totals[totals >= MIN_GROUP_N].index)]
+    if counts.empty or counts["start_year"].nunique() < 2:
+        return None
+
+    # The layers go in clinical order (the first one is drawn at the bottom).
+    layers = values_in_order(counts.groupby("phase_label")["n"].sum(), PHASE_ORDER)
+    fig = px.area(counts, x="start_year", y="n", color="phase_label", category_orders={"phase_label": layers},
+                  custom_data=["phase_label"])
+    fig.update_traces(hovertemplate="<b>%{customdata[0]}</b><br>Started in %{x}: %{y:,} trials<extra></extra>")
+    fig.update_xaxes(title="Start year", dtick=1)
+    fig.update_yaxes(title="Trials that started")
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=40), legend_title_text="Phase")
+    return fig
+
+
+def flow_sankey(df):
+    """Draw a Sankey diagram of how trials flow from phase to blinding to outcome (stopped early or completed).
+
+    Phases and blinding groups with fewer than MIN_GROUP_N trials are left out.
+
+    Input: df is a table of trials with the columns "phase_label", "masking" and "label".
+
+    Output: a Plotly figure, or None if nothing is left.
+    """
+    # Drop the thin phases and blinding groups.
+    kept = df
+    for column in ["phase_label", "masking"]:
+        sizes = kept[column].value_counts()
+        kept = kept[kept[column].isin(sizes[sizes >= MIN_GROUP_N].index)]
+    if kept.empty:
+        return None
+    # The outcome comes from the label, so the table does not need the column "outcome" (the SQL table lacks it).
+    kept = kept.assign(outcome=kept["label"].map({1: "Stopped early", 0: "Completed"}))
+
+    # The boxes of the three columns, in a sensible order. A value that appears in two columns (for example
+    # "Not stated") needs its own box in each column, so every box is a pair (column, value).
+    phases = values_in_order(kept["phase_label"].value_counts(), PHASE_ORDER)
+    maskings = values_in_order(kept["masking"].value_counts(), MASKING_ORDER)
+    outcomes = [o for o in ["Stopped early", "Completed"] if o in set(kept["outcome"])]
+    boxes = [("phase_label", v) for v in phases] + [("masking", v) for v in maskings]
+    boxes = boxes + [("outcome", v) for v in outcomes]
+    place = {box: i for i, box in enumerate(boxes)}
+
+    # The flows: phase -> blinding and blinding -> outcome, with the number of trials as width.
+    sources, targets, widths = [], [], []
+    for left, right in [("phase_label", "masking"), ("masking", "outcome")]:
+        pairs = kept.groupby([left, right], observed=True).size()
+        for (a, b), n in pairs.items():
+            sources.append(place[(left, a)])
+            targets.append(place[(right, b)])
+            widths.append(int(n))
+
+    # The diagram. The box colours come from the template's colorway.
+    fig = go.Figure(go.Sankey(
+        node=dict(label=[value for _, value in boxes], pad=18, thickness=16),
+        link=dict(source=sources, target=targets, value=widths,
+                  hovertemplate="%{source.label} to %{target.label}<br>%{value:,} trials<extra></extra>"),
+    ))
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=480)
+    return fig
+
+
 def gain_curve(labels, risks, points=101):
     """Answer: if we review the riskiest x% of the trials first, which share of all stopped trials do we find?
 

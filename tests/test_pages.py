@@ -229,6 +229,28 @@ def test_explore_heatmap():
     assert any('"type":"heatmap"' in spec.replace(" ", "") and "Blinding" in spec for spec in charts(at))
 
 
+def test_explore_more_views():
+    """Check the Explore page: the section "More ways to look at it" with its four tabs and four chart types.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # The section and its four tabs are there.
+    at = open_page("pages/3_Explore_Data.py")
+    assert not at.exception
+    assert any(s.value == "More ways to look at it" for s in at.subheader)
+    assert [t.label for t in at.tabs[:4]] == ["Conditions map", "Conditions: size vs risk", "Trials per year",
+                                              "How trials flow"]
+    # The four chart types are drawn.
+    specs = " ".join(spec.replace(" ", "") for spec in charts(at))
+    for kind in ['"type":"treemap"', '"type":"sankey"', '"stackgroup"']:
+        assert kind in specs
+    # A keyword that matches nothing stops the page with a warning, without an error in the new section.
+    at.text_input(key="explore_condition").set_value("zzzzqqqq").run()
+    assert not at.exception
+
+
 def test_check_your_trial():
     """Check the Check page: no raw API codes, the result strip is there, and Reset restores the example.
 

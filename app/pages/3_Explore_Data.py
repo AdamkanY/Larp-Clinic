@@ -15,6 +15,7 @@ Outline of the page code at the bottom of this file:
     5. Two traits at once
     6. Over the years
     7. Conditions and eligibility
+    7b. More ways to look at it (four tabs)
     8. Trial table
     9. Under the hood
 """
@@ -268,6 +269,50 @@ with c6:
         viz.rate_bar(viz.eligibility_stats(filtered), "eligibility_group", "Characters of eligibility text", average),
         "Longer criteria go with more stopped trials. A pattern, not proof of cause: long criteria often "
         "belong to larger, more complex studies. About 500 characters is a short paragraph.")
+
+# ---- 7b. More ways to look at it ----
+# Four other chart types on the same filtered trials: a treemap, a bubble chart, stacked areas and a Sankey flow.
+st.subheader("More ways to look at it")
+tab_map, tab_bubbles, tab_years, tab_flow = st.tabs(
+    ["Conditions map", "Conditions: size vs risk", "Trials per year", "How trials flow"])
+# Each tab shows its chart, or a sentence when the filters leave too little data.
+with tab_map:
+    # The counting is the same SQL query (JOIN + GROUP BY + LIMIT) as for the bars above, only with more conditions.
+    treemap = viz.condition_treemap(filtered, stats=db.top_conditions(k=30))
+    if treemap is None:
+        st.info(f"No condition has at least {viz.MIN_GROUP_N} trials with these filters. Widen them to see the map.")
+    else:
+        chart_with_caption(
+            treemap,
+            "Every rectangle is a condition. The bigger it is, the more trials; the darker it is, the larger the "
+            "share stopped early. Hover a rectangle for the numbers.")
+with tab_bubbles:
+    bubbles = viz.condition_bubbles(filtered, stats=db.top_conditions(k=40))
+    if bubbles is None:
+        st.info(f"No condition has at least {viz.MIN_GROUP_N} trials with these filters. Widen them to see the bubbles.")
+    else:
+        chart_with_caption(
+            bubbles,
+            "Each bubble is a condition. Further right means more trials, higher up means more of them stopped "
+            "early, a bigger bubble means more stopped trials. The names mark the conditions with the most stopped trials.")
+with tab_years:
+    area = viz.trials_per_year_area(filtered)
+    if area is None:
+        st.info("Not enough trials over several years with these filters. Widen the year range to see this chart.")
+    else:
+        chart_with_caption(
+            area,
+            "How many trials started in each year, split by phase (bottom to top in clinical order). The height of "
+            "a layer is the number of trials of that phase. It shows how the mix of trials changed, not their risk.")
+with tab_flow:
+    flow = viz.flow_sankey(filtered)
+    if flow is None:
+        st.info(f"No phase and blinding group has at least {viz.MIN_GROUP_N} trials with these filters.")
+    else:
+        chart_with_caption(
+            flow,
+            "Read from left to right: trials of each phase, how they were blinded, and how they ended. The wider "
+            "a band, the more trials. Groups with few trials are left out.")
 
 # ---- 8. Trial table ----
 st.subheader("Browse the trials")

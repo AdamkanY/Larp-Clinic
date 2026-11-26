@@ -96,6 +96,7 @@ def plotly_template():
         "font": font,
         "paper_bgcolor": "rgba(0,0,0,0)",
         "plot_bgcolor": "rgba(0,0,0,0)",
+        "colorscale": {"sequential": risk_scale},
         "colorway": [PALETTE["bar"], PALETTE["up"], PALETTE["neutral"], PALETTE["accent_deep"]],
         "hoverlabel": {
             "bgcolor": PALETTE["ink"],
