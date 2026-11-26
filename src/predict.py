@@ -53,6 +53,7 @@ def full_path(path):
 
     Output: a Path. An absolute path stays as it is.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     path = Path(path)
     if path.is_absolute():
         return path
@@ -66,6 +67,7 @@ def load_model(path=DEFAULT_MODEL_PATH):
 
     Output: the loaded model (it has predict_proba and decision_function).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     key = str(full_path(path))
     if key not in LOADED_FILES:
         LOADED_FILES[key] = joblib.load(key)
@@ -79,6 +81,7 @@ def load_score_reference(path=SCORE_REFERENCE_PATH):
 
     Output: a sorted numpy array of risk scores.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     key = str(full_path(path))
     if key not in LOADED_FILES:
         LOADED_FILES[key] = np.sort(np.load(key))
@@ -92,6 +95,7 @@ def load_explain_reference(path=EXPLAIN_REFERENCE_PATH):
 
     Output: a dictionary {column: typical value}.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     key = str(full_path(path))
     if key not in LOADED_FILES:
         text = Path(key).read_text(encoding="utf-8")
@@ -108,6 +112,7 @@ def model_features(model):
 
     Output: a list of column names. All FEATURE_COLUMNS if the model does not store its own list.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     names = getattr(model, "feature_names_in_", None)
     if names is None:
         return list(FEATURE_COLUMNS)
@@ -129,6 +134,7 @@ def to_model_frame(records, columns=None):
     Output: a DataFrame with exactly these columns in this order. Categories are text, flags and numbers are
     floats, and every missing value is NaN.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if columns is None:
         columns = FEATURE_COLUMNS
     columns = list(columns)
@@ -174,6 +180,7 @@ def score_frame(records, model=None):
 
     Output: a numpy array with one risk (0 to 1) per trial.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if model is None:
         model = load_model()
     table = to_model_frame(records, model_features(model))
@@ -189,6 +196,7 @@ def score(features, model=None):
 
     Output: the risk as a float between 0 and 1.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return float(score_frame([features], model)[0])
 
 
@@ -203,6 +211,7 @@ def percentile(prob, reference_path=SCORE_REFERENCE_PATH):
 
     Output: a float between 0 and 100.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     reference = load_score_reference(reference_path)
     lower = np.searchsorted(reference, prob, side="left")  # the scores are sorted, so this is a quick search
     return float(100.0 * lower / len(reference))
@@ -215,6 +224,7 @@ def reference_size(reference_path=SCORE_REFERENCE_PATH):
 
     Output: the number of past trials as an int.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return int(len(load_score_reference(reference_path)))
 
 
@@ -233,6 +243,7 @@ def explain(features, top_n=5, model=None, reference=None):
     Output: a list of at most top_n tuples, biggest effect first:
     (plain name, this trial's value in words, "up" or "down", size of the effect as a float).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if model is None:
         model = load_model(EXPLAIN_MODEL_PATH)
     if reference is None:

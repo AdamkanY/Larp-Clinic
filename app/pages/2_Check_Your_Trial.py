@@ -93,6 +93,7 @@ def get_model():
 
     Output: the model object, or None while models/gbm.joblib cannot be loaded.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A missing library or file means no model; the page then shows a message instead of a result.
     try:
         return load_model()
@@ -107,6 +108,7 @@ def reset_form():
 
     Output: nothing. It writes the example values into the session state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     for name, value in DEFAULTS.items():
         st.session_state[f"chk_{name}"] = value
 
@@ -118,6 +120,7 @@ def pick(name, text):
 
     Output: the chosen API code (text), or None if "Not specified" is chosen.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
 
     def shown_name(code):
         """Give the text the dropdown shows for one option: the plain name of the API code.
@@ -126,6 +129,7 @@ def pick(name, text):
 
         Output: the plain name as text.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         if code == UNSET:
             return UNSET
         return label(name, code)
@@ -145,6 +149,7 @@ def intervention_name(code):
 
     Output: the plain name as text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return label("", code)
 
 
@@ -157,6 +162,7 @@ def split_conditions(text):
 
     Output: a list of condition names (text), without empty entries.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Split at every separator and drop empty pieces.
     conditions = []
     for part in re.split(r"[;,\n]", text or ""):
@@ -177,6 +183,7 @@ def lever_options(design, lever):
 
     Output: a list of values for that lever, without the current value.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Each lever has its own rule for which values make sense.
     current = design.get(lever)
     options = []
@@ -234,6 +241,7 @@ def describe(lever, old, new):
 
     Output: the description as text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # "No maximum age" is None in the form, but the names in labels.py expect it as 120 years, like in the
     # training data.
     if lever == "max_age_years":
@@ -251,6 +259,7 @@ def risk_of(design):
 
     Output: the predicted risk of stopping early (number between 0 and 1).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return score(features_from_design(design), get_model())
 
 
@@ -261,6 +270,7 @@ def new_risk(change):
 
     Output: the new risk (number).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return change[1]
 
 
@@ -274,6 +284,7 @@ def lowering_changes(design):
     Output: a list of tuples (description, new risk, change in risk), at most MAX_CHANGES long, only with changes that
     lower the risk.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Score the current design once, then every other value of every lever, one change at a time.
     base = risk_of(design)
     best = []

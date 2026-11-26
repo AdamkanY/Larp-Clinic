@@ -97,6 +97,7 @@ def metrics_path(name):
 
     Output: a Path to models/<name>_metrics.json.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return MODELS_DIR / f"{name}_metrics.json"
 
 
@@ -110,6 +111,7 @@ def best_f1_threshold(y_true, proba):
 
     Output: a tuple (threshold, f1) of two floats: the best threshold and the F1 score it gives.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Precision and recall for every possible threshold. The last pair has no threshold (it stands for
     # "flag nobody"), so we drop it.
     precision, recall, thresholds = precision_recall_curve(y_true, proba)
@@ -132,6 +134,7 @@ def confusion_counts(y_true, y_pred):
 
     Output: a dict with the integer counts "tn", "fp", "fn" and "tp".
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
     return {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)}
 
@@ -143,6 +146,7 @@ def ranking_metrics(y_true, proba):
 
     Output: a dict with "roc_auc", "pr_auc", "brier" and "mean_predicted" (the average prediction), all floats.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return {
         "roc_auc": float(roc_auc_score(y_true, proba)),
         "pr_auc": float(average_precision_score(y_true, proba)),
@@ -160,6 +164,7 @@ def classification_metrics(y_true, proba, threshold):
     Output: the dict of ranking_metrics() with an extra key "at_threshold" that holds the threshold, precision,
     recall, F1, the share of flagged trials and the confusion matrix.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Everything at or above the threshold counts as "predicted to stop early".
     y_pred = (proba >= threshold).astype(int)
     metrics = ranking_metrics(y_true, proba)
@@ -186,6 +191,7 @@ def majority_baseline(y_true):
     Output: a dict with ROC-AUC, PR-AUC, the constant-rate Brier score, the terminated rate, the accuracy and
     the confusion matrix of the "everyone completes" prediction.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     y_true = np.asarray(y_true)
     rate = float(y_true.mean())
     return {
@@ -209,6 +215,7 @@ def calibration_bins(y_true, proba, n_bins=N_CALIBRATION_BINS):
 
     Output: a list of dicts, one per group, with "mean_predicted" and "observed_rate" (floats).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     observed, predicted = calibration_curve(y_true, proba, n_bins=n_bins, strategy="quantile")
     points = []
     for p, o in zip(predicted, observed):
@@ -230,6 +237,7 @@ def plot_calibration(y_true, probas, path=CALIBRATION_PATH):
 
     Output: nothing. It writes the PNG file to path.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Two panels that share the x axis: the curves on top, the histograms below.
     fig, (ax_cal, ax_hist) = plt.subplots(
         2, 1, figsize=(7, 7.4), sharex=True,
@@ -322,6 +330,7 @@ def permutation_importance_table(name, model, X, y):
     Output: a DataFrame with one row per feature (model, rank, mean and standard deviation of the ROC-AUC and
     PR-AUC drop), the most important feature first.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Shuffle each column 10 times and look how much worse the model gets.
     result = permutation_importance(
         model, X, y, scoring=["roc_auc", "average_precision"],
@@ -357,6 +366,7 @@ def run_ablations(X_train, y_train, X_test, y_test, params, reference):
     Output: a dict, the "ablations" part of gbm_metrics.json, with a description and a "runs" list (one entry
     for all features and one per variant).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Imported here and not at the top, because train.py imports this file.
     from train import build_gbm_pipeline, make_cv
 
@@ -414,6 +424,7 @@ def lr_coefficients(pipeline):
     Output: a DataFrame with the columns feature, coef, odds_ratio and unit, sorted by the size of the
     coefficient, largest first.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     prep = pipeline.named_steps["prep"]
     clf = pipeline.named_steps["clf"]
 
@@ -456,6 +467,7 @@ def print_metrics_table(reports):
 
     Output: nothing. It prints one table to the screen.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One row per model.
     rows = []
     for name, report in reports.items():
@@ -506,6 +518,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES, X_train=None, y_
     Output: a dict {model name: the full content of its metrics file}. It also writes the metrics files, the
     calibration picture and the importance CSV, and prints the tables.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Load the splits only if the caller did not pass them.
     if X_test is None or X_train is None:
         # Imported here and not at the top, because train.py imports this file.

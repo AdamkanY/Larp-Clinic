@@ -44,6 +44,7 @@ def load_rows():
 
     Output: a list of feature rows, one dictionary per study.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Find the saved pages; stop with a message if there are none.
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if not pages:
@@ -66,6 +67,7 @@ def build_dataset(rows):
 
     Output: a pandas DataFrame with one row per usable trial and the extra column "split" ("train" or "test").
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One row per study. A study can be on two pages if the registry changed while we were downloading.
     df = pd.DataFrame(rows, columns=META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS)
     n_dupes = df.duplicated("nct_id").sum()
@@ -105,6 +107,7 @@ def set_dtypes(df):
 
     Output: the same DataFrame with the new column types.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Flags are 0/1 values.
     for col in BINARY_FEATURES:
         df[col] = df[col].astype("Int8")
@@ -127,6 +130,7 @@ def backfill_conditions(df):
 
     Output: a DataFrame with the new condition columns and the usual column order.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One row of flags per trial. A trial without conditions gets None, which gives all zeros.
     flag_rows = []
     for text in df["conditions"]:
@@ -156,6 +160,7 @@ def report(df):
 
     Output: nothing. It prints three small tables.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Number of trials per status.
     print("\nRows per status (in window):")
     print(df["overall_status"].value_counts().to_string())
@@ -177,6 +182,7 @@ def report_conditions(df):
 
     Output: nothing. It prints one table.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One line per category, and a last line for the trials that are in no category.
     rows = []
     for col in CONDITION_FLAG_FEATURES + ["no category"]:
@@ -201,6 +207,7 @@ def main():
 
     Output: nothing. It writes data/processed/trials.parquet and prints the progress.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Read the command-line option.
     parser = argparse.ArgumentParser(
         description="Turn raw API pages into the model-ready table ``data/processed/trials.parquet``.")

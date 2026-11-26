@@ -124,6 +124,7 @@ def check_dataset(df):
 
     Output: nothing. It raises a ValueError if a rule is broken.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # No column may be a feature and a meta/display column at the same time.
     overlap = set(FEATURE_COLUMNS) & set(NON_FEATURE_COLUMNS)
     if overlap:
@@ -162,6 +163,7 @@ def load_split(split, df=None, features=None):
     Output: a tuple (X, y). X is a DataFrame of the model input columns sorted by start date, y is a numpy
     array of 0/1 labels in the same order.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Every load is checked, so a wrong data file stops the run.
     if df is None:
         df = pd.read_parquet(DATA_PATH)
@@ -183,6 +185,7 @@ def split_features(features):
 
     Output: a dict with the keys "categorical", "binary" and "numeric", each holding a list of feature names.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     parts = {"categorical": [], "binary": [], "numeric": []}
     for column in CATEGORICAL_FEATURES:
         if column in features:
@@ -207,6 +210,7 @@ def build_lr_pipeline(features=None):
 
     Output: a scikit-learn Pipeline (preparation step "prep" and model step "clf") that is not fitted yet.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if features is None:
         features = FEATURE_SETS[APP_FEATURE_SET]
     parts = split_features(features)
@@ -238,6 +242,7 @@ def build_gbm_pipeline(drop=(), features=None):
 
     Output: a scikit-learn Pipeline (preparation step "prep" and model step "clf") that is not fitted yet.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if features is None:
         features = FEATURE_SETS[APP_FEATURE_SET]
     parts = split_features(features)
@@ -275,6 +280,7 @@ def build_calibrated(base):
 
     Output: a CalibratedClassifierCV around a fresh copy of base, not fitted yet.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return CalibratedClassifierCV(clone(base), method=CALIBRATION_METHOD, cv=CALIBRATION_CV)
 
 
@@ -289,6 +295,7 @@ def explain_reference(X_train):
     Output: a dict with a description ("contents"), the number of training trials ("n_train") and the typical
     value of every feature ("values"). It is saved as models/explain_reference.json.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     values = {}
     for column in FEATURE_COLUMNS:
         if column in CATEGORICAL_FEATURES:
@@ -319,6 +326,7 @@ def make_cv():
 
     Output: a TimeSeriesSplit object with CV_FOLDS splits.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return TimeSeriesSplit(n_splits=CV_FOLDS)
 
 
@@ -333,6 +341,7 @@ def tune(pipeline, grid, X, y, cv):
 
     Output: the fitted GridSearchCV object. Its best_estimator_ is the best pipeline fitted on all of X.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     search = GridSearchCV(pipeline, grid, cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
                           refit=REFIT_METRIC, n_jobs=-1)
@@ -349,6 +358,7 @@ def without_prefix(params):
 
     Output: a new dict with the same values and the shortened names.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     plain = {}
     for key, value in params.items():
         plain[key.removeprefix("clf__")] = value
@@ -363,6 +373,7 @@ def cv_summary(search):
     Output: a dict with the scheme, the best settings, their mean and standard deviation of ROC-AUC and PR-AUC,
     and a "grid" list with the scores of every setting.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     results = search.cv_results_
     best = search.best_index_
 
@@ -402,6 +413,7 @@ def time_ordered_predictions(estimator, X, y, cv):
     Output: a tuple (scores, labels) of two numpy arrays for the checked rows, in date order. The scores are
     the predicted probabilities of TERMINATED.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     scores = []
     labels = []
     for train_rows, check_rows in cv.split(X, y):
@@ -426,6 +438,7 @@ def out_of_fold(estimator, X, y, cv):
     ("value"), the rule, the number of scored trials and the out-of-fold F1, ROC-AUC, PR-AUC, Brier score and
     share of terminated trials.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     oof, y_oof = time_ordered_predictions(estimator, X, y, cv)
     threshold, oof_f1 = evaluate.best_f1_threshold(y_oof, oof)
     info = {
@@ -453,6 +466,7 @@ def split_summary(df):
     Output: a dict with the rule and, for "train" and "test", the start window, the observed first and last
     start date, the number of trials, the number terminated and the terminated rate.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     out = {"rule": "by start_date, never random"}
     for split, (start, end) in SPLITS.items():
         part = df[df["split"] == split]
@@ -476,6 +490,7 @@ def model_details(model):
     Output: a dict with the estimator name, the class weight and the number of iterations (boosting) or model
     columns (logistic regression); for the calibrated model also the method and the iterations per fold.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The calibrated model holds one fitted pipeline per calibration fold.
     if isinstance(model, CalibratedClassifierCV):
         iterations = []
@@ -508,6 +523,7 @@ def save(name, model, df, cv_info, threshold, feature_set, extra=None):
 
     Output: nothing. It writes models/<name>.joblib and the metrics json file.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     features = FEATURE_SETS[feature_set]
     joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
 
@@ -549,6 +565,7 @@ def tune_and_save(name, saved_name, pipeline, X_train, y_train, cv, df, feature_
     Output: a tuple (fitted model, CV numbers). The CV numbers are the dict from cv_summary(). The model and its
     metrics file are also saved in models/.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     start_time = time.time()
     grid = PARAM_GRIDS[name]
     print(f"\n--- {name}: grid search ({len(ParameterGrid(grid))} "
@@ -581,6 +598,7 @@ def main(feature_set=APP_FEATURE_SET):
 
     Output: nothing. It writes the model, metrics and reference files to models/ and prints progress.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     features = FEATURE_SETS[feature_set]
     is_app_set = feature_set == APP_FEATURE_SET
     suffix = ""

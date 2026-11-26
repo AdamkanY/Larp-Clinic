@@ -43,6 +43,7 @@ def open_page(page):
 
     Output: the AppTest object showing that page after it ran.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Clear cached data, start the app and check that Home runs without an exception.
     st.cache_data.clear()
     at = AppTest.from_file(HOME, default_timeout=120).run()
@@ -58,6 +59,7 @@ def ongoing_study(study_type="INTERVENTIONAL", nct_id="NCT00000001"):
 
     Output: a new study record (dict in the API v2 layout) with status RECRUITING.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Copy the record so STUDY stays unchanged, then set the id, the status and the type.
     study = copy.deepcopy(STUDY)
     study["protocolSection"]["identificationModule"]["nctId"] = nct_id
@@ -73,6 +75,7 @@ def stub_api(studies):
 
     Output: the undo function; calling it puts the real requests.get back.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Remember the real function so it can be restored.
     real = requests.get
 
@@ -84,6 +87,7 @@ def stub_api(studies):
 
         Output: a Resp object holding the invented answer; raises ConnectionError when studies is None.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         # No studies means no connection.
         if studies is None:
             raise requests.ConnectionError("offline")
@@ -98,6 +102,7 @@ def stub_api(studies):
 
                 Output: nothing.
                 """
+                # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
                 pass
 
             def json(self):
@@ -107,6 +112,7 @@ def stub_api(studies):
 
                 Output: a dict with the studies and their count, or the first study for a single-trial request.
                 """
+                # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
                 return {"studies": studies, "totalCount": len(studies)} if "NCT" not in url else studies[0]
 
         # The same fake answer for every request.
@@ -119,6 +125,7 @@ def stub_api(studies):
 
         Output: nothing; it restores requests.get.
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         requests.get = real
 
     # Swap in the fake and hand back the way to undo it.
@@ -133,6 +140,7 @@ def markdown(at):
 
     Output: one string with the value of every markdown element, separated by spaces.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return " ".join(m.value for m in at.markdown)
 
 
@@ -143,6 +151,7 @@ def charts(at):
 
     Output: a list of strings, one JSON text per Plotly chart.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return [el.proto.spec for el in at.get("plotly_chart")]
 
 
@@ -153,6 +162,7 @@ def has_drivers_chart(at):
 
     Output: True if such a horizontal bar chart is on the page, otherwise False.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return any("What pushes this trial" in spec and '"orientation":"h"' in spec.replace(" ", "")
                for spec in charts(at))
 
@@ -164,6 +174,7 @@ def test_page_files():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     assert sorted(p.name for p in (ROOT / "app" / "pages").glob("*.py")) == [Path(p).name for p, _ in PAGES]
 
 
@@ -174,6 +185,7 @@ def test_home():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Open Home and read its text.
     at = open_page(None)
     text = markdown(at)
@@ -192,6 +204,7 @@ def test_explore():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Open the page: three key numbers and no exception.
     at = open_page("pages/3_Explore_Data.py")
     assert not at.exception and len(at.metric) == 3
@@ -219,6 +232,7 @@ def test_explore_heatmap():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The first heatmap compares phase and lead sponsor.
     at = open_page("pages/3_Explore_Data.py")
     assert not at.exception
@@ -236,6 +250,7 @@ def test_explore_more_views():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The section and its four tabs are there.
     at = open_page("pages/3_Explore_Data.py")
     assert not at.exception
@@ -258,6 +273,7 @@ def test_check_your_trial():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Open the page: the risk card is shown.
     at = open_page("pages/2_Check_Your_Trial.py")
     assert not at.exception, [e.value for e in at.exception]
@@ -281,6 +297,7 @@ def test_check_levers_and_conditions():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     at = open_page("pages/2_Check_Your_Trial.py")
     # An open-label, single-arm design leaves room for blinding / arm changes.
     at.selectbox(key="chk_masking").set_value("NONE").run()
@@ -304,6 +321,7 @@ def test_check_model_mismatch_message():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     import src.predict  # the module whose function is faked
     # Pretend the model needs one more input than the form has; restore it at the end.
     real = src.predict.model_features
@@ -323,6 +341,7 @@ def test_search_with_results_and_details():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The fake API returns one interventional and one observational trial.
     undo = stub_api([ongoing_study(), ongoing_study("OBSERVATIONAL", "NCT00000002")])
     try:
@@ -348,6 +367,7 @@ def test_search_offline():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # No connection, and the snapshot path points to a missing file.
     undo = stub_api(None)
     saved = src.api_client.EXAMPLES_PATH
@@ -372,6 +392,7 @@ def test_search_offline_examples():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # No connection, but a snapshot with two trials in a temporary folder.
     undo = stub_api(None)
     saved = src.api_client.EXAMPLES_PATH
@@ -401,6 +422,7 @@ def test_how_the_model_works():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Title, boxes, tabs, metrics and charts.
     at = open_page("pages/4_How_the_Model_Works.py")
     assert not at.exception, [e.value for e in at.exception]
@@ -448,6 +470,7 @@ def test_every_page_with_mocked_api_client():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     from src import api_client  # the module whose functions are mocked
     # A fake answer, and a function that fails the test if anything calls the real network.
     found = {"studies": [ongoing_study()], "total": 1, "error": None}
@@ -476,6 +499,7 @@ def play_round(at, user_side="A"):
 
     Output: the same AppTest object after the answer is shown.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     [b for b in at.button if b.label == f"Trial {user_side} was stopped early"][0].click().run()
     assert not at.exception, [e.value for e in at.exception]
     return at
@@ -488,6 +512,7 @@ def test_game():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Round 1: two cards, no spoilers, two pick buttons.
     at = open_page("pages/5_Game.py")
     assert not at.exception, [e.value for e in at.exception]

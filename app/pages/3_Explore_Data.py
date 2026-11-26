@@ -69,6 +69,7 @@ def get_database():
 
     Output: the path of the database file.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return database.ensure_database()
 
 
@@ -84,6 +85,7 @@ def matching_trials(phases, sponsors, years, condition_kw):
     Output: a tuple (trials, query). trials is a DataFrame with one row per matching trial; query is the logged SQL
     query (purpose, sql, parameters).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Run the filtered query and remember it for the SQL box.
     db = database.TrialDatabase(get_database(), phases=phases, sponsor_classes=sponsors, year_range=years,
                                 condition_kw=condition_kw)
@@ -99,6 +101,7 @@ def reset_filters():
 
     Output: nothing. It resets the values in the session state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The text and list filters get their empty value back.
     for key, default in FILTER_DEFAULTS.items():
         st.session_state[key] = default
@@ -113,6 +116,7 @@ def chart_with_caption(fig, caption):
 
     Output: nothing. It draws the chart and the caption on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     chart(fig)
     st.caption(caption)
 

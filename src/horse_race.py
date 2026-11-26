@@ -117,6 +117,7 @@ def build_onehot_pipeline(estimator, features):
 
     Output: a scikit-learn Pipeline (steps "prep" and "clf") that is not fitted yet.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     parts = split_features(features)
     # Numbers: the median for gaps, then scaled to 0-1. Flags: the most common value for gaps (they are 0/1).
     numeric = Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", MinMaxScaler())])
@@ -138,6 +139,7 @@ def cell(params, roc, roc_std, pr, pr_std):
 
     Output: a dict with "params" and the four scores as plain floats.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return {"params": params, "cv_roc_auc": float(roc), "cv_roc_auc_std": float(roc_std),
             "cv_pr_auc": float(pr), "cv_pr_auc_std": float(pr_std)}
 
@@ -151,6 +153,7 @@ def run_new_horse(name, spec, X, y, cv):
     Output: a dict with "grid" (a list of result dicts, one per setting) and "default" (the result of the
     first setting, which is scikit-learn's default).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     pipeline = build_onehot_pipeline(spec["estimator"], list(X.columns))
     # A horse without a grid still runs once, with its default settings.
     grid = spec["grid"]
@@ -180,6 +183,7 @@ def read_trained_horse(spec):
     Output: a dict with "grid" (a list of result dicts, one per setting) and "default" (the result of the
     default settings). It raises a ValueError if the file is old or has no default result.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     metrics = json.loads((MODELS_DIR / spec["metrics_file"]).read_text(encoding="utf-8"))
     if "TimeSeriesSplit" not in metrics["cv"]["scheme"]:
         raise ValueError(f"{spec['metrics_file']} was not made with the time-ordered folds; "
@@ -205,6 +209,7 @@ def verdict(horses):
     Output: a dict with the ranking (best first), the winner, the runner-up, the lead, the winner's spread,
     whether the lead is larger than the spread, the horses tied with the winner and the simplest of them.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     def tuned_score(name):
         """Look up the tuned validation score of one horse.
 
@@ -212,6 +217,7 @@ def verdict(horses):
 
         Output: the tuned cross-validation score of the race metric (float).
         """
+        # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
         return horses[name]["tuned"][f"cv_{METRIC}"]
 
     # Best score first.
@@ -240,6 +246,7 @@ def main():
 
     Output: nothing. It writes models/horse_race.json and prints a short table and the winner.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     X, y = load_split("train")
     cv = make_cv()
     print(f"Horse race on {len(y):,} train trials, {CV_FOLDS} time-ordered folds, winner by {METRIC}")

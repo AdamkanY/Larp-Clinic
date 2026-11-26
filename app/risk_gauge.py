@@ -25,6 +25,7 @@ def percentile_of(risk):
     Output: the percent rank (0 to 100), or None while models/score_reference.npy is missing, so the page can still
     show the risk without a rank.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Ask the model code for the rank; a missing reference file means no rank.
     try:
         return percentile(risk)
@@ -40,6 +41,7 @@ def underestimate():
 
     Output: a number such as 0.18, which means 18% higher, or None if the metrics file is missing or incomplete.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Compare the real test share with the mean predicted risk, both stored in the metrics file.
     try:
         metrics = json.loads(METRICS.read_text())
@@ -58,6 +60,7 @@ def estimate_caption(risk, ongoing=False):
 
     Output: the paragraph as a text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The caption is built from parts: the basic reading, the measured gap and the warning for running trials.
     text = (f"Rough estimate from design information only: read {risk:.0%} as a lower-end figure and mainly use "
             "it to compare trials. ")
@@ -82,6 +85,7 @@ def risk_tone(risk):
     Output: a tuple (tone, label, percent rank). The tone is "green", "yellow", "red" or "gray", the label is a
     sentence and the rank is a number from 0 to 100 or None.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Rank first, then pick the tone by rank.
     pct = percentile_of(risk)
     if pct is None:
@@ -100,6 +104,7 @@ def risk_chip(risk):
 
     Output: the label as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The chip only needs the tone, the label and the rank is not shown.
     tone, label, pct = risk_tone(risk)
     return f'<span class="chip {tone}">{risk:.1%} risk · {label.lower()}</span>'
@@ -115,6 +120,7 @@ def risk_card(risk, delta=None, compact=False):
 
     Output: the card as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Tone, label and rank decide the colour and the words of the card.
     tone, label, pct = risk_tone(risk)
 
@@ -153,6 +159,7 @@ def risk_bar(risk):
 
     Output: a Plotly figure, or None if the reference scores are missing, so the pages can simply skip the bar.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The bar is drawn in percent of past trials (0-100), so its bands match the colours of the chips.
     pct = percentile_of(risk)
     if pct is None:
@@ -202,6 +209,7 @@ def bar_caption():
 
     Output: the sentence as a text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Without the reference file the sentence still works: "among the past trials".
     try:
         count = f"{reference_size():,}"
@@ -220,6 +228,7 @@ def drivers_chart(drivers):
 
     Output: a Plotly figure, or None for an empty list, so the pages can show a sentence instead.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Nothing to draw without drivers.
     if not drivers:
         return None
@@ -272,6 +281,7 @@ def drivers_caption():
 
     Output: the explanation as a text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One fixed explanation text.
     return ("Each bar takes one factor of this trial and swaps it for the value a typical past trial has "
             "(for example the most common blinding, or the median length of the eligibility criteria). The longer the "

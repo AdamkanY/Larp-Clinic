@@ -39,6 +39,7 @@ def _get_json(url, params=None):
 
     Output: the answer of the API as a dictionary (parsed JSON). Raises an error if the request fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Send the request and stop with an error for a bad answer.
     response = requests.get(url, params=params, timeout=TIMEOUT)
     response.raise_for_status()
@@ -58,6 +59,7 @@ def search_trials(query="", status=None, page_size=20, phase=None, condition="",
     Output: a dictionary with "studies" (list of full records), "total" (number of matches, integer) and "error"
     (None or a message); after an error it also has "detail".
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # ---- Build the query ----
     # Without a list of statuses we search all ongoing ones.
     if status:
@@ -104,6 +106,7 @@ def get_trial(nct_id):
 
     Output: the full study record as a dictionary, or None if the trial is not found.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # First ask the live API.
     try:
         return _get_json(f"{BASE_URL}/{nct_id}")
@@ -127,6 +130,7 @@ def load_examples(path=None):
 
     Output: a dictionary with "saved_on" (date string) and "studies" (list of records), or None.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # EXAMPLES_PATH is looked up here and not in the "def" line, so a test can point it to its own file.
     if not path:
         path = EXAMPLES_PATH
@@ -159,6 +163,7 @@ def search_examples(query="", phase=None, sponsor_class=None, page_size=20, path
 
     Output: a dictionary with "studies", "total", "error" (None) and "saved_on", or None if there is no snapshot.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Load the snapshot; without it there is nothing to search.
     snapshot = load_examples(path)
     if snapshot is None:
@@ -200,6 +205,7 @@ def summarize(study):
     Output: a dictionary with the keys "NCT ID", "Title", "Phase", "Status", "Sponsor", "Sponsor type" and
     "Conditions" (all strings).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The parts of the record we read.
     protocol = study.get("protocolSection", {})
     identification = protocol.get("identificationModule", {})

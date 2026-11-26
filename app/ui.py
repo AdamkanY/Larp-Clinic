@@ -53,6 +53,7 @@ def alpha(colour, opacity):
 
     Output: the colour as an rgba text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Remove the hash sign first.
     value = colour.lstrip("#")
     # A hex colour is three pairs of digits: red, green and blue, each from 00 to FF.
@@ -72,6 +73,7 @@ def plotly_template():
 
     Output: a Plotly template object.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Two text styles: normal text in ink, small text (axes, annotations) in the muted colour.
     font = {"family": FONT_FAMILY, "size": 13, "color": PALETTE["ink"]}
     small = {"family": FONT_FAMILY, "size": 12, "color": PALETTE["muted"]}
@@ -129,6 +131,7 @@ def chart(fig, key=None):
 
     Output: nothing. It draws the chart on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Streamlit's frontend still fills the font and both backgrounds from its page theme, unless the figure's own
     # layout sets them (values that only stand in the template do not count). So we copy them from the template
     # onto the layout here. What a chart set itself is kept.
@@ -158,6 +161,7 @@ def css_variables():
 
     Output: the CSS rule as a text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One CSS variable per palette entry.
     variables = []
     for name, value in PALETTE.items():
@@ -174,6 +178,7 @@ def stylesheet():
 
     Output: the whole stylesheet as a text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Build it on the first call only, then reuse the stored text.
     if "css" not in LOADED_STYLESHEET:
         LOADED_STYLESHEET["css"] = css_variables() + "\n" + STYLE.read_text(encoding="utf-8")
@@ -187,6 +192,7 @@ def plain(title):
 
     Output: the title as a text without leading symbols.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # "^[^\w]+" means: everything at the start that is not a letter, a digit or an underscore.
     return re.sub(r"^[^\w]+", "", str(title))
 
@@ -200,6 +206,7 @@ def esc(text):
 
     Output: the escaped text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Escape the HTML characters, then the dollar sign.
     return html.escape(str(text), quote=True).replace("$", "&#36;")
 
@@ -211,6 +218,7 @@ def chip(text, tone="gray"):
 
     Output: the label as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return f'<span class="chip {tone}">{esc(text)}</span>'
 
 
@@ -224,6 +232,7 @@ def require_router(page):
 
     Output: nothing. If the page was opened directly it stores the page and switches to Home.py.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Only act when Home.py has not run in this session yet.
     if not st.session_state.get("via_router"):
         st.session_state["target_page"] = page
@@ -237,6 +246,7 @@ def inject_css():
 
     Output: nothing. It writes the style block on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.markdown(f"<style>{stylesheet()}</style>", unsafe_allow_html=True)
 
 
@@ -250,6 +260,7 @@ def tick_scale(marked, label=""):
 
     Output: the scale as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One <i> per tick. The CSS class "on" makes a tick tall and pink, "--i" is its position for the animation.
     ticks = ""
     for i in range(TICKS):
@@ -276,6 +287,7 @@ def hero(title, subtitle, number=None, lead=None, scale=None):
 
     Output: nothing. It writes the band on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Make sure the styles are on the page.
     inject_css()
 
@@ -308,6 +320,7 @@ def band_copy(headline, text, number=None, number_label=None):
 
     Output: the band content as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The big number block only exists when a number was given.
     figure = ""
     if number:
@@ -325,6 +338,7 @@ def page_header(title, subtitle=None):
 
     Output: nothing. It writes the band on the page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Make sure the styles are on the page, then build the optional subtitle.
     inject_css()
     sub = ""

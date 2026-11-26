@@ -33,6 +33,7 @@ def python_files():
 
     Output: a sorted list of paths, relative to the project folder.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     files = []
     for folder in FOLDERS:
         for path in sorted(glob.glob(str(ROOT / folder / "*.py"))):
@@ -47,6 +48,7 @@ def function_problems(node):
 
     Output: a list of short problem texts (empty if the docstring is fine).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     where = f"line {node.lineno}: {node.name}"
     doc = ast.get_docstring(node)
     if not doc:
@@ -81,6 +83,7 @@ def file_problems(path):
 
     Output: a list of short problem texts (empty if the file is fine).
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     source = (ROOT / path).read_text(encoding="utf-8")
     tree = ast.parse(source)
 
@@ -108,6 +111,7 @@ def main():
     Output: nothing returned; one line per file is printed, and the script stops with an error if a file has
     problems.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     files = sys.argv[1:]
     if not files:
         files = python_files()

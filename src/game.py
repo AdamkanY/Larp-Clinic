@@ -34,6 +34,7 @@ def load_test_trials(path=TRIALS_PATH):
 
     Output: a DataFrame with one row per usable trial and a new index 0, 1, 2, ...
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     columns = DISPLAY_COLS + FEATURE_COLUMNS + ["label", "split"]
     trials = pd.read_parquet(path, columns=columns)
     # A trial without a phase cannot be used, because the two trials of a pair must have the same phase.
@@ -53,6 +54,7 @@ def sample_pairs(trials, n, seed=None):
     Output: a DataFrame with the columns "terminated" and "completed", one pair per row. The values are row
     numbers of trials. If there are fewer than n terminated trials that can be paired, fewer pairs come back.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     rng = np.random.default_rng(seed)
     terminated = trials[trials["label"] == 1]
     completed = trials[trials["label"] == 0]
@@ -92,6 +94,7 @@ def score_rows(trials, model=None):
 
     Output: a numpy array with one risk (0 to 1) per row, in the same order.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     return score_frame(trials, model)
 
 
@@ -106,6 +109,7 @@ def model_pick(terminated_score, completed_score, rng=None):
 
     Output: the text "terminated" if the model picks the really terminated trial, otherwise "completed".
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if terminated_score != completed_score:
         if terminated_score > completed_score:
             return "terminated"
@@ -128,6 +132,7 @@ def pairwise_accuracy(trials, pairs, model=None):
 
     Output: a float between 0 and 1.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Score every trial once, then pick out the two scores of every pair.
     scores = score_rows(trials, model)
     terminated_scores = scores[pairs["terminated"].to_numpy()]
@@ -147,6 +152,7 @@ def new_game(trials, rounds, model=None, seed=None):
     Output: a list with one dictionary per round: "terminated" and "completed" (row numbers in trials), "left"
     (which of the two is shown as trial A) and "model_pick" ("terminated" or "completed").
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One random generator for everything, so the same seed gives exactly the same game.
     rng = np.random.default_rng(seed)
     pairs = sample_pairs(trials, rounds, seed=rng)

@@ -27,6 +27,7 @@ def test_time_ordered_folds():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # 120 rows in date order, split into the time-ordered folds.
     X = pd.DataFrame({"x": np.arange(120)})
     folds = list(train.make_cv().split(X))
@@ -46,6 +47,7 @@ def test_time_ordered_predictions():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Invented data and a model that always predicts the share of ones it saw in training.
     X = pd.DataFrame({"x": np.arange(120)})
     y = np.array([0, 1] * 60)
@@ -63,6 +65,7 @@ def test_train_split_sorted_by_start_date():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if not train.DATA_PATH.exists():
         print("skipped: data/processed/trials.parquet is missing")
         return
@@ -80,6 +83,7 @@ def race(scores):
 
     Output: a dict {model name: {"tuned": {"cv_pr_auc": ..., "cv_pr_auc_std": ...}}}.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # One entry per model, with the two numbers the verdict reads.
     horses = {}
     for name, (pr_auc, spread) in scores.items():
@@ -94,6 +98,7 @@ def test_verdict_clear_winner():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The winner leads by 0.05 with a spread of only 0.01.
     v = horse_race.verdict(race({"gbm": (0.25, 0.01), "forest": (0.20, 0.01), "baseline": (0.11, 0.0)}))
     assert v["winner"] == "gbm" and v["runner_up"] == "forest"
@@ -109,6 +114,7 @@ def test_verdict_tie_names_the_simplest():
 
     Output: nothing; the assertions raise an AssertionError when a check fails.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The two best models differ by less than the spread, so they tie.
     v = horse_race.verdict(race({"gbm": (0.250, 0.02), "logistic_regression": (0.240, 0.01),
                                  "baseline": (0.11, 0.0)}))

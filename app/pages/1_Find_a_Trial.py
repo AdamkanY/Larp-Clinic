@@ -48,6 +48,7 @@ def get_model():
 
     Output: the model object, or None while models/gbm.joblib cannot be loaded.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # A missing library or file means no model; the page then shows a message instead of risks.
     try:
         return load_model()
@@ -67,6 +68,7 @@ def risk_for(nct_id, last_update, _study):
 
     Output: the predicted risk of stopping early (number between 0 and 1), or None if the record cannot be scored.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Any failure (missing model, odd record) becomes None, so one bad record never breaks the result list.
     try:
         # The model only learned from interventional trials, so other studies get no risk.
@@ -88,6 +90,7 @@ def drivers_for(nct_id, last_update, _study):
 
     Output: the list of drivers from src.predict.explain, or None if it cannot be worked out.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Any failure becomes None, so the page just skips the chart.
     try:
         return explain(build_features(_study))
@@ -102,6 +105,7 @@ def last_update_of(study):
 
     Output: the date as text, or an empty text if the record has none.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Walk down the record; missing parts give an empty date.
     status = study.get("protocolSection", {}).get("statusModule", {})
     return status.get("lastUpdatePostDateStruct", {}).get("date", "")
@@ -118,6 +122,7 @@ def pretty_phase(raw):
 
     Output: the phase in words as text; 'NA' or an empty text gives 'No phase'.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Name each code on its own.
     names = []
     for code in raw.split(","):
@@ -136,6 +141,7 @@ def phase_choice(code):
 
     Output: the text to show.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if code:
         return label("phase", code)
     return "Any phase"
@@ -148,6 +154,7 @@ def sponsor_choice(code):
 
     Output: the text to show.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     if code:
         return label("sponsor_class", code)
     return "Any sponsor"
@@ -160,6 +167,7 @@ def chips_for(row, risk=None):
 
     Output: the labels as an HTML text.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The risk label only exists when a risk is known.
     chips = ""
     if risk is not None:
@@ -178,6 +186,7 @@ def new_search():
 
     Output: nothing. It sets the session value "shown".
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state["shown"] = PAGE
 
 
@@ -188,6 +197,7 @@ def reset_filters():
 
     Output: nothing. It resets the values in the session state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state["q"] = ""
     st.session_state["phase_filter"] = ""
     st.session_state["sponsor_filter"] = ""
@@ -201,6 +211,7 @@ def pick_example():
 
     Output: nothing. It writes the clicked example into the session state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     example = st.session_state.get("example")
     if example:
         st.session_state["q"] = example
@@ -215,6 +226,7 @@ def show_more():
 
     Output: nothing. It raises the session value "shown" by one page.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state["shown"] += PAGE
 
 
@@ -225,6 +237,7 @@ def open_trial(nct_id):
 
     Output: nothing. It stores the ID in the session state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state["selected"] = nct_id
 
 
@@ -235,6 +248,7 @@ def close_trial():
 
     Output: nothing. It clears the selected trial in the session state.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     st.session_state["selected"] = None
 
 
@@ -249,6 +263,7 @@ def detail_view(nct_id):
 
     Output: nothing. It draws the page; it stops the script with an error if the record cannot be loaded.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Load the full record again (the API client remembers answers for an hour).
     st.button("← Back to results", on_click=close_trial)
     study = get_trial(nct_id)

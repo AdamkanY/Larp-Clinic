@@ -39,6 +39,7 @@ def fetch(query, n):
 
     Output: a list of at most n full study records, as dictionaries exactly as the API returns them.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # The same filters as the page: only ongoing, interventional trials.
     params = {
         "query.term": query,
@@ -59,6 +60,7 @@ def main():
 
     Output: nothing. It writes data/examples/ongoing_trials.json and prints the progress.
     """
+    # AI use: written with Claude Code (Anthropic), see docs/AI_USE.md
     # Collect the trials of all searches.
     studies = []
     seen = set()  # the ids we already have, because a trial can match two keywords

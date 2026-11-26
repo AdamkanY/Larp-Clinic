@@ -232,6 +232,7 @@ A style choice without effect: the data are constants that are only read, so a t
 would show that they never change. The entries inside are already tuples.
 
 **34. How do you show which code the AI wrote and which the team wrote?**
-Every Python file starts with a docstring that cites the AI, and `docs/AI_USE.md` has the share of AI-written lines
-per file (`tools/ai_provenance.py`), the prompts, and the list of the simple parts the team wrote by hand (section
+Every Python file starts with a docstring that cites the AI, every function carries the comment "AI use: written
+with Claude Code" under its docstring (the team removes it from the functions it rewrites by hand), and
+`docs/AI_USE.md` has the share of AI-written lines per file (`tools/ai_provenance.py`), the prompts, and the list of the simple parts the team wrote by hand (section
 3.7, filled in by the team).
