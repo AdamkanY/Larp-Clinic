@@ -20,7 +20,7 @@ import requests  # HTTP library; its errors and get() are faked in the API test
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
-from src import api_client, database, game, viz  # API client, SQLite database, game logic, chart data
+from src import api_client, database, game, open_trials, viz  # API client, SQLite database, game logic, open trials, chart data
 from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS  # the model's feature lists
 from src.labels import label  # turns API codes into plain words
 
@@ -243,6 +243,27 @@ def test_database():
             pass
         else:
             raise AssertionError("an unknown column was accepted")
+
+
+
+def test_tilt_table():
+    """Check the tilt table: the share of running trials, the rate among ended trials and the lowest final rate.
+
+    Input: none.
+
+    Output: nothing; the test fails with an AssertionError if a number is wrong.
+    """
+    counts = pd.DataFrame([{"start_year": 2019, "completed": 80, "terminated": 20, "withdrawn": 5, "recruiting": 10,
+                            "not_yet_recruiting": 0, "active_not_recruiting": 10, "enrolling_by_invitation": 0,
+                            "suspended": 5, "unknown": 25}])
+    row = open_trials.tilt_table(counts, pd.Series({2019: 0.10})).iloc[0]
+    assert row["ended"] == 100 and row["running"] == 25 and row["running_share"] == 0.2
+    assert row["unknown_share"] == 25 / 150
+    assert row["observed_rate"] == 0.2 and row["rate_if_running_complete"] == 20 / 125
+    assert np.isclose(row["gap_observed"], 1.0) and np.isclose(row["gap_if_running_complete"], 0.6)
+    # The saved counts cover every start year of the data, and the ended trials match trials.parquet closely.
+    saved = open_trials.load_counts()
+    assert list(saved["start_year"]) == list(range(2008, 2020))
 
 
 class Response:

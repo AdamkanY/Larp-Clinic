@@ -25,42 +25,50 @@ paste the new table).
 How to read it: `git blame` attributes each line to the last commit that changed it. "Lines from AI-assisted commits"
 therefore means lines that the AI wrote or last changed. Commits made in the GitHub web interface (file uploads and
 pull-request merges) carry no trailer, so their lines count as the team's even if the text came from a chat with an
-AI. `app/style.css` and most of `src/api_client.py` came in through such web uploads.
+AI. `app/style.css` and part of `src/api_client.py` came in through such web uploads.
 
-Measured on 2026-11-23 at commit 6d351e8 (98 of 135 commits are AI-assisted):
+Measured on 2026-11-26 at commit bfe55ea (the merge of the tilt check) (140 of 189 commits are AI-assisted).
 
 | File | Lines | Lines from AI-assisted commits |
 |---|---|---|
 | `.streamlit/config.toml` | 44 | 100% |
-| `app/Home.py` | 128 | 98% |
-| `app/pages/1_Find_a_Trial.py` | 242 | 94% |
-| `app/pages/2_Check_Your_Trial.py` | 294 | 78% |
-| `app/pages/3_Explore_Data.py` | 217 | 100% |
-| `app/pages/4_How_the_Model_Works.py` | 836 | 94% |
-| `app/pages/5_Game.py` | 187 | 100% |
-| `app/risk_gauge.py` | 177 | 85% |
+| `app/Home.py` | 187 | 99% |
+| `app/pages/1_Find_a_Trial.py` | 420 | 97% |
+| `app/pages/2_Check_Your_Trial.py` | 479 | 90% |
+| `app/pages/3_Explore_Data.py` | 366 | 100% |
+| `app/pages/4_How_the_Model_Works.py` | 1310 | 97% |
+| `app/pages/5_Game.py` | 349 | 100% |
+| `app/risk_gauge.py` | 279 | 92% |
 | `app/style.css` | 298 | 6% |
-| `app/ui.py` | 178 | 100% |
+| `app/ui.py` | 335 | 100% |
 | `notebooks/01_eda.ipynb` | 899 | 100% |
-| `src/api_client.py` | 132 | 62% |
-| `src/build_dataset.py` | 158 | 100% |
-| `src/database.py` | 215 | 100% |
-| `src/evaluate.py` | 486 | 100% |
-| `src/features.py` | 361 | 100% |
-| `src/fetch_data.py` | 165 | 100% |
-| `src/game.py` | 121 | 100% |
-| `src/horse_race.py` | 211 | 100% |
-| `src/labels.py` | 131 | 100% |
-| `src/predict.py` | 285 | 100% |
-| `src/save_examples.py` | 58 | 100% |
-| `src/train.py` | 502 | 100% |
-| `src/viz.py` | 274 | 100% |
-| `tests/test_app.py` | 372 | 100% |
-| `tests/test_features.py` | 185 | 100% |
-| `tests/test_model.py` | 79 | 100% |
-| `tests/test_pages.py` | 335 | 100% |
-| `tests/test_predict.py` | 137 | 100% |
-| `tools/ai_provenance.py` | 108 | 100% |
+| `src/api_client.py` | 225 | 85% |
+| `src/build_dataset.py` | 231 | 100% |
+| `src/database.py` | 345 | 100% |
+| `src/evaluate.py` | 616 | 100% |
+| `src/features.py` | 497 | 100% |
+| `src/fetch_data.py` | 224 | 100% |
+| `src/game.py` | 173 | 100% |
+| `src/horse_race.py` | 300 | 100% |
+| `src/labels.py` | 158 | 100% |
+| `src/open_trials.py` | 115 | 100% |
+| `src/predict.py` | 280 | 100% |
+| `src/save_examples.py` | 82 | 100% |
+| `src/train.py` | 673 | 100% |
+| `src/viz.py` | 613 | 100% |
+| `tests/test_app.py` | 582 | 100% |
+| `tests/test_features.py` | 263 | 100% |
+| `tests/test_model.py` | 126 | 100% |
+| `tests/test_pages.py` | 532 | 100% |
+| `tests/test_predict.py` | 231 | 100% |
+| `tools/ai_provenance.py` | 181 | 100% |
+| `tools/check_docstrings.py` | 132 | 100% |
+
+The share rose compared with the measurement of 2026-11-23 (for example `src/api_client.py` from 62% to 85%,
+`app/pages/2_Check_Your_Trial.py` from 78% to 90%) because two rewrites by Claude touched almost every line: the simpler code (2026-11-23, section 3.6) and the docstrings and comments of 2026-11-26
+(section 3.7). `git blame` credits a line to the last commit that changed it, so a line the team wrote first but
+the AI later reworded now counts as the AI's. The table therefore shows who last changed a line, not who had the
+idea or wrote the first version. The parts the team wrote by hand are listed in section 3.7.
 
 The branch `grading-readiness` was written entirely by Claude (Opus 5.5) in one session on 2026-11-10 (section 3.3).
 
@@ -152,6 +160,11 @@ Then Simon asked about the grading criterion "API or database" and, after the ex
 Claude wrote, on the branch `sql-database` (on top of `course-alignment`): `src/database.py` (SQLite file with the
 tables `trials` and `trial_conditions`, keys and the first normal form, queries with `?` parameters), the Explore
 page reading its numbers with SQL and showing the queries in an "Under the hood" box, and tests for both.
+
+Later the same evening Simon asked whether the limitations could be changed and chose to check the test-year tilt.
+Claude counted, from Simon's browser, the interventional trials per start year and status on ClinicalTrials.gov,
+saved them (`data/processed/open_trials_by_year.csv`, script `src/open_trials.py`) and added the check to the model
+page, the README and the Q&A prep. Result: the tilt is real but explains about half of the gap, not all of it.
 
 ### 3.5 The review of 2026-11-23 (branch `docs/stale-numbers`)
 

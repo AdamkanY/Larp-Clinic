@@ -411,6 +411,9 @@ def test_how_the_model_works():
                                           "What matters most", "Can you trust it?", "Versions and checks"]
     assert [m.label for m in at.metric] == ["ROC-AUC", "PR-AUC", "Brier score"]
     assert any(c.proto.id and "calibration_chart" in c.proto.id for c in at.get("plotly_chart"))
+    # The tilt check: the counted running trials, their chart and the sentence that names the share for 2019.
+    assert any(c.proto.id and "tilt_chart" in c.proto.id for c in at.get("plotly_chart"))
+    assert any("We counted them" in m.value for m in at.markdown)
     assert any(c.proto.id and "score_violin" in c.proto.id for c in at.get("plotly_chart"))
     # The review-budget slider moves the marked point and the sentence above the gain chart.
     found = [m.value for m in at.markdown if "Reviewing the riskiest" in m.value]
