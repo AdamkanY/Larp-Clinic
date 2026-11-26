@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""The numbers and the Plotly charts of the page "Explore the data".
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+The numbers and the Plotly charts of the page "Explore the data".
 
 Every function here takes a table of trials (a pandas DataFrame) and returns a table or a figure. There is no
 Streamlit code and no model in this file, so the functions can also be used by other pages and by the tests.
@@ -11,17 +11,18 @@ There are no colours and no fonts in this file. app/ui.py sets one Plotly templa
 page draws a chart, and the figures built here take their look from it.
 """
 
-import sys
-from pathlib import Path
+import sys  # sys.path: lets us import the other files of src/ by their plain name
+from pathlib import Path  # file paths that work on every computer
 
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+import pandas as pd  # tables (DataFrame)
+import plotly.express as px  # quick charts (bars, lines)
+import plotly.graph_objects as go  # detailed charts (heatmap)
 
 # The other files of src/ are imported by their plain name, so this works from the app and from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import labels
+import labels  # plain-English names for API codes
 
+# Where the prepared trials file lives and where a trial can be opened on ClinicalTrials.gov.
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "trials.parquet"
 STUDY_URL = "https://clinicaltrials.gov/study/"
 
@@ -50,7 +51,13 @@ HOVER_TEXT = "<b>%{x}</b><br>Stopped early: %{y:.1%}<br>%{customdata[1]:,} of %{
 
 
 def plain_names(codes, kind):
-    """Turn a column of API codes into plain names with labels.py, for example "DOUBLE" -> "Double blind"."""
+    """Turn a column of API codes into plain names with labels.py, for example "DOUBLE" -> "Double blind".
+
+    Input: codes is a list or column of API codes; kind is the kind of code for labels.label() (for example
+    "phase", "masking" or "status").
+
+    Output: a list of plain-English names, one per code, in the same order.
+    """
     names = []
     for code in codes:
         names.append(labels.label(kind, code))
@@ -62,6 +69,10 @@ def load_trials(path=DATA_PATH):
 
     Codes become plain English names. A missing value becomes "Not stated", so it shows up as its own bar and
     does not silently disappear. Three columns are added: start_year, outcome and eligibility_group.
+
+    Input: path is the location of trials.parquet (a Path or text); the default is the project's own file.
+
+    Output: a DataFrame with one row per trial, the plain-name columns and the three added columns.
     """
     df = pd.read_parquet(path)
 
@@ -82,7 +93,14 @@ def load_trials(path=DATA_PATH):
 
 
 def filter_trials(df, phases=None, sponsor_classes=None, year_range=None, condition_kw=""):
-    """Keep the trials that match the filters. An empty filter means "all" for that filter."""
+    """Keep the trials that match the filters. An empty filter means "all" for that filter.
+
+    Input: df is the table from load_trials(); phases and sponsor_classes are lists of plain names (or None);
+    year_range is a pair (first year, last year) or None; condition_kw is a keyword searched in the conditions
+    text (upper and lower case do not matter).
+
+    Output: a DataFrame with only the matching rows.
+    """
     # We start with "keep every row" and every filter that is set removes rows.
     mask = pd.Series(True, index=df.index)
     if phases:
@@ -103,7 +121,13 @@ def rate_by(df, column, order=None):
 
     With order (a list of values) the rows come in that order and values that are not in the list go last.
     Without order the biggest group comes first.
+
+    Input: df is a table of trials with a "label" column; column is the name of the column to group by; order is
+    an optional list of values giving the wanted order.
+
+    Output: a DataFrame with the columns column, n (trials), terminated (stopped trials) and rate (share stopped).
     """
+    # One row per value of the column, with the count, the sum of labels and their mean.
     out = df.groupby(column, observed=True)["label"].agg(n="size", terminated="sum", rate="mean").reset_index()
     if order:
         # Give every value its place in the list and sort by this place.
@@ -118,9 +142,11 @@ def rate_by(df, column, order=None):
 
 
 def extremes(stats, column):
-    """One sentence that names the group with the highest and the group with the lowest share stopped early.
+    """Write one sentence that names the group with the highest and the group with the lowest share stopped early.
 
-    stats is the table from rate_by(). Returns "" if fewer than two groups are big enough to compare.
+    Input: stats is the table from rate_by(); column is the name of the group column in that table.
+
+    Output: the sentence as text, or "" if fewer than two groups are big enough to compare.
     """
     # "Not stated" is a gap in the data and not a kind of trial, so it can never be the highest or the lowest.
     big = stats[(stats["n"] >= MIN_GROUP_N) & (stats[column] != NOT_STATED)]
@@ -132,7 +158,12 @@ def extremes(stats, column):
 
 
 def top_conditions(df, k=15):
-    """The k most common conditions with their number of trials and their share stopped early."""
+    """Find the k most common conditions with their number of trials and their share stopped early.
+
+    Input: df is a table of trials with the columns "conditions" and "label"; k is how many conditions to keep.
+
+    Output: a DataFrame with the columns condition, n, terminated and rate, for the k most common conditions.
+    """
     # A trial can have several conditions in one cell ("Asthma; COPD"). We split the cell into a list and
     # explode() then makes one row per condition.
     exploded = df[["conditions", "label"]].copy()
@@ -141,12 +172,18 @@ def top_conditions(df, k=15):
     exploded["condition"] = exploded["condition"].str.strip()
     exploded = exploded[exploded["condition"] != ""]
 
+    # Count per condition and keep the k biggest.
     out = exploded.groupby("condition")["label"].agg(n="size", terminated="sum", rate="mean").reset_index()
     return out.nlargest(k, "n")
 
 
 def finish_rate_chart(fig):
-    """The layout that the bar chart and the line chart share: a percent axis that starts at 0 and no legend."""
+    """Set the layout that the bar chart and the line chart share: a percent axis that starts at 0 and no legend.
+
+    Input: fig is a Plotly figure.
+
+    Output: the same figure, changed in place and returned.
+    """
     # The bottom margin (b) leaves room for the axis title under slanted labels.
     fig.update_layout(margin=dict(l=10, r=10, t=30, b=40), showlegend=False, bargap=0.35)
     fig.update_yaxes(title="Share stopped early", tickformat=".0%", rangemode="tozero")
@@ -158,13 +195,23 @@ def add_average_line(fig, average):
     """Draw a dashed line at the average of all trials on screen, so every bar can be read as above or below it.
 
     The line has no text, because text would cover the bars. The page explains what the line means.
+
+    Input: fig is a Plotly figure; average is the share stopped early (0 to 1) or None for no line.
+
+    Output: nothing. The line is added to fig.
     """
     if average is not None:
         fig.add_hline(y=average, line_dash="dash")
 
 
 def rate_bar(stats, column, x_title, average=None):
-    """Bar chart of the share stopped early, one bar per group. stats is the table from rate_by()."""
+    """Draw a bar chart of the share stopped early, one bar per group.
+
+    Input: stats is the table from rate_by(); column is the group column used for the x axis; x_title is the
+    title of the x axis; average is the share of all trials for the dashed line (or None).
+
+    Output: a Plotly figure.
+    """
     # A very small group gets a pale bar without a number on it. Otherwise "1 of 2 trials" would look like a
     # finding of 50%.
     bar_texts = []
@@ -177,6 +224,7 @@ def rate_bar(stats, column, x_title, average=None):
             bar_texts.append(f"{rate:.0%}")
             bar_opacities.append(1.0)
 
+    # The bars, with the hover text and the labels on top.
     fig = px.bar(stats, x=column, y="rate", custom_data=["n", "terminated"], text=bar_texts)
     fig.update_traces(
         marker_opacity=bar_opacities,
@@ -197,7 +245,14 @@ def rate_bar(stats, column, x_title, average=None):
 
 
 def rate_over_time(df, average=None):
-    """Line chart of the share stopped early for every start year."""
+    """Draw a line chart of the share stopped early for every start year.
+
+    Input: df is a table of trials with the columns "start_year" and "label"; average is the share of all trials
+    for the dashed line (or None).
+
+    Output: a Plotly figure.
+    """
+    # One point per start year, in time order.
     stats = rate_by(df, "start_year").sort_values("start_year")
     fig = px.line(stats, x="start_year", y="rate", markers=True, custom_data=["n", "terminated"])
     fig.update_traces(line=dict(width=2), marker=dict(size=8), hovertemplate=HOVER_TEXT)
@@ -208,10 +263,15 @@ def rate_over_time(df, average=None):
 
 
 def conditions_bar(df, k=15, name_width=34, stats=None):
-    """Horizontal bar chart of the k most common conditions, the one with the highest share on top.
+    """Draw a horizontal bar chart of the k most common conditions, the one with the highest share on top.
 
     stats (columns condition, n, terminated, rate) can be passed in ready-made, for example from the SQL query
     in database.py. Without stats the conditions are counted from df with top_conditions().
+
+    Input: df is a table of trials; k is how many conditions to show; name_width is the longest name in
+    characters before it is cut off; stats is the optional ready-made table.
+
+    Output: a Plotly figure.
     """
     if stats is None:
         stats = top_conditions(df, k)
@@ -232,6 +292,7 @@ def conditions_bar(df, k=15, name_width=34, stats=None):
     for rate, n in zip(stats["rate"], stats["n"]):
         bar_texts.append(f"{rate:.0%} of {n:,}")
 
+    # The horizontal bars with their hover text.
     fig = px.bar(stats, x="rate", y="short", orientation="h", custom_data=["condition", "n", "terminated"],
                  text=bar_texts)
     fig.update_traces(
@@ -250,10 +311,15 @@ def conditions_bar(df, k=15, name_width=34, stats=None):
 
 
 def values_in_order(sizes, order):
-    """The row (or column) values of the heatmap in the order they are shown.
+    """Find the row (or column) values of the heatmap in the order they are shown.
 
     sizes holds the number of trials per value. First come the values from the list order, in that order. All
     other values follow, the one with the most trials first.
+
+    Input: sizes is a pandas Series (index = the values, numbers = trials per value); order is a list of values
+    that should come first, or None.
+
+    Output: a list of the values in the order they are shown.
     """
     present = list(sizes.index)
     values = []
@@ -269,27 +335,38 @@ def values_in_order(sizes, order):
 
 
 def rate_matrix(df, rows, cols, row_order=None, col_order=None):
-    """Share stopped early and number of trials for every combination of two columns.
+    """Work out the share stopped early and the number of trials for every combination of two columns.
 
-    Returns two tables (rate, n). The values of the column rows are the index and the values of the column cols
-    are the columns, sorted like in values_in_order(). A combination without trials is NaN in rate and 0 in n.
+    The values of the column rows are the index and the values of the column cols are the columns, sorted like
+    in values_in_order(). A combination without trials is NaN in rate and 0 in n.
+
+    Input: df is a table of trials with a "label" column; rows and cols are the names of the two columns;
+    row_order and col_order are optional lists of values that should come first.
+
+    Output: two DataFrames (rate, n) with the same rows and columns.
     """
     stats = df.groupby([rows, cols], observed=True)["label"].agg(n="size", rate="mean").reset_index()
     # pivot() turns the long list of combinations into a grid.
     rate = stats.pivot(index=rows, columns=cols, values="rate")
     n = stats.pivot(index=rows, columns=cols, values="n").fillna(0).astype(int)
 
+    # Put rows and columns in the wanted order.
     row_values = values_in_order(n.sum(axis=1), row_order)
     col_values = values_in_order(n.sum(axis=0), col_order)
     return rate.loc[row_values, col_values], n.loc[row_values, col_values]
 
 
 def rate_heatmap(df, rows, cols, row_order=None, col_order=None, x_title="", y_title=""):
-    """Heatmap of the share stopped early for every combination of two columns, for example phase x sponsor.
+    """Draw a heatmap of the share stopped early for every combination of two columns, for example phase x sponsor.
 
     Two columns at once show what single bar charts hide: a combination can be risky even if neither of its two
     values is risky alone. A cell with fewer than MIN_GROUP_N trials stays empty, because its share would be
-    mostly chance. Returns None if no cell has enough trials.
+    mostly chance.
+
+    Input: df is a table of trials; rows and cols are the two column names; row_order and col_order are optional
+    lists giving the order; x_title and y_title are the axis titles.
+
+    Output: a Plotly figure, or None if no cell has enough trials.
     """
     rate, n = rate_matrix(df, rows, cols, row_order, col_order)
     shown = rate.where(n >= MIN_GROUP_N)
@@ -314,6 +391,7 @@ def rate_heatmap(df, rows, cols, row_order=None, col_order=None, x_title="", y_t
                 row_text.append("")
         text.append(row_text)
 
+    # The heatmap itself, with the number of trials in the hover text.
     fig = go.Figure(go.Heatmap(
         z=shown.to_numpy(), x=[str(c) for c in shown.columns], y=[str(r) for r in shown.index],
         text=text, texttemplate="%{text}", customdata=n.to_numpy(), hoverongaps=False, xgap=3, ygap=3,
@@ -328,13 +406,16 @@ def rate_heatmap(df, rows, cols, row_order=None, col_order=None, x_title="", y_t
 
 
 def gain_curve(labels, risks, points=101):
-    """If we review the riskiest x% of the trials first, which share of all stopped trials do we find?
+    """Answer: if we review the riskiest x% of the trials first, which share of all stopped trials do we find?
 
-    labels holds 1 for stopped early and 0 for completed, risks holds the model's score for the same trials.
-    The result has one row for each of points evenly spaced shares from 0% to 100%, with the columns:
-    reviewed (share of the trials we looked at, riskiest first), caught (share of all stopped trials that are
-    among them) and precision (share of the reviewed trials that were stopped). If we picked trials at random,
-    caught would be equal to reviewed. That is the diagonal line in the chart.
+    If we picked trials at random, caught would be equal to reviewed. That is the diagonal line in the chart.
+
+    Input: labels holds 1 for stopped early and 0 for completed; risks holds the model's score for the same
+    trials; points is how many evenly spaced shares from 0% to 100% to calculate.
+
+    Output: a DataFrame with one row per point and the columns reviewed (share of the trials we looked at,
+    riskiest first), caught (share of all stopped trials that are among them) and precision (share of the
+    reviewed trials that were stopped).
     """
     # Sort the trials from the riskiest to the safest. kind="mergesort" keeps trials with the same score in
     # their old order, so the result does not depend on chance.
@@ -344,6 +425,7 @@ def gain_curve(labels, risks, points=101):
     # hits[i] = how many stopped trials are among the first i + 1 trials.
     hits = frame["y"].cumsum().to_numpy()
 
+    # One row for every share from 0% to 100%.
     rows = []
     for i in range(points):
         share = i / (points - 1)
@@ -365,15 +447,25 @@ def gain_curve(labels, risks, points=101):
 
 
 def eligibility_stats(df):
-    """Share stopped early for every length group of the eligibility text, the shortest group first.
+    """Work out the share stopped early for every length group of the eligibility text, the shortest group first.
 
     Trials without an eligibility text are in no group and are left out.
+
+    Input: df is a table from load_trials() (it has the column "eligibility_group").
+
+    Output: the table from rate_by(), one row per length group.
     """
     return rate_by(df, "eligibility_group", ELIGIBILITY_LABELS)
 
 
 def trials_table(df):
-    """The columns for the list of trials. "link" is the address of the trial on ClinicalTrials.gov."""
+    """Make the columns for the list of trials. "link" is the address of the trial on ClinicalTrials.gov.
+
+    Input: df is a table of trials with the columns nct_id, brief_title, phase_label, lead_sponsor_name and
+    overall_status.
+
+    Output: a DataFrame with the column "link" first, then title, phase, sponsor and status (no nct_id).
+    """
     out = df[["nct_id", "brief_title", "phase_label", "lead_sponsor_name", "overall_status"]].copy()
     out.insert(0, "link", STUDY_URL + out["nct_id"])
     return out.drop(columns="nct_id")

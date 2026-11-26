@@ -88,9 +88,15 @@ Update the status column when a milestone moves.
 - Relative paths only (never `/Users/...`).
 - Update `requirements.txt` whenever a library is added.
 - Raw data is not in git (no LFS any more); regenerate it with `src/fetch_data.py`.
-- **AI citation (course rule):** every source file starts with the two-line "AI use:" header (copy it from any file);
-  `tests/test_app.py` fails without it. Record new prompts and what the team changed in `docs/AI_USE.md`.
-- Comments: a short comment before every logical block (what it does and why), not only docstrings.
+- **AI citation (course rule):** every Python file starts, on line 1, with the module docstring `"""AI use: ...`
+  (copy the first line from any file; Python only reads a docstring that is the first thing in the file). Styles,
+  settings and notebooks keep the two-line `AI use:` comment at the top. `tests/test_app.py` fails without it.
+  Record new prompts and what the team changed in `docs/AI_USE.md`.
+- **Docstrings (lecturer's format):** every function, method and nested function has one: a one-line summary, an
+  empty line, `Input:` (what comes in, "none." if nothing), an empty line, `Output:` (what comes back). Check with
+  the script described in `tools/CLAUDE.md`.
+- Comments: a short comment before every logical block (what it does and why), not only docstrings; every import says
+  what the library is for.
 
 ## How to keep this file current
 

@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""How the model works: the page that explains the model to a reader without a statistics background.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+How the model works: the page that explains the model to a reader without a statistics background.
 
 On top there are two boxes ("In short" and "How to read a risk score"), then six tabs with one question each:
 what is predicted, how good it is, which model won the race, what matters most, can you trust the percentages,
@@ -11,29 +11,33 @@ and at the very end the page itself. All numbers are read from the files in mode
 trials, so the texts follow a retrained model.
 """
 
-import json
-import sys
-from pathlib import Path
+import json  # reading the metrics files (models/*.json)
+import sys  # sys.path, so the page can import src/ and ui.py
+from pathlib import Path  # file paths that work on every computer
 
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit as st
-from sklearn.metrics import roc_auc_score
+import pandas as pd  # tables (DataFrame)
+import plotly.express as px  # quick charts (the importance bars)
+import plotly.graph_objects as go  # charts built trace by trace
+import streamlit as st  # the web page itself
+from sklearn.metrics import roc_auc_score  # ROC-AUC inside each phase
 
 # Streamlit runs a page as its own script, so we add the project folder (for src/) and app/ (for ui) by hand.
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Project code: feature lists, plain names, scoring, the gain curve and the shared look of the app.
 from src.features import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURE_COLUMNS
 from src.labels import PHASE_ORDER, feature_name, label
 from src.predict import load_model, score_frame
 from src.viz import gain_curve
 from ui import PALETTE, alpha, chart, chip, page_header, require_router
 
+# ---- 1. Router check ----
+# A page opened directly (refresh, bookmark) is sent through Home.py first.
 require_router("pages/4_How_the_Model_Works.py")
 
-# Settings of this page (not of the model).
+# ---- 2. Settings of this page ----
+# These are settings of this page (not of the model).
 MODELS = ROOT / "models"
 TRIALS_FILE = ROOT / "data" / "processed" / "trials.parquet"
 TOP_FEATURES = 12  # how many factors the importance chart shows
@@ -52,10 +56,13 @@ DEFAULT_COST_RATIO = 5
 
 @st.cache_data(show_spinner=False)
 def load_metrics(name="gbm"):
-    """The metrics of a saved model from models/<name>_metrics.json ("gbm" is the app model).
+    """Read the metrics of a saved model from models/<name>_metrics.json.
 
-    Returns None if the file is missing or cannot be read.
+    Input: name is the model name as a string ("gbm" is the app model, the default).
+
+    Output: the metrics as a dictionary, or None if the file is missing or cannot be read.
     """
+    # A missing or broken file is not an error: the page then shows a message instead.
     try:
         text = (MODELS / f"{name}_metrics.json").read_text()
         return json.loads(text)
@@ -65,7 +72,13 @@ def load_metrics(name="gbm"):
 
 @st.cache_data(show_spinner=False)
 def load_horse_race():
-    """The result of the model race (models/horse_race.json, written by src/horse_race.py). None if it is missing."""
+    """Read the result of the model race (models/horse_race.json, written by src/horse_race.py).
+
+    Input: none.
+
+    Output: the race as a dictionary, or None if the file is missing or cannot be read.
+    """
+    # Same pattern as load_metrics: None means "not available".
     try:
         text = (MODELS / "horse_race.json").read_text()
         return json.loads(text)
@@ -77,8 +90,11 @@ def load_horse_race():
 def load_directions(features):
     """For each feature: does a higher value (or a "yes") go with more or with fewer stopped trials?
 
-    Looks only at the training trials and returns a dictionary {feature: text}, or None if the data file is
-    missing. This describes the data on its own, not what the model does with it.
+    Looks only at the training trials. This describes the data on its own, not what the model does with it.
+
+    Input: features is a tuple of feature names (strings); a tuple so that Streamlit can cache the result.
+
+    Output: a dictionary {feature name: direction text}, or None if the data file is missing.
     """
     # Read only the training trials and only the columns we need.
     try:
@@ -87,6 +103,7 @@ def load_directions(features):
     except (FileNotFoundError, OSError, ValueError, KeyError):
         return None
 
+    # One direction text per feature, depending on the kind of feature.
     directions = {}
     for feature in features:
         if feature in CATEGORICAL_FEATURES:
@@ -96,10 +113,12 @@ def load_directions(features):
             # Spearman works with ranks, so very skewed numbers (the eligibility length) do not distort it.
             values = pd.to_numeric(data[feature], errors="coerce")
             rho = values.corr(data["label"].astype(float), method="spearman")
+            # A yes/no feature is described with "yes", a number with "higher".
             if feature in BINARY_FEATURES:
                 word = "yes"
             else:
                 word = "higher"
+            # Only a clear correlation counts as a direction.
             if rho >= MIN_DIRECTION:
                 directions[feature] = f"{word} → stopped more often"
             elif rho <= -MIN_DIRECTION:
@@ -113,8 +132,14 @@ def load_directions(features):
 def load_importance():
     """The most important factors of the app model, strongest first, each with a plain name and a direction text.
 
-    The numbers are the permutation importance that src/evaluate.py saved. Returns None if the file is missing.
+    The numbers are the permutation importance that src/evaluate.py saved.
+
+    Input: none.
+
+    Output: a DataFrame with one row per factor (columns of the csv plus "Factor" and "Direction"), or None if the
+    file is missing.
     """
+    # Read the saved importance table.
     try:
         table = pd.read_csv(MODELS / "feature_importance.csv")
     except (OSError, ValueError):
@@ -140,10 +165,14 @@ def load_importance():
 
 @st.cache_data(show_spinner="Scoring the test trials...")
 def load_test_scores():
-    """Score the test trials (start 2017-2019) with the app model. Returns None if the data or the model is missing.
+    """Score the test trials (start 2017-2019) with the app model.
 
     We score them here instead of saving a table, so the numbers always belong to the model that is in models/.
-    The result has one row per test trial: label, risk, raw (the score before calibration), year and phase.
+
+    Input: none.
+
+    Output: a DataFrame with one row per test trial (label, risk, raw = the score before calibration, year, phase),
+    or None if the data or the model is missing.
     """
     # The calibrated risk of every test trial.
     try:
@@ -186,7 +215,12 @@ def phase_table(scores):
     """One row per phase: number of test trials, mean prediction, real share stopped and the ROC-AUC inside it.
 
     Phases with fewer than MIN_GROUP test trials are left out.
+
+    Input: scores is the DataFrame from load_test_scores().
+
+    Output: a DataFrame with one row per phase, in clinical order (Early phase 1 ... Phase 4).
     """
+    # One row per phase that is big enough.
     rows = []
     for phase, group in scores.groupby("phase"):
         # ROC-AUC can only be computed if the group has both outcomes.
@@ -216,8 +250,12 @@ def phase_table(scores):
 def year_table(scores):
     """One row per start year of the test trials: how many, real share stopped, mean prediction and the gap.
 
-    too_low says how much higher the real share is than the prediction (0.25 = 25% higher).
+    Input: scores is the DataFrame from load_test_scores().
+
+    Output: a DataFrame with the columns year, trials, real, predicted and too_low. too_low says how much higher the
+    real share is than the prediction (0.25 = 25% higher).
     """
+    # Count, real rate and mean prediction for each start year.
     table = scores.groupby("year").agg(
         trials=("label", "size"), real=("label", "mean"), predicted=("risk", "mean")
     ).reset_index()
@@ -228,7 +266,9 @@ def year_table(scores):
 def calibration_curve(predicted, observed):
     """Cut the trials into ten groups of the same size, lowest predictions first.
 
-    Returns one row per group with the mean prediction and the real share stopped early.
+    Input: predicted is a series of predicted risks (0 to 1); observed is a series of real outcomes (0 or 1).
+
+    Output: a DataFrame with one row per group and the columns mean_predicted and observed_rate.
     """
     frame = pd.DataFrame({"p": predicted, "y": observed}).dropna()
     # Many trials have exactly the same calibrated score. Ranking first gives every trial its own place, so the
@@ -239,7 +279,14 @@ def calibration_curve(predicted, observed):
 
 
 def confusion_counts(labels, risks, threshold):
-    """Count the four cells of the confusion matrix at one threshold ("positive" means stopped early)."""
+    """Count the four cells of the confusion matrix at one threshold ("positive" means stopped early).
+
+    Input: labels is an array of real outcomes (1 = stopped, 0 = completed); risks is an array of predicted risks;
+    threshold is the yes/no line as a number between 0 and 1 (a trial is flagged at or above it).
+
+    Output: a dictionary with the counts tp, fp, fn and tn.
+    """
+    # A trial is flagged if its risk reaches the line.
     flagged = risks >= threshold
     stopped = labels == 1
     return {
@@ -251,7 +298,13 @@ def confusion_counts(labels, risks, threshold):
 
 
 def version_table(v1, v2):
-    """Compare model v1 (the app model) with v2 (plus condition areas): inputs, CV and test numbers, status."""
+    """Compare model v1 (the app model) with v2 (plus condition areas): inputs, CV and test numbers, status.
+
+    Input: v1 and v2 are the metrics dictionaries of the two models (from load_metrics).
+
+    Output: a DataFrame with one row per model, with the numbers already written as text.
+    """
+    # The name and status that are shown for each model.
     versions = [
         ("v1: design features", v1, "Used in the app"),
         ("v2: plus condition areas", v2, "Tested, not used"),
@@ -271,7 +324,13 @@ def version_table(v1, v2):
 
 
 def ablation_table(ablations):
-    """One row per ablation run: which inputs were left out and what that cost on the test trials."""
+    """One row per ablation run: which inputs were left out and what that cost on the test trials.
+
+    Input: ablations is the "ablations" dictionary of gbm_metrics.json (it has a list "runs").
+
+    Output: a DataFrame with one row per run, with the numbers already written as text.
+    """
+    # Build one table row from each run.
     rows = []
     for run in ablations["runs"]:
         dropped = run["dropped"]
@@ -301,7 +360,13 @@ def ablation_table(ablations):
 # ---------------------------------------------------------------------------------------------------------------
 
 def risk_group_chart(bins, average):
-    """Two bars per risk group (10% of the test trials each): what the model predicted and what really happened."""
+    """Two bars per risk group (10% of the test trials each): what the model predicted and what really happened.
+
+    Input: bins is the list of ten group dictionaries (mean_predicted, observed_rate) from gbm_metrics.json;
+    average is the real share stopped early over all test trials (0 to 1).
+
+    Output: a Plotly figure.
+    """
     # The ten groups are already computed in gbm_metrics.json.
     groups = [str(number) for number in range(1, len(bins) + 1)]
     predicted = [group["mean_predicted"] for group in bins]
@@ -332,6 +397,10 @@ def calibration_chart(after, before):
     A model whose percentages can be taken literally lies on the diagonal. after is the app model, before the
     same GBM before calibration (tables with mean_predicted and observed_rate). before can be None, then only
     the app model is drawn.
+
+    Input: after and before are DataFrames with the columns mean_predicted and observed_rate; before may be None.
+
+    Output: a Plotly figure.
     """
     # Both axes get the same range with a little room on top, so the diagonal is a real 45-degree line.
     top = max(after["mean_predicted"].max(), after["observed_rate"].max())
@@ -369,6 +438,11 @@ def gain_chart(curve, share):
 
     Shows the model's curve against the diagonal of picking at random. The point the user chose on the slider
     (share) is marked in the pink accent colour.
+
+    Input: curve is the DataFrame from gain_curve() (columns reviewed, caught, precision); share is the slider value
+    as a share between 0 and 1.
+
+    Output: a Plotly figure.
     """
     # The row of the curve that is closest to the slider value.
     point = curve.iloc[(curve["reviewed"] - share).abs().argmin()]
@@ -402,6 +476,10 @@ def score_violin(scores):
 
     A violin shows the whole spread (the box inside marks the middle half), so the reader sees how much the two
     groups overlap. That overlap is the honest picture behind a single ROC-AUC number.
+
+    Input: scores is the DataFrame from load_test_scores() (columns label and risk).
+
+    Output: a Plotly figure.
     """
     # One half-violin per outcome. Completed comes first, so the stopped trials are drawn above it.
     outcomes = [("Completed", 0, PALETTE["neutral"]), ("Stopped early", 1, PALETTE["up"])]
@@ -427,6 +505,10 @@ def importance_chart(importance):
     """Horizontal bars: how much the model relies on each factor.
 
     The colour of a bar and the words next to it say which way the factor goes in the training trials.
+
+    Input: importance is the DataFrame from load_importance() (columns Factor, Direction, roc_auc_drop_mean).
+
+    Output: a Plotly figure.
     """
     # Plotly draws the first row at the bottom. Turned around, the strongest factor ends up on top.
     ordered = importance.iloc[::-1]
@@ -462,6 +544,10 @@ def confusion_chart(counts):
 
     The layout is the one of scikit-learn (CS course 6.4.2). Correct cells are green, false alarms yellow and
     missed stopped trials red, so the two kinds of error look different.
+
+    Input: counts is the dictionary from confusion_counts() (tp, fp, fn, tn).
+
+    Output: a Plotly figure.
     """
     # z only picks the colour of a cell: 0 = correct, 1 = false alarm, 2 = missed.
     z = [[0, 1],
@@ -488,6 +574,10 @@ def horse_race_chart(race):
 
     The open circle is the same model with its standard settings and the dashed line is the baseline. So the
     reader sees how much tuning helped and how far each model is ahead of guessing. The winner is the dark bar.
+
+    Input: race is the dictionary from load_horse_race() (keys horses and verdict).
+
+    Output: a Plotly figure.
     """
     horses = race["horses"]
     winner = race["verdict"]["winner"]
@@ -540,9 +630,12 @@ def horse_race_chart(race):
 def in_short_box(metrics, phases):
     """The "In short" box: the three or four findings that the rest of the page explains.
 
-    phases is the table from phase_table(), or None if the test trials could not be scored. Then the line about
-    the phases is left out.
+    Input: metrics is the dictionary from load_metrics(); phases is the table from phase_table(), or None if the
+    test trials could not be scored (then the line about the phases is left out).
+
+    Output: nothing; it draws the box on the page.
     """
+    # The numbers used in the sentences below.
     test = metrics["split"]["test"]
     top_group = metrics["test"]["calibration_bins"][-1]["observed_rate"]  # real rate in the riskiest tenth
     predicted = metrics["calibration"]["test_after"]["mean_predicted"]
@@ -572,7 +665,12 @@ def in_short_box(metrics, phases):
 
 
 def read_a_score_box(metrics):
-    """The "How to read a risk score" box: what the percentage, the colour and the rank mean, and what not."""
+    """The "How to read a risk score" box: what the percentage, the colour and the rank mean, and what not.
+
+    Input: metrics is the dictionary from load_metrics().
+
+    Output: nothing; it draws the box on the page.
+    """
     # All numbers come from the metrics file, so the text follows a retrained model.
     test = metrics["split"]["test"]
     predicted = metrics["calibration"]["test_after"]["mean_predicted"]
@@ -586,6 +684,7 @@ def read_a_score_box(metrics):
     else:
         reference_n = metrics["split"]["train"]["n_trials"]
 
+    # The colour legend and then the box itself.
     legend = (chip("Lower than most past trials", "green") + chip("Higher than most past trials", "yellow")
               + chip("Among the riskiest 10%", "red"))
     with st.container(border=True, key="read_box"):
@@ -611,7 +710,12 @@ def read_a_score_box(metrics):
 # ---------------------------------------------------------------------------------------------------------------
 
 def tab_predicted(metrics):
-    """Tab "What is predicted": what "stopped early" means and which trials are in the data."""
+    """Tab "What is predicted": what "stopped early" means and which trials are in the data.
+
+    Input: metrics is the dictionary from load_metrics().
+
+    Output: nothing; it writes the tab content on the page.
+    """
     # Add up both splits: the size of the whole data set.
     train = metrics["split"]["train"]
     test = metrics["split"]["test"]
@@ -636,7 +740,13 @@ def tab_predicted(metrics):
 
 
 def quality_numbers(metrics):
-    """First part of the tab "How good is it?": the three test numbers, each next to what guessing would score."""
+    """First part of the tab "How good is it?": the three test numbers, each next to what guessing would score.
+
+    Input: metrics is the dictionary from load_metrics().
+
+    Output: nothing; it writes the numbers and their explanations on the page.
+    """
+    # The pieces of the metrics file that are used below.
     train = metrics["split"]["train"]
     test = metrics["split"]["test"]
     result = metrics["test"]  # the numbers of the model on the test trials
@@ -700,12 +810,18 @@ def cost_slider_part(metrics, scores):
 
     Where the line belongs depends on what each kind of mistake costs (DSF deck 11). The confusion matrix shows
     what that line does on the test trials (CS course 6.4.2, DSF deck 12).
+
+    Input: metrics is the dictionary from load_metrics(); scores is the DataFrame from load_test_scores().
+
+    Output: nothing; it draws the slider, a sentence, the confusion matrix and a caption on the page.
     """
+    # The slider and the yes/no line that follows from it.
     ratio = st.slider("A missed stopped trial costs how many times as much as a false alarm?", 1, 20,
                       DEFAULT_COST_RATIO, key="cost_ratio")
     # A false alarm costs 1 and a missed stopped trial costs `ratio`. Then it pays to flag a trial if
     # P(stopped) > cost of a false alarm / (both costs together) = 1 / (1 + ratio).
     line = 1 / (1 + ratio)
+    # What that line does on the test trials.
     counts = confusion_counts(scores["label"].to_numpy(), scores["risk"].to_numpy(), line)
     n_flagged = counts["tp"] + counts["fp"]
     # Precision: share of the flagged trials that were really stopped (0 if nothing is flagged).
@@ -714,6 +830,7 @@ def cost_slider_part(metrics, scores):
         precision = counts["tp"] / n_flagged
     # Recall: share of the really stopped trials that were flagged.
     recall = counts["tp"] / (counts["tp"] + counts["fn"])
+    # The result in words, then the matrix and how to read it.
     st.write(
         f"If a missed stopped trial costs {ratio}x a false alarm, it pays to flag every trial whose estimated "
         f"risk is above **1 / (1 + {ratio}) = {line:.0%}**. On the {len(scores):,} test trials that flags "
@@ -735,6 +852,10 @@ def review_slider_part(scores):
     """The review slider: if the riskiest part of the trials is checked first, how many stopped trials are found?
 
     This is the decision an investor or sponsor really has: "I can look closely at only so many trials."
+
+    Input: scores is the DataFrame from load_test_scores().
+
+    Output: nothing; it draws the slider, a sentence, the gain chart and a caption on the page.
     """
     # The slider shows whole percent, the chart functions work with shares (0.2 = 20%).
     share = st.slider("Share of trials you have time to review", 5, 50, 20, step=5, format="%d%%",
@@ -743,6 +864,7 @@ def review_slider_part(scores):
     curve = gain_curve(scores["label"], scores["risk"])
     point = curve.iloc[(curve["reviewed"] - share).abs().argmin()]
     reviewed = int(round(share * len(scores)))
+    # The result in words, then the chart.
     st.write(
         f"Reviewing the riskiest **{share:.0%}** of the {len(scores):,} test trials ({reviewed:,} trials) finds "
         f"**{point['caught']:.0%}** of all trials that were really stopped. Picking {share:.0%} at random would "
@@ -759,6 +881,10 @@ def phase_part(metrics, phases):
 
     Ranking trials of the same phase is harder than ranking across phases, because the phase itself already says
     a lot about the risk.
+
+    Input: metrics is the dictionary from load_metrics(); phases is the table from phase_table().
+
+    Output: nothing; it writes a sentence, a table and a caption on the page.
     """
     # The best and the worst phase, and the phase where the predictions are too low by the most.
     aucs = phases["ROC-AUC inside the phase"]
@@ -788,15 +914,22 @@ def tab_quality(metrics, phases, scores):
 
     scores are the scored test trials and phases the table from phase_table(). Both are None if the data or the
     model is missing, and the parts that need them then say so.
+
+    Input: metrics is the dictionary from load_metrics(); phases and scores are as described above, or None.
+
+    Output: nothing; it writes the tab content on the page.
     """
+    # Part 1: the three test numbers.
     quality_numbers(metrics)
 
+    # Part 2: the cost slider and the confusion matrix.
     st.markdown("##### From a score to a yes/no: where should the line be?")
     if scores is None:
         st.info("This part needs the trial data and the model file, which are not available here.")
     else:
         cost_slider_part(metrics, scores)
 
+    # Part 3: the review-budget slider, then the spread of the scores.
     st.markdown("##### If you can only check some trials, which ones?")
     if scores is None:
         st.info("This part needs the trial data and the model file, which are not available here.")
@@ -810,6 +943,7 @@ def tab_quality(metrics, phases, scores):
                  "lot. That overlap is why a single score is never a verdict.")
         chart(score_violin(scores), key="score_violin")
 
+    # Part 4: the ranking quality per phase.
     st.markdown("##### Is it equally good in every phase?")
     if phases is None:
         st.info("The breakdown by phase needs the trial data and the model file, which are not available here.")
@@ -821,7 +955,12 @@ def tab_race():
     """Tab "Which model won?": six models on the same time-ordered folds, standard against tuned, and the winner.
 
     This is the horse race of DSF deck 16. The numbers are read from models/horse_race.json.
+
+    Input: none.
+
+    Output: nothing; it writes the tab content on the page (or a message if the race file is missing).
     """
+    # Without the race file the tab says so and stops.
     race = load_horse_race()
     if race is None:
         st.info("The model race is not available yet (run python src/horse_race.py to create models/horse_race.json).")
@@ -829,6 +968,7 @@ def tab_race():
     horses = race["horses"]
     verdict = race["verdict"]
 
+    # What the race was, then the chart.
     st.write(
         "We did not just pick a model. Six candidates ran a fair race: the same training trials (2008-2016), the "
         "same five checks and the same score. Each check trains on the earlier trials and tests on the next, later "
@@ -885,7 +1025,12 @@ def tab_race():
 
 
 def tab_factors():
-    """Tab "What matters most": which factors the model relies on, and which way each one goes."""
+    """Tab "What matters most": which factors the model relies on, and which way each one goes.
+
+    Input: none.
+
+    Output: nothing; it writes the tab content on the page (or a message if the importance file is missing).
+    """
     # The importance numbers come from models/feature_importance.csv. Without the file the tab says so.
     importance = load_importance()
     if importance is None or importance.empty:
@@ -909,6 +1054,10 @@ def tab_trust(metrics, scores):
 
     Shows the gap over all test trials, per risk group, as a calibration plot and per start year. scores are the
     scored test trials or None.
+
+    Input: metrics is the dictionary from load_metrics(); scores is the DataFrame from load_test_scores(), or None.
+
+    Output: nothing; it writes the tab content on the page.
     """
     # ---- The average prediction before and after calibration against the real rate ----
     mean_before = metrics["calibration"]["test_before"]["mean_predicted"]
@@ -974,6 +1123,10 @@ def tab_versions(metrics):
     """Tab "Versions and checks": model v1 against v2, and the runs without the fields that can be edited later.
 
     It explains why the app uses the model it uses, and shows that the model does not depend on edited fields.
+
+    Input: metrics is the dictionary from load_metrics() (the app model).
+
+    Output: nothing; it writes the tab content on the page.
     """
     # ---- Version 1 or version 2 ----
     st.markdown("##### Version 1 or version 2?")
@@ -1035,7 +1188,8 @@ def tab_versions(metrics):
 # The page
 # ---------------------------------------------------------------------------------------------------------------
 
-# The header. The first sentence uses the real numbers of trials if the metrics file exists.
+# ---- 3. Page header ----
+# The first sentence uses the real numbers of trials if the metrics file exists.
 metrics = load_metrics()
 if metrics:
     split = metrics["split"]
@@ -1049,6 +1203,7 @@ page_header("How the model works", intro)
 st.page_link("pages/2_Check_Your_Trial.py", label="Try it yourself: check your own trial")
 
 if metrics:
+    # ---- 4. Score the test trials ----
     # Score the test trials (cached) and compute the phase table from them. Both are None if the trial data or
     # the model file is missing, and the parts of the page that need them then say so.
     scores = load_test_scores()
@@ -1056,8 +1211,11 @@ if metrics:
     if scores is not None:
         phases = phase_table(scores)
 
+    # ---- 5. The two boxes above the tabs ----
     in_short_box(metrics, phases)
     read_a_score_box(metrics)
+
+    # ---- 6. The six tabs ----
     # Six tabs with one question each, in the order a reader asks them.
     predicted_tab, quality_tab, race_tab, factors_tab, trust_tab, versions_tab = st.tabs(
         ["What is predicted", "How good is it?", "Which model won?", "What matters most", "Can you trust it?",
@@ -1075,6 +1233,7 @@ if metrics:
     with versions_tab:
         tab_versions(metrics)
 else:
+    # ---- 7. Fallback without metrics ----
     # Without the metrics file only the factor chart can be shown, because it reads its own file.
     st.info("Model metrics are not available yet (models/gbm_metrics.json is missing).")
     tab_factors()

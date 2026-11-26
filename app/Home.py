@@ -1,18 +1,31 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Trial-Radar entry point: sets up the top navigation (in the order people use the app) and the landing page."""
-import json
-import sys
-from pathlib import Path
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 
-import streamlit as st
+Trial-Radar entry point: sets up the top navigation (in the order people use the app) and the landing page.
+
+Outline of this file:
+    1. Imports
+    2. Constants: the page list, the audiences and the novelty text
+    3. headline_numbers: the big numbers read from the saved metrics
+    4. home: the landing page, band by band
+    5. Router: page setup, navigation and running the chosen page
+"""
+# ---- 1. Imports ----
+import json  # reads the saved metrics file
+import sys  # changes the import path
+from pathlib import Path  # builds file paths that work on every computer
+
+import streamlit as st  # the web app framework
 
 # Add app/ to the import path, so ui.py is found wherever Streamlit was started from.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Look and feel helpers from app/ui.py (css, hero band, chips, tick scale, safe html text).
 from ui import band_copy, chip, esc, hero, inject_css, tick_scale
 
+# ---- 2. Constants ----
+# The saved model metrics, the source of the big numbers on this page.
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 
+# ---- 2a. The page list ----
 # The five pages in the order people use them. Navigation and landing-page bands both come from this list, so
 # they cannot drift apart: (title, file, sentence for the band, action label).
 PAGES = [
@@ -27,6 +40,7 @@ PAGES = [
     ("Play the game", "pages/5_Game.py",
      "Two past trials, one was stopped early. Can you spot it more often than the model?", "Start a game"),
 ]
+# ---- 2b. Lookups ----
 # The file of each page by its title, for the links on the landing page.
 PAGE_FILE = {}
 for page_title, page_file, page_sentence, page_action in PAGES:
@@ -50,11 +64,16 @@ NOVELTY = ("Published models predict early termination well on paper, but the on
 
 @st.cache_data(show_spinner=False)
 def headline_numbers():
-    """The big numbers of the landing page: share stopped early, number of past trials and test ROC-AUC.
+    """Read the big numbers of the landing page: share stopped early, number of past trials and test ROC-AUC.
 
-    They are read from models/gbm_metrics.json, so they always match the saved model. Returns None if the file is
-    missing or incomplete.
+    They are read from models/gbm_metrics.json, so they always match the saved model.
+
+    Input: none.
+
+    Output: a dict with the keys "rate" (share of trials stopped early, 0 to 1), "total" (number of past trials) and
+    "roc_auc" (test ROC-AUC), or None if the file is missing or incomplete.
     """
+    # ---- 3. Read the metrics file ----
     try:
         metrics = json.loads(METRICS.read_text())
         train = metrics["split"]["train"]
@@ -67,10 +86,17 @@ def headline_numbers():
 
 
 def home():
-    """The landing page: one giant fact, who the app is for, one band per page and how to read a result."""
+    """Draw the landing page: one giant fact, who the app is for, one band per page and how to read a result.
+
+    Input: none.
+
+    Output: nothing. It draws the bands on the page.
+    """
+    # ---- 4a. Styles and numbers ----
     inject_css()
     numbers = headline_numbers()
 
+    # ---- 4b. Hero band ----
     # First band: the question, the share of trials stopped early as a giant number and the tick scale below it.
     # Without the metrics file only the question is shown.
     question = "How likely is a clinical trial to be stopped early?"
@@ -85,6 +111,7 @@ def home():
             hero(question, answer)
         st.page_link(PAGE_FILE["Check your own trial"], label="Check your own trial")
 
+    # ---- 4c. Who it is for ----
     # Who the app is for and what it adds. "band-title small" on purpose: the Home test lists the page bands by
     # the plain "band-title" class, and this band is not a page.
     with st.container(key="band_paper_who"):
@@ -98,6 +125,7 @@ def home():
                 st.page_link(PAGE_FILE[page_title], label=page_title)
         st.markdown(f'<div class="note">{esc(NOVELTY)}</div>', unsafe_allow_html=True)
 
+    # ---- 4d. One band per page ----
     # One band per page, in navigation order. The bands alternate between light and dark, starting light.
     for index in range(len(PAGES)):
         headline, page, text, action = PAGES[index]
@@ -118,6 +146,7 @@ def home():
             st.markdown(band_copy(headline, text, number, label), unsafe_allow_html=True)
             st.page_link(page, label=action)
 
+    # ---- 4e. How to read a result ----
     # Last band: the three colours and a plain note on how to read a result.
     with st.container(key="band_paper_read"):
         st.markdown('<h2 class="band-title small">How to read a result</h2>', unsafe_allow_html=True)
@@ -134,20 +163,23 @@ def home():
                    "treatment or participation.")
 
 
-# ---- Router ----
+# ---- 5. Router ----
 # Home.py is the entry point for every page: it sets the layout once, builds the top navigation from PAGES and runs
 # the chosen page. There is no page_title here, so each page names its own browser tab.
 st.set_page_config(page_icon=":material/radar:", layout="wide")
 
+# ---- 5a. Router flag ----
 # Pages check this flag (ui.require_router) to know they were opened through the router.
 st.session_state["via_router"] = True
 
+# ---- 5b. Navigation ----
 # The landing page first, then the five pages. Each title is also the browser tab title of that page.
 all_pages = [st.Page(home, title="Home", default=True)]
 for page_title, page_file, page_sentence, page_action in PAGES:
     all_pages.append(st.Page(page_file, title=page_title))
 navigation = st.navigation(all_pages, position="top")
 
+# ---- 5c. Run the chosen page ----
 # A page that was opened directly stored its name (ui.require_router) and comes back here.
 target = st.session_state.pop("target_page", None)
 if target:

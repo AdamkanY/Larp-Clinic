@@ -1,22 +1,34 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Check your own trial: enter a design from scratch and see its predicted risk of stopping early."""
-import re
-import sys
-from pathlib import Path
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 
-import pandas as pd
-import streamlit as st
+Check your own trial: enter a design from scratch and see its predicted risk of stopping early.
+
+Outline of the page code at the bottom of this file:
+    1. Header and result strip
+    2. Form: design, sponsor, outcomes, participants
+    3. Scoring the design
+    4. Where this design stands
+    5. What drives this estimate
+    6. Which single change lowers the estimate?
+"""
+import re  # splits the conditions text
+import sys  # changes the import path
+from pathlib import Path  # builds file paths that work on every computer
+
+import pandas as pd  # tables (DataFrame)
+import streamlit as st  # the web app framework
 
 # Pages run with app/ on the path, so add the repo root to import src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # app/, for risk_gauge
+# Risk card, comparison bar, drivers chart and their captions (app/risk_gauge.py).
 from risk_gauge import bar_caption, drivers_caption, drivers_chart, estimate_caption, risk_bar, risk_card
+# Feature code shared with training: condition areas, intervention types and the form-to-features function.
 from src.features import CONDITION_FLAG_FEATURES, INTERVENTION_TYPES, condition_features, features_from_design
-from src.labels import feature_name, feature_value, label
-from src.predict import explain, load_model, model_features, score
-from ui import chart, page_header, require_router
+from src.labels import feature_name, feature_value, label  # plain-English names for features, values and codes
+from src.predict import explain, load_model, model_features, score  # model loading, score, drivers, model inputs
+from ui import chart, page_header, require_router  # shared look: charts, header, router
 
+# Send the page through Home.py if it was opened directly.
 require_router("pages/2_Check_Your_Trial.py")
 
 # Label of the empty choice in every dropdown; it becomes a missing value, as in a real record without that field.
@@ -75,7 +87,13 @@ MISMATCH_END = (". Nothing is wrong with your entries; the model needs retrainin
 
 @st.cache_resource(show_spinner=False)
 def get_model():
-    """Load the trained model once per server. Returns None while models/gbm.joblib cannot be loaded."""
+    """Load the trained model once per server.
+
+    Input: none.
+
+    Output: the model object, or None while models/gbm.joblib cannot be loaded.
+    """
+    # A missing library or file means no model; the page then shows a message instead of a result.
     try:
         return load_model()
     except (ImportError, FileNotFoundError):
@@ -83,16 +101,31 @@ def get_model():
 
 
 def reset_form():
-    """Put every input back to the example trial."""
+    """Put every input back to the example trial.
+
+    Input: none.
+
+    Output: nothing. It writes the example values into the session state.
+    """
     for name, value in DEFAULTS.items():
         st.session_state[f"chk_{name}"] = value
 
 
 def pick(name, text):
-    """Dropdown for one categorical feature in plain words. 'Not specified' becomes None (a missing value)."""
+    """Draw a dropdown for one categorical feature in plain words. 'Not specified' becomes None (a missing value).
+
+    Input: name is the feature name, a key of CHOICES (text); text is the label above the dropdown (text).
+
+    Output: the chosen API code (text), or None if "Not specified" is chosen.
+    """
 
     def shown_name(code):
-        """What the dropdown shows for one option: the plain name of the API code."""
+        """Give the text the dropdown shows for one option: the plain name of the API code.
+
+        Input: code is an API code (text) or the "Not specified" option.
+
+        Output: the plain name as text.
+        """
         if code == UNSET:
             return UNSET
         return label(name, code)
@@ -106,12 +139,25 @@ def pick(name, text):
 
 
 def intervention_name(code):
-    """Plain name of an intervention type for the list, for example 'DIETARY_SUPPLEMENT' -> 'Dietary supplement'."""
+    """Give the plain name of an intervention type, for example 'DIETARY_SUPPLEMENT' becomes 'Dietary supplement'.
+
+    Input: code is the API code of the intervention type (text).
+
+    Output: the plain name as text.
+    """
     return label("", code)
 
 
 def split_conditions(text):
-    """'Asthma; COPD, Smoking' -> ['Asthma', 'COPD', 'Smoking']. Commas, semicolons and new lines separate entries."""
+    """Split the conditions text into a list, for example 'Asthma; COPD, Smoking' into three entries.
+
+    Commas, semicolons and new lines separate entries.
+
+    Input: text is what the user typed (text, may be None or empty).
+
+    Output: a list of condition names (text), without empty entries.
+    """
+    # Split at every separator and drop empty pieces.
     conditions = []
     for part in re.split(r"[;,\n]", text or ""):
         part = part.strip()
@@ -125,7 +171,13 @@ def split_conditions(text):
 # ---------------------------------------------------------------------------------------------------------------
 
 def lever_options(design, lever):
-    """The other values worth trying for one design lever. Nothing that would describe an impossible design."""
+    """List the other values worth trying for one design lever. Nothing that would describe an impossible design.
+
+    Input: design is the design dict of the form; lever is the name of the setting to vary (text, one of LEVERS).
+
+    Output: a list of values for that lever, without the current value.
+    """
+    # Each lever has its own rule for which values make sense.
     current = design.get(lever)
     options = []
     if lever == "masking":
@@ -176,7 +228,12 @@ def lever_options(design, lever):
 
 
 def describe(lever, old, new):
-    """One change in plain words, for example 'Blinding: None (open label) → Double blind'."""
+    """Describe one change in plain words, for example 'Blinding: None (open label) → Double blind'.
+
+    Input: lever is the setting name (text); old is its current value; new is the value after the change.
+
+    Output: the description as text.
+    """
     # "No maximum age" is None in the form, but the names in labels.py expect it as 120 years, like in the
     # training data.
     if lever == "max_age_years":
@@ -188,20 +245,34 @@ def describe(lever, old, new):
 
 
 def risk_of(design):
-    """Predicted risk of a design from the form. It goes through the same feature function as the training data."""
+    """Predict the risk of a design from the form. It goes through the same feature function as the training data.
+
+    Input: design is the design dict of the form.
+
+    Output: the predicted risk of stopping early (number between 0 and 1).
+    """
     return score(features_from_design(design), get_model())
 
 
 def new_risk(change):
-    """The new risk of a (description, new risk) pair. Used to sort the changes."""
+    """Pick the new risk out of a (description, new risk) pair. Used to sort the changes.
+
+    Input: change is a tuple (description, new risk).
+
+    Output: the new risk (number).
+    """
     return change[1]
 
 
 def lowering_changes(design):
-    """The best single change per design lever that lowers the risk, strongest first.
+    """Find the best single change per design lever that lowers the risk, strongest first.
 
-    Returns a list of (description, new risk, change in risk). Only LEVERS are tried: never phase, sponsor type,
-    purpose or the condition.
+    Only LEVERS are tried: never phase, sponsor type, purpose or the condition.
+
+    Input: design is the design dict of the form.
+
+    Output: a list of tuples (description, new risk, change in risk), at most MAX_CHANGES long, only with changes that
+    lower the risk.
     """
     # Score the current design once, then every other value of every lever, one change at a time.
     base = risk_of(design)
@@ -233,6 +304,7 @@ def lowering_changes(design):
 # The page
 # ---------------------------------------------------------------------------------------------------------------
 
+# ---- 1. Header and result strip ----
 page_header("Check your own trial", "Describe a trial design and see how likely it is to be stopped early. "
                                     "Change any value and the estimate updates straight away.")
 
@@ -240,6 +312,7 @@ page_header("Check your own trial", "Describe a trial design and see how likely 
 # been read and the risk is known.
 result_strip = st.container(key="sticky_result")
 
+# ---- 2. Form ----
 # First run: fill every input with the example trial. What the user already typed is kept.
 for name, value in DEFAULTS.items():
     if f"chk_{name}" not in st.session_state:
@@ -248,6 +321,7 @@ for name, value in DEFAULTS.items():
 # The form fills this dictionary. Its keys are the ones src.features.study_from_design reads.
 design = {}
 
+# ---- 2a. Panel 1 ----
 # Panel 1: the design itself (phase, allocation, blinding, model, purpose, arms, intervention types).
 with st.container(key="panel_design"):
     st.markdown("##### Design")
@@ -265,6 +339,7 @@ with st.container(key="panel_design"):
         "Intervention types", INTERVENTION_TYPES, key="chk_intervention_types", format_func=intervention_name,
         help="What is tested: a drug, a device, a behaviour change...")
 
+# ---- 2b. Panel 2 ----
 # Panel 2: who runs the trial and who watches it.
 with st.container(key="panel_sponsor"):
     st.markdown("##### Sponsor and oversight")
@@ -275,6 +350,7 @@ with st.container(key="panel_sponsor"):
     design["has_dmc"] = c.checkbox("Has a data monitoring committee", key="chk_has_dmc",
                                    help="An independent group that watches the safety data during the trial.")
 
+# ---- 2c. Panel 3 ----
 # Panel 3: what is measured and which conditions are studied.
 with st.container(key="panel_outcomes"):
     st.markdown("##### Outcomes")
@@ -296,6 +372,7 @@ with st.container(key="panel_outcomes"):
     else:
         st.caption("No condition area recognised; the model then treats it like any other condition.")
 
+# ---- 2d. Panel 4 ----
 # Panel 4: who may take part.
 with st.container(key="panel_people"):
     st.markdown("##### Participants")
@@ -318,8 +395,10 @@ with st.container(key="panel_people"):
             help="A short paragraph is about 500 characters; long inclusion/exclusion lists reach several thousand.",
         )
 
+# ---- 2e. Reset button ----
 st.button("Reset to the example trial", on_click=reset_form)
 
+# ---- 3. Scoring the design ----
 # Without a model file the form still works, but nothing can be scored.
 if get_model() is None:
     result_strip.info("The estimate is not available here yet: the model file is missing.")
@@ -350,6 +429,7 @@ if previous is not None and abs(risk - previous) >= 0.0005:
     delta = risk - previous
 result_strip.markdown(risk_card(risk, delta=delta, compact=True), unsafe_allow_html=True)
 
+# ---- 4. Where this design stands ----
 # Where the design ranks among past trials.
 st.subheader("Where this design stands")
 bar = risk_bar(risk)
@@ -360,6 +440,7 @@ with st.expander("How to read this"):
     st.write(bar_caption())
     st.write(estimate_caption(risk))
 
+# ---- 5. What drives this estimate ----
 # Which factors push this design's risk up or down (src.predict.explain). None means it could not be worked out,
 # an empty list means no factor differs from a typical past trial.
 st.subheader("What drives this estimate")
@@ -375,12 +456,14 @@ elif drivers == []:
 else:
     st.info("The breakdown is not available here yet: models/explain_reference.json is missing.")
 
+# ---- 6. Which single change lowers the estimate? ----
 # The best single change per design lever, as a small table. The heading speaks of the model's estimate, not the
 # real risk: the model learned patterns from past trials (prediction), not what a change would cause (DSF deck 01,
 # "prediction or causal question?").
 st.subheader("Which single change lowers the estimate?")
 changes = lowering_changes(design)
 if changes:
+    # One table row per change, shown as percentages.
     table_rows = []
     for text, risk_after, change in changes:
         table_rows.append({"Single change": text, "New estimate": f"{risk_after:.1%}", "Change": f"{change:+.1%}"})

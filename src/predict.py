@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Score trials with a saved model. This is the file the Streamlit app imports.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Score trials with a saved model. This is the file the Streamlit app imports.
 
 How the app uses it:
 
@@ -17,18 +17,18 @@ values were off by up to 2.2 log-odds on real trials). So explain() uses a simpl
 time to the value of a typical trial and look how much the prediction moves.
 """
 
-import json
-import sys
-from pathlib import Path
+import json  # reading the saved "typical trial" file
+import sys  # sys.path: lets us import the other files of src/ by their plain name
+from pathlib import Path  # file paths that work on every computer
 
-import joblib
-import numpy as np
-import pandas as pd
+import joblib  # loading the saved models
+import numpy as np  # arrays and fast searching in sorted scores
+import pandas as pd  # tables (DataFrame)
 
 # The other files of src/ are imported by their plain name, so this works from the app and from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES
-from labels import feature_name, feature_value
+from features import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES  # column lists
+from labels import feature_name, feature_value  # plain-English names for columns and values
 
 ROOT = Path(__file__).resolve().parents[1]  # the project folder
 DEFAULT_MODEL_PATH = "models/gbm.joblib"
@@ -47,7 +47,12 @@ LOADED_FILES = {}
 
 
 def full_path(path):
-    """A path like "models/gbm.joblib" is meant from the project folder, wherever the app was started."""
+    """Turn a path like "models/gbm.joblib" into a full path from the project folder, wherever the app started.
+
+    Input: path is a text or Path, relative to the project folder or absolute.
+
+    Output: a Path. An absolute path stays as it is.
+    """
     path = Path(path)
     if path.is_absolute():
         return path
@@ -55,7 +60,12 @@ def full_path(path):
 
 
 def load_model(path=DEFAULT_MODEL_PATH):
-    """Load a saved model from models/ (only the first time, afterwards from memory)."""
+    """Load a saved model from models/ (only the first time, afterwards from memory).
+
+    Input: path is the model file, relative to the project folder or absolute.
+
+    Output: the loaded model (it has predict_proba and decision_function).
+    """
     key = str(full_path(path))
     if key not in LOADED_FILES:
         LOADED_FILES[key] = joblib.load(key)
@@ -63,7 +73,12 @@ def load_model(path=DEFAULT_MODEL_PATH):
 
 
 def load_score_reference(path=SCORE_REFERENCE_PATH):
-    """The sorted risk scores of the past trials that percentile() compares with."""
+    """Load the sorted risk scores of the past trials that percentile() compares with.
+
+    Input: path is the .npy file with the scores, relative to the project folder or absolute.
+
+    Output: a sorted numpy array of risk scores.
+    """
     key = str(full_path(path))
     if key not in LOADED_FILES:
         LOADED_FILES[key] = np.sort(np.load(key))
@@ -71,7 +86,12 @@ def load_score_reference(path=SCORE_REFERENCE_PATH):
 
 
 def load_explain_reference(path=EXPLAIN_REFERENCE_PATH):
-    """The "typical training trial" that train.py saved, as a dictionary {column: typical value}."""
+    """Load the "typical training trial" that train.py saved.
+
+    Input: path is the JSON file, relative to the project folder or absolute.
+
+    Output: a dictionary {column: typical value}.
+    """
     key = str(full_path(path))
     if key not in LOADED_FILES:
         text = Path(key).read_text(encoding="utf-8")
@@ -80,9 +100,13 @@ def load_explain_reference(path=EXPLAIN_REFERENCE_PATH):
 
 
 def model_features(model):
-    """The input columns a model was trained on, in order.
+    """Find the input columns a model was trained on, in order.
 
     An older model that was trained with fewer columns keeps working, because it gets its own shorter list.
+
+    Input: model is a fitted scikit-learn model or pipeline.
+
+    Output: a list of column names. All FEATURE_COLUMNS if the model does not store its own list.
     """
     names = getattr(model, "feature_names_in_", None)
     if names is None:
@@ -98,6 +122,12 @@ def to_model_frame(records, columns=None):
     here, and that is what keeps them away from the model.
 
     A missing feature column raises an error. If we filled it in silently, the score would look fine but be wrong.
+
+    Input: records is a list of feature dictionaries (from build_features) or a DataFrame; columns is the list of
+    columns to keep (default: all FEATURE_COLUMNS).
+
+    Output: a DataFrame with exactly these columns in this order. Categories are text, flags and numbers are
+    floats, and every missing value is NaN.
     """
     if columns is None:
         columns = FEATURE_COLUMNS
@@ -109,6 +139,7 @@ def to_model_frame(records, columns=None):
     else:
         frame = pd.DataFrame(list(records))
 
+    # Stop with an error if a column is missing.
     missing = []
     for column in columns:
         if column not in frame.columns:
@@ -116,6 +147,7 @@ def to_model_frame(records, columns=None):
     if missing:
         raise ValueError(f"Missing feature keys: {missing}")
 
+    # Convert every column to the type the model expects.
     out = {}
     for column in columns:
         if column in CATEGORICAL_FEATURES:
@@ -132,10 +164,15 @@ def to_model_frame(records, columns=None):
 
 
 def score_frame(records, model=None):
-    """Predicted risk of stopping early for many trials at once (one number per row, same order).
+    """Predict the risk of stopping early for many trials at once (one number per row, same order).
 
     Use this for whole tables (the game, the model page). Calling score() thousands of times would take minutes.
     Without a model the calibrated app model is used.
+
+    Input: records is a list of feature dictionaries or a DataFrame with the feature columns; model is a saved
+    model, or None for the calibrated app model.
+
+    Output: a numpy array with one risk (0 to 1) per trial.
     """
     if model is None:
         model = load_model()
@@ -145,19 +182,26 @@ def score_frame(records, model=None):
 
 
 def score(features, model=None):
-    """Predicted risk of stopping early for ONE trial, a number between 0 and 1.
+    """Predict the risk of stopping early for ONE trial, a number between 0 and 1.
 
-    features is the dictionary from build_features(). Extra keys such as the id or the title are ignored.
+    Input: features is the dictionary from build_features(). Extra keys such as the id or the title are ignored.
+    model is a saved model, or None for the calibrated app model.
+
+    Output: the risk as a float between 0 and 1.
     """
     return float(score_frame([features], model)[0])
 
 
 def percentile(prob, reference_path=SCORE_REFERENCE_PATH):
-    """How many percent of the past trials have a LOWER risk score than prob.
+    """Work out how many percent of the past trials have a LOWER risk score than prob.
 
     percentile(p) == 73.0 means "riskier than 73% of past trials". The past trials are the training trials that
     started 2009-2016 (95,500). Each of them was scored by a model that had not seen it, so the comparison is
     as honest as a new score. Trials with exactly the same score do not count as lower.
+
+    Input: prob is a risk score between 0 and 1; reference_path is the file with the scores of past trials.
+
+    Output: a float between 0 and 100.
     """
     reference = load_score_reference(reference_path)
     lower = np.searchsorted(reference, prob, side="left")  # the scores are sorted, so this is a quick search
@@ -165,20 +209,29 @@ def percentile(prob, reference_path=SCORE_REFERENCE_PATH):
 
 
 def reference_size(reference_path=SCORE_REFERENCE_PATH):
-    """How many past trials percentile() compares with (for the captions in the app)."""
+    """Count how many past trials percentile() compares with (for the captions in the app).
+
+    Input: reference_path is the file with the scores of past trials.
+
+    Output: the number of past trials as an int.
+    """
     return int(len(load_score_reference(reference_path)))
 
 
 def explain(features, top_n=5, model=None, reference=None):
-    """The factors that push the predicted risk of one trial up or down the most.
+    """Find the factors that push the predicted risk of one trial up or down the most.
 
     Idea: take the trial and replace ONE value by the value of a typical training trial (the median for numbers
     and flags, the most common value for categories). Then look how much the model's prediction changes. A value
     that is already typical changes nothing and is left out. The changes are measured in log-odds on the model
     before calibration. They are one-at-a-time effects, so they do not add up to the full difference.
 
-    Returns a list of at most top_n tuples, biggest effect first:
-    (plain name, this trial's value in words, "up" or "down", size of the effect)
+    Input: features is the dictionary from build_features(); top_n is the maximum number of factors to return;
+    model is the model used for the explanation (default: the uncalibrated GBM); reference is the dictionary of
+    typical values (default: the file saved by train.py).
+
+    Output: a list of at most top_n tuples, biggest effect first:
+    (plain name, this trial's value in words, "up" or "down", size of the effect as a float).
     """
     if model is None:
         model = load_model(EXPLAIN_MODEL_PATH)

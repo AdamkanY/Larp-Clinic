@@ -1,12 +1,13 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Plain-English names for the codes the ClinicalTrials.gov API and the processed data use, and for the model's
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Plain-English names for the codes the ClinicalTrials.gov API and the processed data use, and for the model's
 input columns.
 
 One place for every page, so the same thing always carries the same words (for example "No phase" instead of
 "NA", "Not applicable" or "N/A"). Pure Python: no Streamlit, no model code.
 """
 
+# ---- 1. Names for the API codes ----
 NOT_STATED = "Not stated"
 
 # Keys cover both the API spelling (PHASE1/PHASE2) and the spelling in trials.parquet (Phase 1/Phase 2).
@@ -55,11 +56,18 @@ def label(kind, code):
     """Friendly name of an API code, for example label("masking", "DOUBLE") -> "Double blind".
 
     Unknown codes are cleaned up ("SOME_CODE" -> "Some code"); a missing value becomes "Not stated".
+
+    Input: kind is the kind of code, a key of NAMES (for example "masking", string); code is the raw code or
+    label (string, or None / NaN when it is missing).
+
+    Output: the plain-English name as a string ("Not stated" if the value is missing).
     """
+    # Missing values come first, so they never reach the lookup.
     if code is None or code != code or code == "":  # None, NaN and the empty string
         return NOT_STATED
     return NAMES.get(kind, {}).get(code) or str(code).replace("_", " ").capitalize()
 
+# ---- 2. Names for the model's input columns ----
 # Plain-English names for the model's input columns (FEATURE_COLUMNS in src/features.py). The How the model works page,
 # the per-trial driver charts and the "which single change lowers the estimate" table all read them from here.
 FEATURE_NAMES = {
@@ -107,7 +115,13 @@ NO_MAX_AGE = 120.0
 
 
 def feature_name(column):
-    """Plain name of a model input column, for example "has_dmc" -> "Has a data monitoring committee"."""
+    """Plain name of a model input column, for example "has_dmc" -> "Has a data monitoring committee".
+
+    Input: column is the name of a model input column (string, for example "has_dmc").
+
+    Output: the plain-English name as a string; for an unknown column the name with spaces and a capital letter.
+    """
+    # Columns that are not in the table still get a readable name.
     return FEATURE_NAMES.get(column) or column.replace("_", " ").capitalize()
 
 
@@ -115,17 +129,30 @@ def feature_value(column, value):
     """A feature value in plain words, for example ("masking", "DOUBLE") -> "Double blind", ("has_dmc", 1) -> "Yes".
 
     Categories go through `label`, 0/1 flags become Yes/No, ages and lengths get their unit; gaps are "Not stated".
+
+    Input: column is the name of a model input column (string); value is the value of that column for one trial
+    (string for categories, number for flags, ages and counts, or None / NaN when it is missing).
+
+    Output: the value in plain words as a string.
     """
+    # Categories have their own name tables.
     if column in NAMES:
         return label(column, value)
+
+    # A gap is shown as "Not stated".
     if value is None or value != value:  # None and NaN
         return NOT_STATED
+    # 0/1 flags become Yes / No.
     if column.startswith(("has_", "intervention_", "cond_")) or column == "healthy_volunteers":
         return "Yes" if value else "No"
+
+    # Ages get the unit "years"; the stand-in for "no maximum age" is shown in words.
     if column == "max_age_years" and float(value) >= NO_MAX_AGE:
         return "No upper limit"
     if column.endswith("_age_years"):
         return f"{float(value):g} years"
+
+    # The length of the criteria text counts characters; every other column is a plain number.
     if column == "eligibility_text_len":
         return f"{int(value):,} characters"
     return f"{float(value):g}"

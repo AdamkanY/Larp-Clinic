@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Turn the downloaded API pages into the table the model learns from: data/processed/trials.parquet.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Turn the downloaded API pages into the table the model learns from: data/processed/trials.parquet.
 
 Every study in data/raw/pages/ goes through build_features(). We keep the COMPLETED and TERMINATED trials that
 started between 2008-01-01 and 2019-12-31 and add the column "split": train = start 2008-2016, test = start
@@ -12,18 +12,20 @@ How to run it:
                                              # (works without the raw pages)
 """
 
-import argparse
-import json
-import sys
-from pathlib import Path
+# ---- 1. Imports ----
+import argparse  # read the option --backfill
+import json  # read the saved pages
+import sys  # change the module search path
+from pathlib import Path  # file paths
 
-import pandas as pd
+import pandas as pd  # tables (DataFrame) and the parquet file
 
 # The other files of src/ are imported by their plain name, so this works from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from features import BINARY_FEATURES, CONDITION_FLAG_FEATURES, EXTRA_DISPLAY_COLS, FEATURE_COLUMNS, META_COLUMNS
 from features import build_features, condition_features
 
+# ---- 2. Settings ----
 ROOT = Path(__file__).resolve().parents[1]  # the project folder
 PAGES_DIR = ROOT / "data" / "raw" / "pages"
 OUT_PATH = ROOT / "data" / "processed" / "trials.parquet"
@@ -36,7 +38,13 @@ TEST_FROM_YEAR = 2017  # train: 2008-2016, test: 2017-2019
 
 
 def load_rows():
-    """Read every downloaded page and run build_features() on every study. Returns a list of feature rows."""
+    """Read every downloaded page and run build_features() on every study.
+
+    Input: none (it reads the pages in data/raw/pages/).
+
+    Output: a list of feature rows, one dictionary per study.
+    """
+    # Find the saved pages; stop with a message if there are none.
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if not pages:
         raise SystemExit(f"No pages in {PAGES_DIR}; run src/fetch_data.py first.")
@@ -52,7 +60,12 @@ def load_rows():
 
 
 def build_dataset(rows):
-    """Make the final table from the feature rows: no duplicates, only labelled trials in our years, with split."""
+    """Make the final table from the feature rows: no duplicates, only labelled trials in our years, with split.
+
+    Input: rows is a list of feature dictionaries, as load_rows() returns it.
+
+    Output: a pandas DataFrame with one row per usable trial and the extra column "split" ("train" or "test").
+    """
     # One row per study. A study can be on two pages if the registry changed while we were downloading.
     df = pd.DataFrame(rows, columns=META_COLUMNS + EXTRA_DISPLAY_COLS + FEATURE_COLUMNS)
     n_dupes = df.duplicated("nct_id").sum()
@@ -87,9 +100,16 @@ def set_dtypes(df):
 
     With normal integers pandas would turn a column with a missing value into decimal numbers. The types "Int8"
     and "Int32" (with a capital I) keep whole numbers and mark a missing value as <NA>.
+
+    Input: df is the trials table (DataFrame).
+
+    Output: the same DataFrame with the new column types.
     """
+    # Flags are 0/1 values.
     for col in BINARY_FEATURES:
         df[col] = df[col].astype("Int8")
+
+    # Counts and lengths are larger whole numbers.
     for col in ["n_arms", "n_primary_outcomes", "n_secondary_outcomes", "n_conditions", "eligibility_text_len"]:
         df[col] = df[col].astype("Int32")
     df["n_condition_categories"] = df["n_condition_categories"].astype("Int8")
@@ -102,6 +122,10 @@ def backfill_conditions(df):
     We need this when the keywords in features.py change: the raw pages are not in git, so we cannot always
     rebuild everything. The "conditions" column holds the registered conditions joined with "; " (see
     build_features). Splitting it gives back the list that condition_features() gets from a raw record.
+
+    Input: df is the existing trials table with a "conditions" column (DataFrame).
+
+    Output: a DataFrame with the new condition columns and the usual column order.
     """
     # One row of flags per trial. A trial without conditions gets None, which gives all zeros.
     flag_rows = []
@@ -126,7 +150,13 @@ def backfill_conditions(df):
 
 
 def report(df):
-    """Print how many trials we have, the share of terminated trials per split and the missing values."""
+    """Print how many trials we have, the share of terminated trials per split and the missing values.
+
+    Input: df is the finished trials table (DataFrame).
+
+    Output: nothing. It prints three small tables.
+    """
+    # Number of trials per status.
     print("\nRows per status (in window):")
     print(df["overall_status"].value_counts().to_string())
 
@@ -141,7 +171,12 @@ def report(df):
 
 
 def report_conditions(df):
-    """Print the number of trials and the share of terminated trials for every condition category."""
+    """Print the number of trials and the share of terminated trials for every condition category.
+
+    Input: df is the trials table with the condition columns (DataFrame).
+
+    Output: nothing. It prints one table.
+    """
     # One line per category, and a last line for the trials that are in no category.
     rows = []
     for col in CONDITION_FLAG_FEATURES + ["no category"]:
@@ -160,7 +195,13 @@ def report_conditions(df):
 
 
 def main():
-    """Build the table (or only backfill the condition features), print the reports and save the file."""
+    """Build the table (or only backfill the condition features), print the reports and save the file.
+
+    Input: none (the option --backfill comes from the command line).
+
+    Output: nothing. It writes data/processed/trials.parquet and prints the progress.
+    """
+    # Read the command-line option.
     parser = argparse.ArgumentParser(
         description="Turn raw API pages into the model-ready table ``data/processed/trials.parquet``.")
     parser.add_argument("--backfill", action="store_true",
@@ -185,5 +226,6 @@ def main():
     print(f"\nSaved {len(df)} rows to {OUT_PATH.relative_to(ROOT)}")
 
 
+# ---- 3. Run the script ----
 if __name__ == "__main__":
     main()

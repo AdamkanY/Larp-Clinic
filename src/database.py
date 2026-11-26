@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""The SQLite database behind the page "Explore the data": two tables and the SQL queries that read them.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+The SQLite database behind the page "Explore the data": two tables and the SQL queries that read them.
 
 Why a database? The page asks the same few questions again and again: how many trials match the filters, which
 share of them was stopped early, the same per phase / sponsor / blinding / allocation, and which conditions are
@@ -25,16 +25,18 @@ How to run it:
     python src/database.py      # build data/processed/trials.db again and print a few example queries
 """
 
-import sqlite3
-import sys
-from pathlib import Path
+# ---- 1. Imports ----
+import sqlite3  # the SQLite database (part of Python)
+import sys  # change the module search path
+from pathlib import Path  # file paths
 
-import pandas as pd
+import pandas as pd  # tables (DataFrame) and pd.read_sql
 
 # The other files of src/ are imported by their plain name, so this works from the app and from the terminal.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import viz
+import viz  # loads the trials table and has the names and groups the page uses
 
+# ---- 2. Settings and table layout ----
 DB_PATH = viz.DATA_PATH.with_name("trials.db")
 
 # The columns of the table trials: everything the Explore page filters, groups, draws or lists. Model inputs
@@ -74,7 +76,12 @@ def build_database(parquet_path=viz.DATA_PATH, db_path=DB_PATH):
     """Create the SQLite file from the trials file: the table trials and the table trial_conditions.
 
     We write to a temporary file first and rename it at the end, so the page never opens a half-built database.
+
+    Input: parquet_path is the trials file (Path or string); db_path is where the SQLite file goes (Path or string).
+
+    Output: the Path of the finished database file.
     """
+    # Load the trials with the plain names the page uses.
     trials = viz.load_trials(parquet_path)
 
     # One row per trial and condition: split "A; B" into a list, explode() then makes one row per list entry.
@@ -86,6 +93,7 @@ def build_database(parquet_path=viz.DATA_PATH, db_path=DB_PATH):
     conditions = conditions[conditions["condition"] != ""]
     conditions = conditions.drop_duplicates(["nct_id", "condition"])
 
+    # Build in a temporary file, so an old good database stays until the new one is ready.
     db_path = Path(db_path)
     temporary_path = db_path.with_suffix(".tmp")
     temporary_path.unlink(missing_ok=True)
@@ -99,12 +107,19 @@ def build_database(parquet_path=viz.DATA_PATH, db_path=DB_PATH):
     conn.commit()
     conn.close()
 
+    # Rename the finished file to the real name.
     temporary_path.replace(db_path)
     return db_path
 
 
 def ensure_database(parquet_path=viz.DATA_PATH, db_path=DB_PATH):
-    """Return the path of the database file. Build it first if it is missing or older than the trials file."""
+    """Return the path of the database file. Build it first if it is missing or older than the trials file.
+
+    Input: parquet_path is the trials file (Path or string); db_path is the SQLite file (Path or string).
+
+    Output: the Path of an up-to-date database file.
+    """
+    # Rebuild only when there is no file or the trials file is newer.
     db_path = Path(db_path)
     parquet_path = Path(parquet_path)
     if not db_path.exists() or db_path.stat().st_mtime < parquet_path.stat().st_mtime:
@@ -118,11 +133,19 @@ def where_clause(phases=None, sponsor_classes=None, year_range=None, condition_k
     Example: ("WHERE phase_label IN (?, ?) AND start_year BETWEEN ? AND ?", ["Phase 1", "Phase 2", 2010, 2015]).
     A filter that is empty adds no condition. Without any filter the text is "". table is the short name of the
     trials table in a JOIN (for example "t"), so SQL knows which table a column belongs to.
+
+    Input: phases is a list of phase names or None; sponsor_classes is a list of sponsor type names or None;
+    year_range is a pair (first year, last year) or None; condition_kw is a keyword to find in the conditions
+    (string); table is the short name of the trials table in a JOIN (string, "" for none).
+
+    Output: a tuple (SQL text, list of parameters). The text is "" if no filter is set.
     """
+    # The column names get the table name in front when a JOIN needs it.
     prefix = ""
     if table:
         prefix = f"{table}."
 
+    # One condition and its parameters per filter that is set.
     parts = []
     params = []
     if phases:
@@ -145,6 +168,7 @@ def where_clause(phases=None, sponsor_classes=None, year_range=None, condition_k
                      "WHERE instr(lower(condition), lower(?)) > 0)")
         params.append(keyword)
 
+    # Join the conditions with AND.
     if not parts:
         return "", params
     return "WHERE " + " AND ".join(parts), params
@@ -158,7 +182,14 @@ class TrialDatabase:
     """
 
     def __init__(self, db_path=DB_PATH, phases=None, sponsor_classes=None, year_range=None, condition_kw=""):
-        """Remember the file and the filters. Nothing is read yet."""
+        """Remember the file and the filters. Nothing is read yet.
+
+        Input: db_path is the SQLite file (Path or string); phases, sponsor_classes, year_range and condition_kw
+        are the filters of the page, as in where_clause().
+
+        Output: nothing (the object is created).
+        """
+        # Store the file and the filters.
         self.db_path = Path(db_path)
         self.phases = phases
         self.sponsor_classes = sponsor_classes
@@ -167,11 +198,23 @@ class TrialDatabase:
         self.log = []  # every query that was run, in order: (purpose, SQL text, parameters)
 
     def where(self, table=""):
-        """The WHERE part and its parameters for the filters of this object (see where_clause)."""
+        """The WHERE part and its parameters for the filters of this object (see where_clause).
+
+        Input: table is the short name of the trials table in a JOIN (string, "" for none).
+
+        Output: a tuple (SQL text, list of parameters).
+        """
+        # Hand the stored filters to the function.
         return where_clause(self.phases, self.sponsor_classes, self.year_range, self.condition_kw, table)
 
     def query(self, purpose, sql, params=()):
-        """Run one SELECT with "?" parameters and return the result as a DataFrame (pd.read_sql)."""
+        """Run one SELECT with "?" parameters and return the result as a DataFrame (pd.read_sql).
+
+        Input: purpose is a short description of the query for the log (string); sql is the SELECT text with "?"
+        in place of values (string); params are the values for the "?" (list or tuple).
+
+        Output: the result as a pandas DataFrame.
+        """
         # Write the query into the log. split() and join() remove the line breaks and extra spaces.
         self.log.append((purpose, " ".join(sql.split()), list(params)))
         # "mode=ro" opens the file read-only: the page can look at the data but can never change it.
@@ -181,7 +224,14 @@ class TrialDatabase:
         return result
 
     def options(self):
-        """What the filters of the page can offer: the phases, the sponsor types (biggest first), the years."""
+        """What the filters of the page can offer: the phases, the sponsor types (biggest first), the years.
+
+        Input: none.
+
+        Output: a dictionary with "phases" (set of names), "sponsors" (list, biggest group first) and "years"
+        (tuple of the first and the last start year).
+        """
+        # Three small queries on the whole table (the filters do not apply here).
         phases = self.query("Filter choices: phases", "SELECT DISTINCT phase_label FROM trials")
         sponsors = self.query(
             "Filter choices: sponsors",
@@ -189,6 +239,7 @@ class TrialDatabase:
         years = self.query(
             "Filter choices: years",
             "SELECT MIN(start_year) AS first, MAX(start_year) AS last FROM trials")
+        # Turn the results into plain Python values.
         first_year = int(years["first"].iloc[0])
         last_year = int(years["last"].iloc[0])
         return {
@@ -201,11 +252,18 @@ class TrialDatabase:
         """How many trials match the filters and which share of them was stopped early.
 
         With filtered=False the numbers are for all trials. If no trial matches, the share is None.
+
+        Input: filtered is True to use the filters of the page, False to count all trials (boolean).
+
+        Output: a dictionary with "n" (number of trials, integer) and "rate" (share stopped early between 0 and 1,
+        or None if no trial matches).
         """
+        # With or without the filters.
         if filtered:
             where, params = self.where()
         else:
             where, params = "", []
+        # COUNT gives the number of trials, AVG of the 0/1 label gives the share stopped early.
         result = self.query("Key numbers", f"SELECT COUNT(*) AS n, AVG(label) AS rate FROM trials {where}", params)
         n = result["n"].iloc[0]
         rate = result["rate"].iloc[0]
@@ -215,7 +273,13 @@ class TrialDatabase:
         return {"n": int(n), "rate": float(rate)}
 
     def trials(self):
-        """The trials that match the filters, one row each (for the trial table and the charts drawn in pandas)."""
+        """The trials that match the filters, one row each (for the trial table and the charts drawn in pandas).
+
+        Input: none.
+
+        Output: a DataFrame with the columns of the table trials plus "eligibility_group".
+        """
+        # SELECT all matching rows in a fixed order.
         where, params = self.where()
         frame = self.query("Matching trials", f"SELECT * FROM trials {where} ORDER BY start_year, nct_id", params)
         # The same length groups as in viz.load_trials(), so viz.eligibility_stats() works on this table too.
@@ -228,6 +292,11 @@ class TrialDatabase:
 
         The result looks like the one of viz.rate_by(). SQL sorts the groups by size. With order (a list of
         values) the rows come in that order and values that are not in the list go last.
+
+        Input: column is the column to group by, one of GROUP_COLUMNS (string); order is a list of values in the
+        order the rows should have, or None to sort by group size.
+
+        Output: a DataFrame with the columns of column, "n", "terminated" and "rate" (share between 0 and 1).
         """
         # The column name goes into the SQL text, so it must be one of our four known names (see GROUP_COLUMNS).
         if column not in GROUP_COLUMNS:
@@ -238,6 +307,7 @@ class TrialDatabase:
             f"""SELECT {column}, COUNT(*) AS n, SUM(label) AS terminated, AVG(label) AS rate
                 FROM trials {where} GROUP BY {column} ORDER BY n DESC""", params)
 
+        # Put the rows in the wanted order, if there is one.
         if order:
             # Give every value its place in the list and sort by this place.
             place_in_order = {}
@@ -248,7 +318,12 @@ class TrialDatabase:
         return out.reset_index(drop=True)
 
     def top_conditions(self, k=15):
-        """The k most common conditions among the matching trials (JOIN + GROUP BY + ORDER BY + LIMIT)."""
+        """The k most common conditions among the matching trials (JOIN + GROUP BY + ORDER BY + LIMIT).
+
+        Input: k is how many conditions to return (integer).
+
+        Output: a DataFrame with the columns "condition", "n", "terminated" and "rate" (share between 0 and 1).
+        """
         # Both tables of the JOIN have a column nct_id. So the filters must name the trials table by its short
         # name t.
         where, params = self.where(table="t")
@@ -260,6 +335,7 @@ class TrialDatabase:
                 GROUP BY c.condition ORDER BY n DESC, c.condition LIMIT ?""", list(params) + [int(k)])
 
 
+# ---- 3. Run the script ----
 if __name__ == "__main__":
     # Build the database again and print a few example queries as a quick check.
     path = build_database()
