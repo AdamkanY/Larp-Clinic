@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.
 
 The API gives the studies in pages of 1,000. Every page is saved unchanged as data/raw/pages/page_NNNNN.json.
 Each page also holds a "nextPageToken", the key to the page after it. So when the download is interrupted, we can
@@ -12,13 +12,15 @@ How to run it:
     python src/fetch_data.py --full     # download whole records, not only the fields in FIELDS
 """
 
-import argparse
-import json
-import time
-from pathlib import Path
+# ---- 1. Imports ----
+import argparse  # read the options --restart and --full
+import json  # read and write the saved pages
+import time  # pauses, waiting times and the time estimate
+from pathlib import Path  # file paths
 
-import requests
+import requests  # download the pages from the API
 
+# ---- 2. Settings ----
 API_URL = "https://clinicaltrials.gov/api/v2/studies"
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 PAGES_DIR = RAW_DIR / "pages"
@@ -44,7 +46,12 @@ FIELDS = [
 
 
 def base_params(full):
-    """The query parameters that are the same for every page of the download."""
+    """The query parameters that are the same for every page of the download.
+
+    Input: full is True to download whole records, False to ask only for the fields in FIELDS (boolean).
+
+    Output: a dictionary with the query parameters of the API.
+    """
     # Every interventional trial that is completed or terminated, 1,000 per page.
     params = {
         "format": "json",
@@ -63,7 +70,13 @@ def get_with_retry(session, params):
 
     Worth another try: the server is busy (code 429), has an error of its own (500 and above), or the connection
     broke. Any other error code would not go away by waiting, so the script stops with the message of the server.
+
+    Input: session is the requests.Session used for the download; params is the dictionary of query parameters
+    for this page (including the page token, if there is one).
+
+    Output: the page as a dictionary (the parsed JSON). The script stops with an error message if all tries fail.
     """
+    # Try the download again and again until it works or the tries are used up.
     for attempt in range(MAX_RETRIES + 1):
         # We wait longer after every failed try: 2, 4, 8, ... seconds.
         wait = 2 ** (attempt + 1)
@@ -94,7 +107,12 @@ def write_json(path, content):
 
     We write to a temporary file first and rename it at the end. So if the script is stopped in the middle of
     writing, no half page is left behind under the real name.
+
+    Input: path is the file to write (Path); content is the data to save (dictionary or list that JSON can store).
+
+    Output: nothing. It writes the file.
     """
+    # Write under a temporary name, then rename.
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(content), encoding="utf-8")
     temporary.replace(path)
@@ -104,7 +122,14 @@ def resume_state(params, restart):
     """Look at the pages that are already saved and return where to go on: (next page number, its token).
 
     A new download starts at (1, None). With restart=True the saved pages are deleted first.
+
+    Input: params is the query dictionary of this download (dictionary); restart is True to delete the saved
+    pages first (boolean).
+
+    Output: a tuple (page number, token) for the next page to download. The token is None for page 1 and also
+    after the last page, when there is nothing more to download.
     """
+    # Find the saved pages; with --restart delete them and the manifest.
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     pages = sorted(PAGES_DIR.glob("page_*.json"))
     if restart:
@@ -132,7 +157,13 @@ def resume_state(params, restart):
 
 
 def main():
-    """Download page after page until the API gives no token for a next page."""
+    """Download page after page until the API gives no token for a next page.
+
+    Input: none (the options come from the command line).
+
+    Output: nothing. It saves the pages in data/raw/pages/ and prints the progress.
+    """
+    # Read the command-line options.
     parser = argparse.ArgumentParser(
         description="Download all COMPLETED/TERMINATED interventional studies from ClinicalTrials.gov.")
     parser.add_argument("--restart", action="store_true", help="delete pages and start over")
@@ -148,14 +179,17 @@ def main():
     if number > 1:
         print(f"Resuming at page {number}.")
 
+    # One session for all pages, so the connection is reused.
     session = requests.Session()
     # The API wants to know who is asking. A general name is enough, no personal contact details.
     session.headers["User-Agent"] = "trial-radar-student-project/0.1"
 
+    # Counters for the progress message.
     fetched = 0  # studies downloaded in this run
     total = None  # studies the API has in all (it tells us with every page)
     start = time.time()
 
+    # The download loop.
     while True:
         # Download one page and save it. Every page after the first one needs the token of the page before.
         query = dict(params)
@@ -185,5 +219,6 @@ def main():
         time.sleep(PAUSE_BETWEEN_PAGES)
 
 
+# ---- 3. Run the script ----
 if __name__ == "__main__":
     main()

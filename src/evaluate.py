@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Evaluate the saved models on the test trials (start 2017-2019).
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Evaluate the saved models on the test trials (start 2017-2019).
 
 This is the only file that scores the test trials, so there is exactly one place where it happens. train.py
 calls evaluate_saved() once after it saved the models. Running this file evaluates the saved models again
@@ -22,31 +22,39 @@ Usage:
     python src/evaluate.py
 """
 
+# Standard library: json files, the import path, file paths.
 import json
 import sys
 from pathlib import Path
 
+# matplotlib draws the calibration picture (PNG).
 import matplotlib
 matplotlib.use("Agg")  # draw into a file, no window needed
 import matplotlib.pyplot as plt
+# numpy for numbers and pandas for tables.
 import numpy as np
 import pandas as pd
+# scikit-learn: calibration curve, permutation importance, the metrics and cross-validation.
 from sklearn.calibration import calibration_curve
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (average_precision_score, brier_score_loss, confusion_matrix, f1_score,
                              precision_recall_curve, precision_score, recall_score, roc_auc_score)
 from sklearn.model_selection import cross_validate
 
-# The other files of src/ are imported by their plain name.
+# The other files of src/ are imported by their plain name: features (the numeric column list) and predict
+# (loading a saved model and finding out which inputs it uses).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from features import NUMERIC_FEATURES
 from predict import load_model, model_features
 
+# Paths: the project folder and the places where models and outputs are saved.
 ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
 CALIBRATION_PATH = MODELS_DIR / "calibration_before_after.png"
 IMPORTANCE_PATH = MODELS_DIR / "feature_importance.csv"
 
+# The saved models, the ones whose importance is computed, the ones in the calibration picture and their
+# names in the picture.
 MODEL_NAMES = ["baseline_lr", "gbm_uncalibrated", "gbm"]
 # gbm_uncalibrated ranks the trials almost exactly like gbm, so the importance is only computed for the two
 # models people look at.
@@ -67,6 +75,7 @@ ABLATIONS = {
     "without_both": ["eligibility_text_len", "n_primary_outcomes", "n_secondary_outcomes"],
 }
 
+# Settings: random seed, number of shuffles per feature, number of calibration groups.
 RANDOM_STATE = 42
 N_PERMUTATION_REPEATS = 10
 N_CALIBRATION_BINS = 10
@@ -82,7 +91,12 @@ GRID, AXIS = "#e1e0d9", "#c3c2b7"
 # ---------------------------------------------------------------------------------------------------------------
 
 def metrics_path(name):
-    """Path of the metrics file that belongs to the model called name."""
+    """Give the path of the metrics file that belongs to a model.
+
+    Input: name is the model name (text), for example "gbm".
+
+    Output: a Path to models/<name>_metrics.json.
+    """
     return MODELS_DIR / f"{name}_metrics.json"
 
 
@@ -91,6 +105,10 @@ def best_f1_threshold(y_true, proba):
 
     Meant for out-of-fold scores of TRAINING trials. Using the result on the test trials keeps the test trials
     out of every decision.
+
+    Input: y_true is the 0/1 label array; proba is the array of predicted probabilities of TERMINATED.
+
+    Output: a tuple (threshold, f1) of two floats: the best threshold and the F1 score it gives.
     """
     # Precision and recall for every possible threshold. The last pair has no threshold (it stands for
     # "flag nobody"), so we drop it.
@@ -108,13 +126,23 @@ def best_f1_threshold(y_true, proba):
 
 
 def confusion_counts(y_true, y_pred):
-    """The confusion matrix as four named counts ("positive" means stopped early)."""
+    """Count the confusion matrix as four named numbers ("positive" means stopped early).
+
+    Input: y_true is the 0/1 array of real labels; y_pred is the 0/1 array of predicted labels.
+
+    Output: a dict with the integer counts "tn", "fp", "fn" and "tp".
+    """
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
     return {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)}
 
 
 def ranking_metrics(y_true, proba):
-    """The metrics that need no threshold: ROC-AUC and PR-AUC (ranking) and the Brier score (calibration)."""
+    """Compute the metrics that need no threshold: ROC-AUC and PR-AUC (ranking) and the Brier score (calibration).
+
+    Input: y_true is the 0/1 label array; proba is the array of predicted probabilities of TERMINATED.
+
+    Output: a dict with "roc_auc", "pr_auc", "brier" and "mean_predicted" (the average prediction), all floats.
+    """
     return {
         "roc_auc": float(roc_auc_score(y_true, proba)),
         "pr_auc": float(average_precision_score(y_true, proba)),
@@ -124,7 +152,14 @@ def ranking_metrics(y_true, proba):
 
 
 def classification_metrics(y_true, proba, threshold):
-    """The ranking metrics plus the yes/no metrics at one threshold, for one model."""
+    """Compute the ranking metrics plus the yes/no metrics at one threshold, for one model.
+
+    Input: y_true is the 0/1 label array; proba is the array of predicted probabilities of TERMINATED;
+    threshold is the probability from which a trial counts as "predicted to stop early" (float).
+
+    Output: the dict of ranking_metrics() with an extra key "at_threshold" that holds the threshold, precision,
+    recall, F1, the share of flagged trials and the confusion matrix.
+    """
     # Everything at or above the threshold counts as "predicted to stop early".
     y_pred = (proba >= threshold).astype(int)
     metrics = ranking_metrics(y_true, proba)
@@ -145,6 +180,11 @@ def majority_baseline(y_true):
     The same score for everyone ranks nothing, so ROC-AUC is 0.5 and PR-AUC equals the share of stopped
     trials. Predicting that share for everyone gives the Brier score a calibrated model has to beat. A real
     model has to beat all three.
+
+    Input: y_true is the 0/1 label array (or list) of the test trials.
+
+    Output: a dict with ROC-AUC, PR-AUC, the constant-rate Brier score, the terminated rate, the accuracy and
+    the confusion matrix of the "everyone completes" prediction.
     """
     y_true = np.asarray(y_true)
     rate = float(y_true.mean())
@@ -163,6 +203,11 @@ def calibration_bins(y_true, proba, n_bins=N_CALIBRATION_BINS):
 
     The groups hold equal numbers of trials, so every point rests on about the same amount of data even though
     most predictions are small.
+
+    Input: y_true is the 0/1 label array; proba is the array of predicted probabilities; n_bins is the number
+    of groups (int).
+
+    Output: a list of dicts, one per group, with "mean_predicted" and "observed_rate" (floats).
     """
     observed, predicted = calibration_curve(y_true, proba, n_bins=n_bins, strategy="quantile")
     points = []
@@ -179,6 +224,11 @@ def plot_calibration(y_true, probas, path=CALIBRATION_PATH):
     """Save the picture with the calibration curves (top) and the histograms of the predictions (bottom).
 
     probas is a dictionary {model name: test scores}. The models are drawn in this order.
+
+    Input: y_true is the 0/1 label array of the test trials; probas is a dict {model name: array of predicted
+    probabilities}; path is where the PNG is saved (default CALIBRATION_PATH).
+
+    Output: nothing. It writes the PNG file to path.
     """
     # Two panels that share the x axis: the curves on top, the histograms below.
     fig, (ax_cal, ax_hist) = plt.subplots(
@@ -264,7 +314,13 @@ def permutation_importance_table(name, model, X, y):
     """How much ROC-AUC and PR-AUC drop on the test trials when ONE feature column is shuffled.
 
     The whole model is scored, so a category counts as one feature (not one per one-hot column) and the models
-    can be compared directly. Returns one row per feature, the most important first.
+    can be compared directly.
+
+    Input: name is the model name (text, goes into the table); model is the fitted model; X is the test
+    DataFrame with the model's input columns; y is the 0/1 label array.
+
+    Output: a DataFrame with one row per feature (model, rank, mean and standard deviation of the ROC-AUC and
+    PR-AUC drop), the most important feature first.
     """
     # Shuffle each column 10 times and look how much worse the model gets.
     result = permutation_importance(
@@ -292,7 +348,14 @@ def run_ablations(X_train, y_train, X_test, y_test, params, reference):
     scored once.
 
     params are the tuned settings. reference holds cv_roc_auc, cv_pr_auc, test_roc_auc and test_pr_auc of the
-    model with all features. Returns the "ablations" part of gbm_metrics.json.
+    model with all features.
+
+    Input: X_train and y_train are the training table and labels; X_test and y_test are the test table and
+    labels; params is a dict of the tuned settings (names without "clf__"); reference is a dict with
+    cv_roc_auc, cv_pr_auc, test_roc_auc and test_pr_auc of the model with all features.
+
+    Output: a dict, the "ablations" part of gbm_metrics.json, with a description and a "runs" list (one entry
+    for all features and one per variant).
     """
     # Imported here and not at the top, because train.py imports this file.
     from train import build_gbm_pipeline, make_cv
@@ -345,6 +408,11 @@ def lr_coefficients(pipeline):
     Numbers were scaled, so their coefficient is the change in log-odds per one standard deviation (the column
     "unit" shows it in real units). Flags and one-hot columns are 0/1, so theirs is the change when the flag
     switches on.
+
+    Input: pipeline is the fitted logistic regression Pipeline (steps "prep" and "clf").
+
+    Output: a DataFrame with the columns feature, coef, odds_ratio and unit, sorted by the size of the
+    coefficient, largest first.
     """
     prep = pipeline.named_steps["prep"]
     clf = pipeline.named_steps["clf"]
@@ -381,7 +449,13 @@ def lr_coefficients(pipeline):
 # ---------------------------------------------------------------------------------------------------------------
 
 def print_metrics_table(reports):
-    """Print the out-of-fold and the test metrics of every model, plus the "everyone completes" baseline."""
+    """Print the out-of-fold and the test metrics of every model, plus the "everyone completes" baseline.
+
+    Input: reports is a dict {model name: metrics report dict} that already holds the "test" and
+    "majority_baseline" parts.
+
+    Output: nothing. It prints one table to the screen.
+    """
     # One row per model.
     rows = []
     for name, report in reports.items():
@@ -423,7 +497,14 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES, X_train=None, y_
     does not). names are the models to evaluate; each needs its .joblib and its metrics file from train.py.
     suffix is "" for the app models. With a suffix such as "_v2" (a comparison run) the calibration picture
     and the ablations are skipped, because both describe the app model, and only the own rows of
-    feature_importance.csv are replaced. Returns {model name: the full content of its metrics file}.
+    feature_importance.csv are replaced.
+
+    Input: X_test and y_test are the test table and labels (or None to load them); names is a list of model
+    names to evaluate; X_train and y_train are the training table and labels (or None to load them); suffix
+    is "" for the app models or an ending such as "_v2".
+
+    Output: a dict {model name: the full content of its metrics file}. It also writes the metrics files, the
+    calibration picture and the importance CSV, and prints the tables.
     """
     # Load the splits only if the caller did not pass them.
     if X_test is None or X_train is None:
@@ -452,6 +533,7 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES, X_train=None, y_
         reports[name] = report
         probas[name] = proba
 
+    # Print the metrics of all models in one table.
     print("\n=== Metrics (OOF = out-of-fold on train; test = start 2017-2019) ===")
     print_metrics_table(reports)
 
@@ -530,4 +612,5 @@ def evaluate_saved(X_test=None, y_test=None, names=MODEL_NAMES, X_train=None, y_
 
 
 if __name__ == "__main__":
+    # ---- 1. Evaluate the saved models again on the test trials (no training) ----
     evaluate_saved()

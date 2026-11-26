@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Horse race: every candidate model on the same time-ordered folds, with the same metric.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Horse race: every candidate model on the same time-ordered folds, with the same metric.
 
 The idea is from the Data Science Fundamentals course (deck 16, "Tuning and a horse race between models"): the
 models are the horses. They all run on the same data, the same cross-validation folds and the same metric, once
@@ -24,12 +24,15 @@ Usage (after "python src/train.py", which writes the two metrics files this scri
     python src/horse_race.py          # about 30-60 minutes on 2 cores; writes models/horse_race.json
 """
 
+# Standard library: json files, the import path, timing, today's date and file paths.
 import json
 import sys
 import time
 from datetime import date
 from pathlib import Path
 
+# scikit-learn: column preparation, the baseline, forest, tree and KNN models, gap filling, grid search,
+# pipelines and the scalers/encoders.
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -40,10 +43,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 from sklearn.tree import DecisionTreeClassifier
 
-# The other files of src/ are imported by their plain name.
+# The other files of src/ are imported by their plain name: train.py gives the shared folds, data loading and
+# settings, so every horse runs on exactly the same setup.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train import CV_FOLDS, MODELS_DIR, RANDOM_STATE, load_split, make_cv, split_features, without_prefix
 
+# Output file and the metric that picks the winner.
 OUTPUT_PATH = MODELS_DIR / "horse_race.json"
 METRIC = "pr_auc"  # the metric that picks the winner, like in train.py
 
@@ -107,6 +112,10 @@ def build_onehot_pipeline(estimator, features):
 
     Min-max scaling is what the CS course uses for KNN, where distances need every input on the same scale.
     Trees do not care about scaling (DSF deck 06), so the same pipeline is fair to all new horses.
+
+    Input: estimator is the unfitted scikit-learn model to put at the end; features is a list of feature names.
+
+    Output: a scikit-learn Pipeline (steps "prep" and "clf") that is not fitted yet.
     """
     parts = split_features(features)
     # Numbers: the median for gaps, then scaled to 0-1. Flags: the most common value for gaps (they are 0/1).
@@ -122,13 +131,26 @@ def build_onehot_pipeline(estimator, features):
 
 
 def cell(params, roc, roc_std, pr, pr_std):
-    """The result of one setting, in the form that every horse uses in the JSON file."""
+    """Pack the result of one setting into the form that every horse uses in the JSON file.
+
+    Input: params is a dict of the settings; roc and roc_std are the mean and standard deviation of the
+    ROC-AUC over the folds; pr and pr_std are the same for the PR-AUC (numbers).
+
+    Output: a dict with "params" and the four scores as plain floats.
+    """
     return {"params": params, "cv_roc_auc": float(roc), "cv_roc_auc_std": float(roc_std),
             "cv_pr_auc": float(pr), "cv_pr_auc_std": float(pr_std)}
 
 
 def run_new_horse(name, spec, X, y, cv):
-    """Try every setting of one new horse on the shared folds. Returns all results and the default one."""
+    """Try every setting of one new horse on the shared folds.
+
+    Input: name is the horse's key in NEW_HORSES (text); spec is its entry (a dict with the estimator and the
+    grid); X is the training DataFrame; y is the 0/1 label array; cv is the splitter from make_cv().
+
+    Output: a dict with "grid" (a list of result dicts, one per setting) and "default" (the result of the
+    first setting, which is scikit-learn's default).
+    """
     pipeline = build_onehot_pipeline(spec["estimator"], list(X.columns))
     # A horse without a grid still runs once, with its default settings.
     grid = spec["grid"]
@@ -150,7 +172,14 @@ def run_new_horse(name, spec, X, y, cv):
 
 
 def read_trained_horse(spec):
-    """The results train.py stored for one model, and the one that belongs to scikit-learn's default settings."""
+    """Read the results train.py stored for one model, and find the one with scikit-learn's default settings.
+
+    Input: spec is the model's entry in TRAINED_HORSES (a dict with the metrics file name and the default
+    settings).
+
+    Output: a dict with "grid" (a list of result dicts, one per setting) and "default" (the result of the
+    default settings). It raises a ValueError if the file is old or has no default result.
+    """
     metrics = json.loads((MODELS_DIR / spec["metrics_file"]).read_text(encoding="utf-8"))
     if "TimeSeriesSplit" not in metrics["cv"]["scheme"]:
         raise ValueError(f"{spec['metrics_file']} was not made with the time-ordered folds; "
@@ -169,9 +198,20 @@ def read_trained_horse(spec):
 
 
 def verdict(horses):
-    """Who wins by validation PR-AUC, and is the lead larger than the spread across the folds?"""
+    """Decide who wins by validation PR-AUC, and whether the lead is larger than the spread across the folds.
+
+    Input: horses is a dict {horse name: dict} where every entry has a "tuned" result.
+
+    Output: a dict with the ranking (best first), the winner, the runner-up, the lead, the winner's spread,
+    whether the lead is larger than the spread, the horses tied with the winner and the simplest of them.
+    """
     def tuned_score(name):
-        """The tuned validation score of one horse."""
+        """Look up the tuned validation score of one horse.
+
+        Input: name is the horse's name (text), a key of horses.
+
+        Output: the tuned cross-validation score of the race metric (float).
+        """
         return horses[name]["tuned"][f"cv_{METRIC}"]
 
     # Best score first.
@@ -194,7 +234,12 @@ def verdict(horses):
 
 
 def main():
-    """Run the new horses, read the two trained ones, pick the winner and write models/horse_race.json."""
+    """Run the new horses, read the two trained ones, pick the winner and write models/horse_race.json.
+
+    Input: none.
+
+    Output: nothing. It writes models/horse_race.json and prints a short table and the winner.
+    """
     X, y = load_split("train")
     cv = make_cv()
     print(f"Horse race on {len(y):,} train trials, {CV_FOLDS} time-ordered folds, winner by {METRIC}")
@@ -251,4 +296,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # ---- 1. Run the whole horse race ----
     main()

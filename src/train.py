@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Train the models on the training trials and save them in models/.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Train the models on the training trials and save them in models/.
 
 The three models:
 
@@ -32,6 +32,7 @@ Usage:
                                         # gbm_v2 / gbm_uncalibrated_v2; the app files stay untouched
 """
 
+# Standard library: json files, Python version, command-line arguments, timing, today's date, file paths.
 import json
 import platform
 import sys
@@ -39,9 +40,12 @@ import time
 from datetime import date
 from pathlib import Path
 
+# Saving and loading models (joblib), numbers (numpy) and tables (pandas).
 import joblib
 import numpy as np
 import pandas as pd
+# scikit-learn: version number, copying models, calibration, column preparation, the gradient boosting and
+# logistic regression models, gap filling, metrics, cross-validation, pipelines and encoders/scalers.
 import sklearn
 from sklearn.base import clone
 from sklearn.calibration import CalibratedClassifierCV
@@ -54,13 +58,15 @@ from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
-# The other files of src/ are imported by their plain name.
+# The other files of src/ are imported by their plain name: evaluate (metrics and test scoring), features
+# (feature lists and labels) and predict (turns trials into the model's input table).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import evaluate
 from features import (BINARY_FEATURES, CATEGORICAL_FEATURES, CONDITION_FEATURES, FEATURE_COLUMNS, LABELS,
                       NON_FEATURE_COLUMNS, NUMERIC_FEATURES)
 from predict import to_model_frame
 
+# Paths: the project folder, the data file and the places where models and references are saved.
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "data" / "processed" / "trials.parquet"
 MODELS_DIR = ROOT / "models"
@@ -113,6 +119,10 @@ def check_dataset(df):
 
     This protects us from training on an old or hand-edited trials.parquet, and from a display column that
     ends up in the feature list by mistake.
+
+    Input: df is the trials table (pandas DataFrame) read from data/processed/trials.parquet.
+
+    Output: nothing. It raises a ValueError if a rule is broken.
     """
     # No column may be a feature and a meta/display column at the same time.
     overlap = set(FEATURE_COLUMNS) & set(NON_FEATURE_COLUMNS)
@@ -145,6 +155,12 @@ def load_split(split, df=None, features=None):
     """Load "train" or "test" as (X, y). X only has model input columns, y is the label (1 = stopped early).
 
     Without df the data file is read from disk. Without features the app's feature set is used.
+
+    Input: split is "train" or "test" (text); df is the trials table (DataFrame) or None to read it from disk;
+    features is a list of feature names or None for the app's feature set.
+
+    Output: a tuple (X, y). X is a DataFrame of the model input columns sorted by start date, y is a numpy
+    array of 0/1 labels in the same order.
     """
     # Every load is checked, so a wrong data file stops the run.
     if df is None:
@@ -161,7 +177,12 @@ def load_split(split, df=None, features=None):
 
 
 def split_features(features):
-    """Sort a list of feature names into its categorical, binary and numeric columns."""
+    """Sort a list of feature names into its categorical, binary and numeric columns.
+
+    Input: features is a list of feature names (text).
+
+    Output: a dict with the keys "categorical", "binary" and "numeric", each holding a list of feature names.
+    """
     parts = {"categorical": [], "binary": [], "numeric": []}
     for column in CATEGORICAL_FEATURES:
         if column in features:
@@ -180,7 +201,12 @@ def split_features(features):
 # ---------------------------------------------------------------------------------------------------------------
 
 def build_lr_pipeline(features=None):
-    """Logistic regression with the preparation it needs (fill gaps, scale, one-hot). Not fitted yet."""
+    """Logistic regression with the preparation it needs (fill gaps, scale, one-hot). Not fitted yet.
+
+    Input: features is a list of feature names, or None for the app's feature set.
+
+    Output: a scikit-learn Pipeline (preparation step "prep" and model step "clf") that is not fitted yet.
+    """
     if features is None:
         features = FEATURE_SETS[APP_FEATURE_SET]
     parts = split_features(features)
@@ -206,6 +232,11 @@ def build_gbm_pipeline(drop=(), features=None):
     """Gradient boosting with the little preparation it needs. Not fitted yet.
 
     drop is a list of feature names to leave out. Only the ablations in evaluate.py use it.
+
+    Input: drop is a list (or tuple) of feature names to leave out; features is a list of feature names, or
+    None for the app's feature set.
+
+    Output: a scikit-learn Pipeline (preparation step "prep" and model step "clf") that is not fitted yet.
     """
     if features is None:
         features = FEATURE_SETS[APP_FEATURE_SET]
@@ -239,6 +270,10 @@ def build_calibrated(base):
 
     Calibration learns, on held-out folds, which real share of stopped trials belongs to which model score.
     This undoes the upward push of class_weight="balanced" and does not change the order of the trials.
+
+    Input: base is a tuned scikit-learn pipeline (fitted or not); it is copied, not changed.
+
+    Output: a CalibratedClassifierCV around a fresh copy of base, not fitted yet.
     """
     return CalibratedClassifierCV(clone(base), method=CALIBRATION_METHOD, cv=CALIBRATION_CV)
 
@@ -248,6 +283,11 @@ def explain_reference(X_train):
 
     Numbers and 0/1 flags take the median of the training trials, categories their most common value. Gaps are
     ignored, so the typical trial is always a complete, ordinary design.
+
+    Input: X_train is a DataFrame of the training trials with a column for every feature in FEATURE_COLUMNS.
+
+    Output: a dict with a description ("contents"), the number of training trials ("n_train") and the typical
+    value of every feature ("values"). It is saved as models/explain_reference.json.
     """
     values = {}
     for column in FEATURE_COLUMNS:
@@ -274,6 +314,10 @@ def make_cv():
     1 to k and checks on block k+1. So the model is always checked on trials that started later than the ones
     it learned from, like in the app (DSF deck 10). A shuffled K-fold would let it learn from 2016 trials to
     predict 2009 ones, which DSF deck 16 rules out for data over time.
+
+    Input: none.
+
+    Output: a TimeSeriesSplit object with CV_FOLDS splits.
     """
     return TimeSeriesSplit(n_splits=CV_FOLDS)
 
@@ -282,6 +326,12 @@ def tune(pipeline, grid, X, y, cv):
     """Try every setting of the grid with cross-validation, then fit the best one on all training trials.
 
     Both metrics are recorded, PR-AUC picks the winner.
+
+    Input: pipeline is the unfitted scikit-learn pipeline; grid is a dict of settings to try (names like
+    "clf__C" with a list of values); X is the training DataFrame; y is the 0/1 label array; cv is the
+    cross-validation splitter from make_cv().
+
+    Output: the fitted GridSearchCV object. Its best_estimator_ is the best pipeline fitted on all of X.
     """
     search = GridSearchCV(pipeline, grid, cv=cv,
                           scoring={"roc_auc": "roc_auc", "average_precision": "average_precision"},
@@ -291,7 +341,14 @@ def tune(pipeline, grid, X, y, cv):
 
 
 def without_prefix(params):
-    """{"clf__C": 1.0} -> {"C": 1.0}. The "clf__" only tells the pipeline which step a setting belongs to."""
+    """Remove the "clf__" start from every setting name, e.g. {"clf__C": 1.0} becomes {"C": 1.0}.
+
+    The "clf__" only tells the pipeline which step a setting belongs to.
+
+    Input: params is a dict of settings whose names may start with "clf__".
+
+    Output: a new dict with the same values and the shortened names.
+    """
     plain = {}
     for key, value in params.items():
         plain[key.removeprefix("clf__")] = value
@@ -299,7 +356,13 @@ def without_prefix(params):
 
 
 def cv_summary(search):
-    """The best settings and the cross-validation scores of every setting, for the metrics file."""
+    """Collect the best settings and the cross-validation scores of every setting, for the metrics file.
+
+    Input: search is a fitted GridSearchCV object (from tune()).
+
+    Output: a dict with the scheme, the best settings, their mean and standard deviation of ROC-AUC and PR-AUC,
+    and a "grid" list with the scores of every setting.
+    """
     results = search.cv_results_
     best = search.best_index_
 
@@ -332,7 +395,12 @@ def time_ordered_predictions(estimator, X, y, cv):
 
     scikit-learn's cross_val_predict cannot do this, because it wants every row to be checked exactly once and
     our first block is only used for training. So we run the folds by hand.
-    Returns (scores, labels) of the checked rows, in date order.
+
+    Input: estimator is an unfitted (or fitted, it is copied) model with predict_proba; X is the training
+    DataFrame sorted by date; y is the 0/1 label array; cv is the splitter from make_cv().
+
+    Output: a tuple (scores, labels) of two numpy arrays for the checked rows, in date order. The scores are
+    the predicted probabilities of TERMINATED.
     """
     scores = []
     labels = []
@@ -349,7 +417,14 @@ def out_of_fold(estimator, X, y, cv):
 
     Every scored trial gets its score from a copy of the model that never saw it and only learned from earlier
     trials. So the threshold (and the reference for the percentile) is not fitted to its own data, and the
-    test years stay untouched. Returns (scores, information about the threshold).
+    test years stay untouched.
+
+    Input: estimator is the model to check (it is copied for every fold); X is the training DataFrame sorted by
+    date; y is the 0/1 label array; cv is the splitter from make_cv().
+
+    Output: a tuple (oof, info). oof is a numpy array of out-of-fold scores; info is a dict with the threshold
+    ("value"), the rule, the number of scored trials and the out-of-fold F1, ROC-AUC, PR-AUC, Brier score and
+    share of terminated trials.
     """
     oof, y_oof = time_ordered_predictions(estimator, X, y, cv)
     threshold, oof_f1 = evaluate.best_f1_threshold(y_oof, oof)
@@ -371,7 +446,13 @@ def out_of_fold(estimator, X, y, cv):
 # ---------------------------------------------------------------------------------------------------------------
 
 def split_summary(df):
-    """The split rule and the size and share of stopped trials per split, for the metrics file."""
+    """Describe the split rule and the size and share of stopped trials per split, for the metrics file.
+
+    Input: df is the trials table (DataFrame) with the columns "split", "start_date" and "label".
+
+    Output: a dict with the rule and, for "train" and "test", the start window, the observed first and last
+    start date, the number of trials, the number terminated and the terminated rate.
+    """
     out = {"rule": "by start_date, never random"}
     for split, (start, end) in SPLITS.items():
         part = df[df["split"] == split]
@@ -387,7 +468,14 @@ def split_summary(df):
 
 
 def model_details(model):
-    """A few facts about a fitted model that are worth keeping next to the model file."""
+    """Collect a few facts about a fitted model that are worth keeping next to the model file.
+
+    Input: model is a fitted CalibratedClassifierCV or a fitted Pipeline (gradient boosting or logistic
+    regression).
+
+    Output: a dict with the estimator name, the class weight and the number of iterations (boosting) or model
+    columns (logistic regression); for the calibrated model also the method and the iterations per fold.
+    """
     # The calibrated model holds one fitted pipeline per calibration fold.
     if isinstance(model, CalibratedClassifierCV):
         iterations = []
@@ -413,6 +501,12 @@ def save(name, model, df, cv_info, threshold, feature_set, extra=None):
     """Write models/<name>.joblib and a metrics file that records how the model was made.
 
     evaluate.py later adds the test results to the same metrics file.
+
+    Input: name is the file name without ending (text); model is the fitted model; df is the trials table
+    (DataFrame); cv_info is the dict from cv_summary(); threshold is the dict from out_of_fold(); feature_set
+    is "v1" or "v2"; extra is an optional dict of more entries for the report.
+
+    Output: nothing. It writes models/<name>.joblib and the metrics json file.
     """
     features = FEATURE_SETS[feature_set]
     joblib.dump(model, MODELS_DIR / f"{name}.joblib", compress=3)
@@ -446,7 +540,15 @@ def save(name, model, df, cv_info, threshold, feature_set, extra=None):
 # ---------------------------------------------------------------------------------------------------------------
 
 def tune_and_save(name, saved_name, pipeline, X_train, y_train, cv, df, feature_set):
-    """Step 1 for one model: tune it, pick its threshold and save it. Returns (fitted model, CV numbers)."""
+    """Step 1 for one model: tune it, pick its threshold and save it.
+
+    Input: name is the key in PARAM_GRIDS ("baseline_lr" or "gbm"); saved_name is the file name to save under;
+    pipeline is the unfitted pipeline; X_train and y_train are the training table and labels; cv is the
+    splitter from make_cv(); df is the trials table; feature_set is "v1" or "v2".
+
+    Output: a tuple (fitted model, CV numbers). The CV numbers are the dict from cv_summary(). The model and its
+    metrics file are also saved in models/.
+    """
     start_time = time.time()
     grid = PARAM_GRIDS[name]
     print(f"\n--- {name}: grid search ({len(ParameterGrid(grid))} "
@@ -474,6 +576,10 @@ def main(feature_set=APP_FEATURE_SET):
     regression. Any other feature set only trains the gradient boosting and saves it with the set as an ending
     (gbm_v2.joblib, gbm_uncalibrated_v2.joblib, score_reference_v2.npy). So a comparison run never replaces
     the app model.
+
+    Input: feature_set is "v1" or "v2" (text); the default is the app's feature set.
+
+    Output: nothing. It writes the model, metrics and reference files to models/ and prints progress.
     """
     features = FEATURE_SETS[feature_set]
     is_app_set = feature_set == APP_FEATURE_SET

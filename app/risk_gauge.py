@@ -1,26 +1,31 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from,
-and the chart of what pushes one trial's risk up or down."""
-import json
-from pathlib import Path
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
 
-import plotly.graph_objects as go
-import streamlit as st
+Shared risk display: a comparison bar that ranks a trial among the historical trials the model learned from,
+and the chart of what pushes one trial's risk up or down.
+"""
+import json  # reads the saved metrics file
+from pathlib import Path  # builds file paths that work on every computer
 
-from src.predict import percentile, reference_size
-from ui import PALETTE
+import plotly.graph_objects as go  # draws the comparison bar and the drivers chart
+import streamlit as st  # the web app framework (here only for caching)
+
+from src.predict import percentile, reference_size  # rank of a score among past trials, size of that reference set
+from ui import PALETTE  # the one colour palette of the app
 
 # The metrics file gives the under-prediction gap quoted in the captions.
 METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
-INK = PALETTE["ink"]
+INK = PALETTE["ink"]  # the text and line colour of both charts
 
 
 def percentile_of(risk):
-    """How many percent of the historical trials have a lower score than risk (from src.predict.percentile).
+    """Find how many percent of the historical trials have a lower score than risk (from src.predict.percentile).
 
-    Returns None while models/score_reference.npy is missing, so the page can still show the risk without a rank.
+    Input: risk is the predicted risk of stopping early, a number between 0 and 1.
+
+    Output: the percent rank (0 to 100), or None while models/score_reference.npy is missing, so the page can still
+    show the risk without a rank.
     """
+    # Ask the model code for the rank; a missing reference file means no rank.
     try:
         return percentile(risk)
     except (OSError, ValueError):
@@ -29,10 +34,13 @@ def percentile_of(risk):
 
 @st.cache_data(show_spinner=False)
 def underestimate():
-    """How much higher the real share stopped early was than the model's average prediction, on the test trials.
+    """Find how much higher the real share stopped early was than the model's average prediction, on the test trials.
 
-    0.18 means 18% higher. Returns None if the metrics file is missing or incomplete.
+    Input: none.
+
+    Output: a number such as 0.18, which means 18% higher, or None if the metrics file is missing or incomplete.
     """
+    # Compare the real test share with the mean predicted risk, both stored in the metrics file.
     try:
         metrics = json.loads(METRICS.read_text())
         real_share = metrics["split"]["test"]["terminated_rate"]
@@ -43,7 +51,13 @@ def underestimate():
 
 
 def estimate_caption(risk, ongoing=False):
-    """An honest paragraph on how to read a risk score. ongoing=True adds the warning for trials still running."""
+    """Write an honest paragraph on how to read a risk score.
+
+    Input: risk is the predicted risk, a number between 0 and 1; ongoing is True for trials that are still running
+    (adds a warning), otherwise False.
+
+    Output: the paragraph as a text.
+    """
     # The caption is built from parts: the basic reading, the measured gap and the warning for running trials.
     text = (f"Rough estimate from design information only: read {risk:.0%} as a lower-end figure and mainly use "
             "it to compare trials. ")
@@ -58,11 +72,17 @@ def estimate_caption(risk, ongoing=False):
 
 
 def risk_tone(risk):
-    """Colour and words for a risk: (tone, label, percent rank).
+    """Choose the colour and the words for a risk.
 
     The colour follows the trial's rank among past trials, not the raw percentage: green below the median trial,
     yellow up to the riskiest 10%, red above. Without the reference file the tone is "gray" and the rank is None.
+
+    Input: risk is the predicted risk, a number between 0 and 1.
+
+    Output: a tuple (tone, label, percent rank). The tone is "green", "yellow", "red" or "gray", the label is a
+    sentence and the rank is a number from 0 to 100 or None.
     """
+    # Rank first, then pick the tone by rank.
     pct = percentile_of(risk)
     if pct is None:
         return "gray", "Estimated risk of stopping early", None
@@ -74,17 +94,28 @@ def risk_tone(risk):
 
 
 def risk_chip(risk):
-    """HTML for a small coloured label with the risk and its rank in words, for result lists."""
+    """Build a small coloured label with the risk and its rank in words, for result lists.
+
+    Input: risk is the predicted risk, a number between 0 and 1.
+
+    Output: the label as an HTML text.
+    """
+    # The chip only needs the tone, the label and the rank is not shown.
     tone, label, pct = risk_tone(risk)
     return f'<span class="chip {tone}">{risk:.1%} risk · {label.lower()}</span>'
 
 
 def risk_card(risk, delta=None, compact=False):
-    """HTML for a coloured card: the risk number, how it ranks among past trials and an optional change.
+    """Build a coloured card: the risk number, how it ranks among past trials and an optional change.
 
-    delta is the change against the previous input. compact=True gives a one-line strip, which keeps the result
-    in view while a form is edited.
+    compact=True gives a one-line strip, which keeps the result in view while a form is edited.
+
+    Input: risk is the predicted risk, a number between 0 and 1; delta is the change against the previous input
+    (a number, or None for no change line); compact is True for the strip and False for the big card.
+
+    Output: the card as an HTML text.
     """
+    # Tone, label and rank decide the colour and the words of the card.
     tone, label, pct = risk_tone(risk)
 
     # The rank sentence needs the reference file, the change is only shown when there is one.
@@ -110,19 +141,23 @@ def risk_card(risk, delta=None, compact=False):
                 ticks += '<i class=""></i>'
         meter = f'<div class="meter" aria-hidden="true">{ticks}</div>'
 
+    # Put the parts together as one HTML block.
     return (f'<div class="risk-card {tone}{size}"><div class="num">{risk:.1%}</div><div class="lab">{label}</div>'
             f'<div class="sub">{sub}</div>{change}{meter}</div>')
 
 
 def risk_bar(risk):
-    """Horizontal bar from the least risky to the riskiest historical trials, with a marker for this trial.
+    """Draw a horizontal bar from the least risky to the riskiest historical trials, with a marker for this trial.
 
-    Returns None if the reference scores are missing, so the pages can simply skip the bar.
+    Input: risk is the predicted risk, a number between 0 and 1.
+
+    Output: a Plotly figure, or None if the reference scores are missing, so the pages can simply skip the bar.
     """
     # The bar is drawn in percent of past trials (0-100), so its bands match the colours of the chips.
     pct = percentile_of(risk)
     if pct is None:
         return None
+    # An empty figure that gets the bands, the marker and the label below.
     fig = go.Figure()
 
     # Three pale bands, so the ink text and the pink marker stay readable on them.
@@ -161,22 +196,31 @@ def risk_bar(risk):
 
 
 def bar_caption():
-    """One sentence explaining how to read the bar."""
+    """Write one sentence explaining how to read the bar.
+
+    Input: none.
+
+    Output: the sentence as a text.
+    """
     # Without the reference file the sentence still works: "among the past trials".
     try:
         count = f"{reference_size():,}"
     except (OSError, ValueError):
         count = "the"
+    # Name the number of past trials and explain the three colours.
     return (f"The bar ranks this trial among {count} past trials (started 2009-2016): green = less risky than "
             "half of them, yellow = up to the riskiest 10%, red = the riskiest 10%.")
 
 
 def drivers_chart(drivers):
-    """Horizontal bars of what pushes one trial's risk up (to the right, orange) or down (to the left, green).
+    """Draw horizontal bars of what pushes one trial's risk up (to the right, orange) or down (to the left, green).
 
-    drivers is the list from src.predict.explain: (name, value, direction, size), largest first. Returns None for
-    an empty list, so the pages can show a sentence instead.
+    Input: drivers is the list from src.predict.explain, with one tuple (name, value, direction, size) per factor,
+    largest first.
+
+    Output: a Plotly figure, or None for an empty list, so the pages can show a sentence instead.
     """
+    # Nothing to draw without drivers.
     if not drivers:
         return None
 
@@ -200,6 +244,7 @@ def drivers_chart(drivers):
             colours.append(PALETTE["down"])
             texts.append("lowers the risk")
 
+    # The bar chart itself, with the text next to each bar.
     fig = go.Figure(go.Bar(
         x=lengths, y=names, orientation="h", marker_color=colours, text=texts, textposition="outside",
         cliponaxis=False, hovertemplate="%{y}<br>%{text}<extra></extra>",
@@ -221,7 +266,13 @@ def drivers_chart(drivers):
 
 
 def drivers_caption():
-    """How to read the drivers chart, in plain words."""
+    """Write how to read the drivers chart, in plain words.
+
+    Input: none.
+
+    Output: the explanation as a text.
+    """
+    # One fixed explanation text.
     return ("Each bar takes one factor of this trial and swaps it for the value a typical past trial has "
             "(for example the most common blinding, or the median length of the eligibility criteria). The longer the "
             "bar, the more the model's estimate moves. These are patterns in past trials, not causes, and the "

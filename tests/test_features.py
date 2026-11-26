@@ -1,19 +1,21 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Offline checks for build_features using a hand-written (synthetic) record.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Offline checks for build_features using a hand-written (synthetic) record.
 
 Run with ``python tests/test_features.py`` (or pytest). No network needed.
 The record below is invented test data, not real trial data.
 """
 
-import copy
-import sys
-from pathlib import Path
+import copy  # deep copies, so a test can change a record without touching STUDY
+import sys  # edit the module search path
+from pathlib import Path  # file paths that work on every system
 
+# Make src/ importable, then load the feature code under test.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from features import (CONDITION_FEATURES, DISPLAY_COLS, FEATURE_COLUMNS, MAX_AGE_FILL, META_COLUMNS,
                       build_features, condition_features, features_from_design)
 
+# An invented ClinicalTrials.gov record (API v2 layout) with a value in every field the features read.
 STUDY = {
     "protocolSection": {
         "identificationModule": {"nctId": "NCT00000001", "briefTitle": "A test trial"},
@@ -53,7 +55,13 @@ STUDY = {
 
 
 def test_values():
-    """Spot-check parsed values and the column set."""
+    """Check the parsed feature values and the set of columns.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Build the features and check the columns, then single values.
     row = build_features(STUDY)
     assert set(row) == set(META_COLUMNS + DISPLAY_COLS + FEATURE_COLUMNS)
     assert row["label"] == 1 and row["start_date"] == "2012-03-01"
@@ -67,7 +75,13 @@ def test_values():
 
 
 def test_leaky_fields_ignored():
-    """Changing enrollment, locations, results and non-start dates changes nothing."""
+    """Check that changing leaky fields (enrollment, locations, results, non-start dates) changes no feature.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Copy the record and change every field that must not be used.
     changed = copy.deepcopy(STUDY)
     p = changed["protocolSection"]
     p["designModule"]["enrollmentInfo"]["count"] = 99999
@@ -76,25 +90,40 @@ def test_leaky_fields_ignored():
     p["statusModule"]["completionDateStruct"]["date"] = "2030-01"
     changed["resultsSection"] = {}
     changed["hasResults"] = False
+    # The features are identical, so none of those fields is read.
     assert build_features(changed) == build_features(STUDY)
 
 
 def test_missing_and_ongoing():
-    """Empty records give None values; ongoing statuses get no label."""
+    """Check that an empty record gives missing values and that ongoing statuses get no label.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # An empty record: no label, no start date, counts of zero, no maximum age filled with 120.
     row = build_features({})
     assert row["label"] is None and row["start_date"] is None and row["n_arms"] == 0
     assert row["n_conditions"] == 0 and row["n_primary_outcomes"] == 0
     assert row["has_max_age"] == 0 and row["max_age_years"] == 120
+    # A recruiting trial is not labelled (it is only scored by the app).
     ongoing = copy.deepcopy(STUDY)
     ongoing["protocolSection"]["statusModule"]["overallStatus"] = "RECRUITING"
     assert build_features(ongoing)["label"] is None
+    # A start date without a day is invalid and becomes missing.
     bad = copy.deepcopy(STUDY)
     bad["protocolSection"]["statusModule"]["startDateStruct"]["date"] = "2012"
     assert build_features(bad)["start_date"] is None
 
 
 def test_display_cols():
-    """Display columns are filled and never overlap the model features."""
+    """Check that the display columns are filled and never overlap the model features.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # The display values come from the record; the column lists do not overlap.
     row = build_features(STUDY)
     assert row["brief_title"] == "A test trial"
     assert row["conditions"] == "a; b"
@@ -105,16 +134,24 @@ def test_display_cols():
 
 
 def test_condition_features():
-    """Keywords set the right category flags, several at once, and only at word starts."""
+    """Check that condition keywords set the right category flags, several at once, and only at word starts.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Two conditions from two categories set two flags.
     flags = condition_features(["Metastatic Breast Cancer", "Type 2 Diabetes Mellitus"])
     assert flags["cond_oncology"] == 1 and flags["cond_metabolic"] == 1
     assert flags["n_condition_categories"] == 2 and flags["cond_cardio"] == 0
     assert set(flags) == set(CONDITION_FEATURES)
+    # One example text per category.
     examples = {
         "Acute Myocardial Infarction": "cardio", "Alzheimer Disease": "neuro", "HIV Infections": "infectious",
         "H1N1 Flu": "infectious", "Schizophrenia": "psych", "Smoking Cessation": "psych", "Asthma": "respiratory",
         "COPD": "respiratory", "Healthy Volunteers": "healthy", "Neuroblastoma": "oncology",
     }
+    # Each example sets its own category flag.
     for text, category in examples.items():
         assert condition_features([text])[f"cond_{category}"] == 1, text
     # Word starts only: "Glasses" is not ALS and "Unhealthy" is not "healthy".
@@ -125,18 +162,31 @@ def test_condition_features():
 
 
 def test_condition_features_missing():
-    """No conditions (absent, empty or junk) gives all zeros, like the other list counts."""
+    """Check that missing conditions (absent, empty or junk) give all zeros.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Absent, empty and junk inputs all give zeros.
     for value in (None, [], [None, 3]):
         assert set(condition_features(value).values()) == {0}
+    # The same holds inside build_features.
     assert build_features({})["n_condition_categories"] == 0
     row = build_features(STUDY)  # conditions "a", "b" match nothing
     assert all(row[c] == 0 for c in CONDITION_FEATURES)
 
 
 def test_condition_backfill_matches_build_features():
-    """Backfilling from the stored "; "-joined text gives what build_features gives on the record."""
-    import pandas as pd
-    from build_dataset import backfill_conditions
+    """Check that backfilling the condition flags from the stored text gives what build_features gives.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    import pandas as pd  # tables (DataFrame)
+    from build_dataset import backfill_conditions  # the function under test
+    # A record with two conditions, and the features build_features gives for it.
     study = copy.deepcopy(STUDY)
     study["protocolSection"]["conditionsModule"]["conditions"] = ["Lung Cancer", "Depression"]
     row = build_features(study)
@@ -146,6 +196,7 @@ def test_condition_backfill_matches_build_features():
     stale_row["start_date"] = pd.Timestamp(row["start_date"])
     for column in CONDITION_FEATURES:
         stale_row[column] = 0
+    # Backfill the old row from its condition text and compare every condition column.
     filled = backfill_conditions(pd.DataFrame([stale_row])).iloc[0]
     for column in CONDITION_FEATURES:
         assert filled[column] == row[column], column
@@ -153,7 +204,12 @@ def test_condition_backfill_matches_build_features():
 
 
 def design_of_study():
-    """The design of STUDY as the Check page would enter it."""
+    """Build the design of STUDY in the form the Check page would enter it.
+
+    Input: none.
+
+    Output: a dict of design values (phase, allocation, masking, ages, counts, intervention types, conditions, ...).
+    """
     return {
         "phase": "PHASE2/PHASE3", "allocation": "RANDOMIZED", "intervention_model": "PARALLEL",
         "primary_purpose": "TREATMENT", "masking": "DOUBLE", "sponsor_class": "INDUSTRY", "sex": "ALL",
@@ -165,7 +221,13 @@ def design_of_study():
 
 
 def test_features_from_design_matches_build_features():
-    """A design typed into the form gets exactly the features of the equivalent API record."""
+    """Check that a typed-in design gets exactly the features of the equivalent API record.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Features from the form design and from the real record.
     typed = features_from_design(design_of_study())
     real = build_features(STUDY)
     for column in FEATURE_COLUMNS:
@@ -174,17 +236,25 @@ def test_features_from_design_matches_build_features():
 
 
 def test_features_from_design_rules():
-    """The form gets the same rules as real records: no maximum age = 120 plus flag, unset = missing."""
+    """Check that the form gets the same rules as real records (no maximum age = 120 plus flag, unset = missing).
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Change the design: no maximum age, no masking, one condition, no monitoring committee.
     design = design_of_study()
     design.update({"max_age_years": None, "masking": None, "conditions": ["Breast cancer"], "has_dmc": False})
     row = features_from_design(design)
     assert row["max_age_years"] == MAX_AGE_FILL and row["has_max_age"] == 0
     assert row["masking"] is None and row["has_dmc"] == 0
     assert row["cond_oncology"] == 1 and row["n_conditions"] == 1
+    # An empty design still has every feature column.
     empty = features_from_design({})
     assert all(c in empty for c in FEATURE_COLUMNS) and empty["n_arms"] == 0
 
 
+# ---- Run all tests when the file is started directly ----
 if __name__ == "__main__":
     for name, test in sorted(globals().items()):
         if name.startswith("test_"):

@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Measure, for every source file, how much of it comes from commits made together with an AI, and check the
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Measure, for every source file, how much of it comes from commits made together with an AI, and check the
 AI headers.
 
 The HSG rules on AI use say that AI-generated code must be cited in the source code. Claude Code adds a line
@@ -16,27 +16,40 @@ team's. A line the AI wrote and nobody touched since counts as the AI's. Commits
 (uploads, merges) have no such line, so their lines count as the team's even if the text came from a chat with
 an AI. The table in docs/AI_USE.md says so.
 """
-import re
-import subprocess
-import sys
-from datetime import date
-from pathlib import Path
+import re  # regular expressions: recognise the commit ids in the output of "git blame"
+import subprocess  # run git commands from Python
+import sys  # read the command line (--check) and stop with an error message
+from datetime import date  # today's date for the heading of the table
+from pathlib import Path  # file paths that work on every operating system
 
 ROOT = Path(__file__).resolve().parents[1]
 # The source files that must carry the header: code, styles and the app settings (not data, models or docs).
 SOURCE_GLOBS = ["app/*.py", "app/pages/*.py", "app/style.css", "src/*.py", "tests/*.py", "tools/*.py",
                 ".streamlit/config.toml", "notebooks/*.ipynb"]
 HEADER = "AI use:"
+# A Python file carries its header inside the module docstring, so the file has to start with this. Python only
+# reads a docstring that is the very first thing in the file.
+PYTHON_HEADER_START = '"""AI use:'
 
 
 def git(*args):
-    """Run a git command in the project folder and return what it prints (an error in git stops the script)."""
+    """Run a git command in the project folder and return what it prints.
+
+    Input: args are the words of the command after "git", for example "log" and "--oneline".
+
+    Output: the text that git printed. An error in git stops the script.
+    """
     result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True)
     return result.stdout
 
 
 def ai_commits():
-    """The ids of all commits that were written by Claude or have a Claude co-author line."""
+    """Find all commits that were written by Claude or have a Claude co-author line.
+
+    Input: none.
+
+    Output: a set with the ids of these commits.
+    """
     # One record per commit: id, author name and the co-author lines. \x1f separates the three parts and \x1e
     # the commits, because these characters never occur in names.
     log = git("log", "--format=%H%x1f%an%x1f%(trailers:key=Co-Authored-By,valueonly,separator=;)%x1e")
@@ -55,17 +68,23 @@ def ai_commits():
 
 
 def source_files():
-    """The source files in a fixed order.
+    """List the source files in a fixed order.
 
     Inside a git checkout only the files git knows are returned. In the unpacked submission zip there is no
     git, so there every file on disk is returned (the header check must work there too).
+
+    Input: none.
+
+    Output: a sorted list of paths, relative to the project folder.
     """
+    # Collect every file that matches one of the patterns.
     found = set()
     for pattern in SOURCE_GLOBS:
         for path in ROOT.glob(pattern):
             found.add(str(path.relative_to(ROOT)))
     found = sorted(found)
 
+    # Keep only the files that git tracks (without git: all of them).
     try:
         tracked = set(git("ls-files").split())
     except (OSError, subprocess.CalledProcessError):
@@ -79,7 +98,13 @@ def source_files():
 
 
 def share(path, ai):
-    """For one file: (number of lines, number of lines last changed in an AI-assisted commit)."""
+    """Count the lines of one file and how many of them come from AI-assisted commits.
+
+    Input: path is the file (relative to the project folder); ai is the set of AI-assisted commit ids from
+    ai_commits().
+
+    Output: a pair (number of lines, number of lines last changed in an AI-assisted commit).
+    """
     blame = git("blame", "--line-porcelain", "--", path)
     total = 0
     from_ai = 0
@@ -93,17 +118,34 @@ def share(path, ai):
 
 
 def missing_headers():
-    """The source files that do not have the AI header in their first lines."""
+    """Find the source files that do not have the AI header.
+
+    A Python file needs it on its first line (inside the module docstring); the other files (styles, settings,
+    notebooks) need it somewhere in their first lines.
+
+    Input: none.
+
+    Output: a list with the paths of the files without the header (empty if all have it).
+    """
     missing = []
     for path in source_files():
         head = (ROOT / path).read_text(encoding="utf-8")[:2000]
-        if HEADER not in head:
+        if path.endswith(".py"):
+            has_header = head.startswith(PYTHON_HEADER_START)
+        else:
+            has_header = HEADER in head
+        if not has_header:
             missing.append(path)
     return missing
 
 
 def table():
-    """The Markdown table: file, number of lines, share from AI-assisted commits."""
+    """Build the Markdown table: file, number of lines, share from AI-assisted commits.
+
+    Input: none.
+
+    Output: the table as one Markdown text, with a first line that says when and at which commit it was measured.
+    """
     ai = ai_commits()
     commit = git("rev-parse", "--short", "HEAD").strip()
     n_commits = len(git("rev-list", "HEAD").split())
@@ -120,7 +162,12 @@ def table():
 
 
 def main():
-    """Print the table. With --check only test the headers and stop with an error if one is missing."""
+    """Print the table. With --check only test the headers and stop with an error if one is missing.
+
+    Input: none (the option --check is read from the command line).
+
+    Output: nothing returned; the table or the result of the check is printed.
+    """
     if "--check" in sys.argv:
         missing = missing_headers()
         if missing:

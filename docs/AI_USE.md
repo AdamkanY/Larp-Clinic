@@ -193,6 +193,23 @@ functions. What the code does did not change. How this was checked:
 The saved models and the data were not changed. The table in section 2 was measured before this rewrite; run
 `python tools/ai_provenance.py` again after it is committed.
 
+### 3.7 Docstrings and comments in the lecturer's format (2026-11-26)
+
+After the lecturer's feedback (via Simon's list of to-dos), Matteo asked Claude (Claude Code) to bring every Python
+file to one format: the module docstring on line 1 (the "AI use:" citation is now its first line, because Python only
+reads a docstring that comes first), a docstring on every function with a one-line summary, an `Input:` paragraph and
+an `Output:` paragraph, a comment before each block, and a comment on every import saying what the library is for.
+Functions inside functions stay where they are and only got docstrings. Claude added `tools/check_docstrings.py`,
+which checks these rules, and changed `tools/ai_provenance.py --check` so that a Python file must start with the
+citation on line 1.
+
+Only docstrings and comments changed, no code. How this was checked: every file was compared with the version on
+`main` after removing the docstrings (the syntax trees are identical), `tools/check_docstrings.py` and
+`tools/ai_provenance.py --check` pass, and all five test files pass.
+
+**[team]** The lecturer also asked that some simple parts are written by hand and listed here. List them: which
+functions did the team write without the AI, and who?
+
 ## 4. How we checked the AI's work
 
 Facts from the repository:

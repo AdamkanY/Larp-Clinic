@@ -1,31 +1,38 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Offline checks for the app's helper code: labels, chart data, API client and risk colours.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Offline checks for the app's helper code: labels, chart data, API client and risk colours.
 
 Run with ``python tests/test_app.py`` (or pytest). No network needed: the API is replaced by a stub and the chart
 data is a small invented table, not real trial data. The risk-colour check uses `models/score_reference.npy` and
 is skipped when that file is missing.
 """
 
-import json
-import sys
-import tempfile
-from pathlib import Path
+import json  # write the snapshot file for the offline test
+import sys  # edit the module search path
+import tempfile  # temporary folders for the invented files
+from pathlib import Path  # file paths that work on every system
 
-import numpy as np
-import pandas as pd
-import requests
+import numpy as np  # arrays and numeric helpers
+import pandas as pd  # tables (DataFrame)
+import requests  # HTTP library; its errors and get() are faked in the API test
 
+# Make the repository root and app/ importable, then load the code under test.
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "app"))
-from src import api_client, database, game, viz
-from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS
-from src.labels import label
+from src import api_client, database, game, viz  # API client, SQLite database, game logic, chart data
+from src.features import CATEGORICAL_FEATURES, FEATURE_COLUMNS  # the model's feature lists
+from src.labels import label  # turns API codes into plain words
 
 
 def test_labels():
-    """Codes become plain words, whatever spelling they come in; gaps become 'Not stated'."""
+    """Check that codes become plain words, whatever spelling they come in, and gaps become 'Not stated'.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Known codes, spelling variants, missing values and an unknown code.
     assert label("masking", "DOUBLE") == "Double blind"
     assert label("phase", "PHASE1/PHASE2") == "Phase 1/2" and label("phase", "Phase 1/Phase 2") == "Phase 1/2"
     assert label("phase", "NA") == label("phase", "N/A") == label("phase", "Not Applicable") == "No phase"
@@ -35,7 +42,13 @@ def test_labels():
 
 
 def make_trials(path):
-    """Write a tiny invented trials.parquet with the columns the dashboard reads."""
+    """Write a tiny invented trials.parquet with the columns the dashboard reads.
+
+    Input: path is the file to write (Path).
+
+    Output: nothing; it writes 120 invented trials to the file.
+    """
+    # One dict per invented trial; the values follow the index so the counts in the tests are known.
     rows = []
     for i in range(120):
         rows.append({
@@ -47,15 +60,23 @@ def make_trials(path):
             "eligibility_text_len": [500, 501, 1000, 2000, 4000, 4001][i % 6], "brief_title": f"Trial {i}",
             "lead_sponsor_name": "Acme",
         })
+    # Save the table.
     pd.DataFrame(rows).to_parquet(path)
 
 
 def test_viz():
-    """Loading maps codes to words and groups eligibility lengths; filters and chart builders behave."""
+    """Check loading (codes to words, eligibility groups), the filters and the chart builders.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Write the invented table and load it the way the app does.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "trials.parquet"
         make_trials(path)
         df = viz.load_trials(path)
+    # Codes became words.
     assert set(df["phase_label"]) == {"Phase 2", "No phase", "Not stated"}
     assert set(df["masking"]) == {"Double blind", "Not stated"}
     assert set(df["allocation"]) == {"Randomized", "Single group"}
@@ -65,11 +86,13 @@ def test_viz():
     assert groups == {500: "Up to 500", 501: "501-1,000", 1000: "501-1,000", 2000: "1,001-2,000",
                       4000: "2,001-4,000", 4001: "Over 4,000"}
 
+    # Filters: phase, keyword, year range, and special characters in the keyword.
     assert len(viz.filter_trials(df, phases=["Phase 2"])) == 60
     assert len(viz.filter_trials(df, condition_kw="asthma")) == 40  # case-insensitive substring
     assert len(viz.filter_trials(df, year_range=(2010, 2010))) == 24
     assert len(viz.filter_trials(df, condition_kw="C++(")) == 0  # regex characters are plain text
 
+    # Rates per phase, and the text that names the highest and lowest group.
     stats = viz.rate_by(df, "phase_label", viz.PHASE_ORDER)
     assert list(stats["phase_label"]) == ["Phase 2", "No phase", "Not stated"]  # clinical order, not by size
     # "Not stated" (5 trials) is too small to count; two real groups remain.
@@ -80,6 +103,7 @@ def test_viz():
                          "rate": [0.2, 0.1, 0.5]})
     assert viz.extremes(gaps, "phase_label") == "Highest: Phase 2 at 20%. Lowest: No phase at 10%."
 
+    # The bar chart and the other chart builders.
     fig = viz.rate_bar(stats, "phase_label", "Phase", average=df["label"].mean())
     assert list(fig.data[0].x) == ["Phase 2", "No phase", "Not stated"]
     assert fig.data[0].text[2] == ""  # the 5-trial group is faded and unlabelled
@@ -90,15 +114,23 @@ def test_viz():
 
 
 def test_viz_heatmap():
-    """The two-trait matrix counts and orders correctly; thin cells stay empty and empty rows/columns are dropped."""
+    """Check the two-trait matrix: counts and order, empty thin cells, dropped empty rows and columns.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Write and load the invented table.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "trials.parquet"
         make_trials(path)
         df = viz.load_trials(path)
+    # The numbers behind the heatmap: rates and counts per phase and sponsor.
     rate, n = viz.rate_matrix(df, "phase_label", "sponsor_class", viz.PHASE_ORDER)
     assert list(rate.index) == ["Phase 2", "No phase", "Not stated"]  # clinical order
     assert n.loc["Phase 2", "Industry"] == 60 and n.to_numpy().sum() == len(df)
     assert rate.loc["Phase 2", "Industry"] == df[df["phase_label"] == "Phase 2"]["label"].mean()
+    # The figure itself.
     fig = viz.rate_heatmap(df, "phase_label", "sponsor_class", viz.PHASE_ORDER)
     heat = fig.data[0]
     # "Not stated" has 5 trials, below MIN_GROUP_N in every column, so its row disappears.
@@ -111,18 +143,33 @@ def test_viz_heatmap():
 
 
 def test_gain_curve():
-    """Cumulative gain: riskiest first, from 0% to 100% found, and equal to picking at random for a useless score."""
+    """Check the cumulative gain curve: riskiest first, 0% to 100% found, random for a useless score.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # A small example where the right order is known.
     curve = viz.gain_curve([1, 0, 1, 0, 0], [0.9, 0.8, 0.7, 0.1, 0.2], points=6)
     assert list(curve["reviewed"]) == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
     assert list(curve["caught"]) == [0.0, 0.5, 0.5, 1.0, 1.0, 1.0]
     assert curve["precision"].iloc[1] == 1.0 and curve["precision"].iloc[-1] == 0.4
+    # A score that is the same for everyone gives the random line.
     flat = viz.gain_curve([1, 0] * 50, [0.5] * 100, points=11)  # ties keep the input order: no head start
     assert np.allclose(flat["caught"], flat["reviewed"], atol=0.02)
 
 
 def test_database():
-    """The SQLite database gives the same numbers as the pandas helpers, splits conditions into rows and treats
-    filter text as data, never as SQL."""
+    """Check that the SQLite database matches the pandas helpers and treats filter text as data.
+
+    The database must give the same numbers as the pandas helpers, split conditions into rows and treat filter text
+    as data, never as SQL.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Build a database from the invented table in a temporary folder.
     with tempfile.TemporaryDirectory() as tmp:
         parquet, db_path = Path(tmp) / "trials.parquet", Path(tmp) / "trials.db"
         make_trials(parquet)
@@ -136,9 +183,11 @@ def test_database():
         # Filters as SQL parameters give exactly the pandas filter's trials and rates.
         filters = {"phases": ["Phase 2"], "sponsor_classes": ["Industry"], "year_range": (2010, 2012),
                    "condition_kw": "asth"}
+        # The same filters through SQL.
         db = database.TrialDatabase(db_path, **filters)
         expected = viz.filter_trials(df, ["Phase 2"], ["Industry"], (2010, 2012), "asth")
         assert db.summary()["n"] == len(expected) == len(db.trials())
+        # Grouped rates agree between SQL and pandas.
         by_sql = db.rate_by("masking", viz.MASKING_ORDER)
         by_pandas = viz.rate_by(expected, "masking", viz.MASKING_ORDER)
         assert list(by_sql["masking"]) == list(by_pandas["masking"].astype(str))
@@ -158,25 +207,54 @@ def test_database():
 
 
 class Response:
-    """Minimal stand-in for requests.Response."""
+    """Minimal stand-in for requests.Response, holding an invented payload."""
 
     def __init__(self, payload):
+        """Store the invented answer.
+
+        Input: payload is the data json() will return (dict).
+
+        Output: nothing; it sets self.payload.
+        """
         self.payload = payload
 
     def raise_for_status(self):
-        """Pretend the request succeeded."""
+        """Pretend the request succeeded.
+
+        Input: none.
+
+        Output: nothing, because the invented request never fails.
+        """
 
     def json(self):
-        """The invented payload."""
+        """Return the invented payload.
+
+        Input: none.
+
+        Output: the payload (dict) given when the object was created.
+        """
         return self.payload
 
 
 def test_api_client():
-    """Search asks for interventional trials with every ongoing status, and failures are never cached."""
+    """Check that search asks for interventional trials with every ongoing status, and that failures are never cached.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Record what is sent; the first call fails, the second succeeds.
     sent = []
     outcomes = [requests.ConnectionError("offline"), Response({"studies": [{"protocolSection": {}}], "totalCount": 1})]
 
     def fake_get(url, params=None, timeout=None):
+        """Stand-in for requests.get that records the parameters and plays the planned outcomes in order.
+
+        Input: url is the requested address (ignored); params is the dict of query parameters (recorded); timeout is
+        ignored.
+
+        Output: the next planned Response; raises the planned exception instead when the outcome is an error.
+        """
         sent.append(params)
         outcome = outcomes.pop(0)
         if isinstance(outcome, Exception):
@@ -198,18 +276,27 @@ def test_api_client():
     finally:
         api_client.requests.get = real_get
         api_client._get_json.clear()
+    # The first request carried every ongoing status and the three filters.
     params = sent[0]
     assert "ENROLLING_BY_INVITATION" in params["filter.overallStatus"] and "RECRUITING" in params["filter.overallStatus"]
     assert params["filter.advanced"] == "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE2 AND AREA[LeadSponsorClass]NIH"
     assert params["query.term"] == "asthma"
 
+    # The table row shows phases as text, and a missing phase as "NA".
     row = api_client.summarize({"protocolSection": {"designModule": {"phases": ["PHASE1", "PHASE2"]}}})
     assert row["Phase"] == "PHASE1, PHASE2"
     assert api_client.summarize({})["Phase"] == "NA"  # a missing phase reads like the API's own "not applicable"
 
 
 def example_study(nct_id, title, conditions, phases, sponsor_class):
-    """A minimal ongoing-trial record with just the fields the offline search reads."""
+    """Build a minimal ongoing-trial record with just the fields the offline search reads.
+
+    Input: nct_id is the trial id (str); title is the brief title (str);
+    conditions is a list of condition names (list of str);
+    phases is a list of phase codes or None; sponsor_class is the sponsor class code (str).
+
+    Output: a study record (dict in the API v2 layout).
+    """
     return {"protocolSection": {
         "identificationModule": {"nctId": nct_id, "briefTitle": title},
         "statusModule": {"overallStatus": "RECRUITING"},
@@ -220,10 +307,17 @@ def example_study(nct_id, title, conditions, phases, sponsor_class):
 
 
 def test_offline_examples():
-    """The saved snapshot is searched like the API (keyword, phase, sponsor), and a broken or missing file is None."""
+    """Check that the saved snapshot is searched like the API and a broken or missing file gives None.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Three invented trials for the snapshot.
     studies = [example_study("NCT1", "Drug A in adults", ["Asthma"], ["PHASE2"], "INDUSTRY"),
                example_study("NCT2", "Walking study", ["Depression"], None, "OTHER"),
                example_study("NCT3", "Asthma app", ["Breathing"], ["PHASE3"], "OTHER")]
+    # Save them as a snapshot file in a temporary folder and search it.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "ongoing_trials.json"
         path.write_text(json.dumps({"saved_on": "2026-12-01", "studies": studies}))
@@ -235,18 +329,27 @@ def test_offline_examples():
         assert api_client.search_examples(phase="NA", path=path)["total"] == 1  # a missing phase counts as "NA"
         assert api_client.search_examples(sponsor_class="OTHER", page_size=1, path=path)["total"] == 2
         assert len(api_client.search_examples(sponsor_class="OTHER", page_size=1, path=path)["studies"]) == 1
+        # A file that is not JSON gives None.
         path.write_text("not json")
         assert api_client.load_examples(path) is None
+    # A missing file gives None too.
     assert api_client.search_examples(path=Path(tmp) / "missing.json") is None
 
 
 def test_risk_colours():
-    """Colour follows the rank among past trials: green below the median, red among the riskiest 10%."""
+    """Check that the risk colour follows the rank among past trials.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Skip when the saved reference scores are missing.
     reference = ROOT / "models" / "score_reference.npy"
     if not reference.exists():
         print("skipped: models/score_reference.npy is missing")
         return
-    import risk_gauge
+    import risk_gauge  # the app's colour logic
+    # Scores of past trials in order; pick low, middle and high ones.
     scores = np.sort(np.load(reference))
     assert risk_gauge.risk_tone(float(scores[len(scores) // 10]))[0] == "green"
     assert risk_gauge.risk_tone(float(scores[int(len(scores) * 0.7)]))[0] == "yellow"
@@ -256,16 +359,23 @@ def test_risk_colours():
 
 
 def make_game_trials():
-    """Invented test-split table for the game: a model-feature column set plus label and phase_label.
+    """Build an invented test-split table for the game.
 
+    It has all model-feature columns plus label and phase_label.
     Phase 2: 10 terminated / 30 completed; Phase 3: 5 / 5; "Early": terminated only, so it can never be paired.
     `n_arms` doubles as the score of the stub model below: terminated trials get a higher value than completed ones.
+
+    Input: none.
+
+    Output: a table (DataFrame) with one row per invented trial.
     """
+    # One row per trial: terminated trials get n_arms 3.0, completed ones 2.0.
     rows = []
     for phase, n_term, n_comp in (("Phase 2", 10, 30), ("Phase 3", 5, 5), ("Early", 4, 0)):
         for outcome, count in ((1, n_term), (0, n_comp)):
             for _ in range(count):
                 rows.append({"label": outcome, "phase_label": phase, "n_arms": 2.0 + outcome})
+    # Fill every model feature the rows lack with a dummy value.
     trials = pd.DataFrame(rows)
     for col in FEATURE_COLUMNS:
         if col not in trials:
@@ -274,16 +384,28 @@ def make_game_trials():
 
 
 class StubModel:
-    """Stands in for the trained model: the score is the n_arms column, so higher n_arms means 'riskier'."""
+    """Stand-in for the trained model: the score is the n_arms column, so higher n_arms means 'riskier'."""
 
     def predict_proba(self, frame):
-        """Return [P(0), P(1)] columns like scikit-learn, with P(1) = n_arms / 10."""
+        """Return probabilities like scikit-learn, with P(1) = n_arms / 10.
+
+    Input: frame is a table (DataFrame) with an n_arms column.
+
+    Output: an array with two columns, P(0) and P(1), one row per trial.
+    """
+        # The score is n_arms scaled to the range 0 to 1.
         risk = frame["n_arms"].to_numpy() / 10
         return np.column_stack([1 - risk, risk])
 
 
 def test_game_pairs():
-    """Pair sampler: one terminated + one completed per pair, same phase, no repeats, reproducible, never invents pairs."""
+    """Check the game's pair sampler: one terminated and one completed trial per pair, same phase.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Draw 12 pairs from the invented table and check them.
     trials = make_game_trials()
     pairs = game.sample_pairs(trials, 12, seed=1)
     assert len(pairs) == 12
@@ -292,31 +414,47 @@ def test_game_pairs():
             == trials.loc[pairs["completed"], "phase_label"].to_numpy()).all()
     assert pairs["terminated"].is_unique and pairs["completed"].is_unique
     assert "Early" not in set(trials.loc[pairs["terminated"], "phase_label"])  # no completed partner exists
+    # The same seed gives the same pairs, another seed gives other pairs, and too many requested gives all possible.
     assert game.sample_pairs(trials, 12, seed=1).equals(pairs)
     assert not game.sample_pairs(trials, 12, seed=2).equals(pairs)
     assert len(game.sample_pairs(trials, 1000, seed=1)) == 15  # asks for more than exist: gets all pairable ones
 
 
 def test_game_scoring():
-    """Model pick and accuracy: higher score wins, ties count half, and a game decides everything up front."""
+    """Check the model's pick and accuracy: the higher score wins and ties count half.
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # The model picks the trial with the higher score; a tie is decided at random.
     trials = make_game_trials()
     assert game.model_pick(0.3, 0.1) == "terminated" and game.model_pick(0.1, 0.3) == "completed"
     assert game.model_pick(0.2, 0.2, rng=0) in {"terminated", "completed"}
+    # Accuracy on 10 pairs: perfect for the stub, one half when all scores are tied.
     pairs = game.sample_pairs(trials, 10, seed=3)
     assert game.pairwise_accuracy(trials, pairs, StubModel()) == 1.0  # stub always scores the terminated one higher
     flat = trials.assign(n_arms=2.0)  # everything tied
     assert game.pairwise_accuracy(flat, pairs, StubModel()) == 0.5
+    # A new game fixes all ten rounds, with shuffled display order.
     rounds = game.new_game(trials, 10, model=StubModel(), seed=4)
     assert len(rounds) == 10 and all(r["model_pick"] == "terminated" for r in rounds)
     assert {r["left"] for r in rounds} == {"terminated", "completed"}  # display order is shuffled
 
 
 def test_game_score_matches_predict():
-    """The batch scoring used by the game equals predict.score row by row (skipped without the saved model)."""
+    """Check that the batch scoring used by the game equals predict.score row by row (skipped without the saved model).
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Skip when the saved model or the data file is missing.
     if not (ROOT / "models" / "gbm.joblib").exists() or not (ROOT / "data" / "processed" / "trials.parquet").exists():
         print("skipped: models/gbm.joblib or data/processed/trials.parquet is missing")
         return
-    from src.predict import score
+    from src.predict import score  # the single-trial scoring function
+    # Three real test trials, scored as a batch and one by one.
     trials = game.load_test_trials().head(3)
     assert (trials["split"] == "test").all()
     batch = game.score_rows(trials)
@@ -325,26 +463,36 @@ def test_game_score_matches_predict():
 
 
 def test_one_palette():
-    """Colours live only in app/ui.py: the CSS, the charts and the Streamlit theme all take them from PALETTE."""
-    import re
-    import tomllib
+    """Check that colours live only in app/ui.py and everything else takes them from PALETTE.
 
-    import plotly.io as pio
-    import ui
+    Input: none.
 
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    import re  # regular expressions to find colour codes in the source files
+    import tomllib  # reads the Streamlit config file
+
+    import plotly.io as pio  # the chart templates
+    import ui  # the app's palette
+
+    # The chart template is registered on import.
     assert pio.templates.default == ui.TEMPLATE  # registered on import, before any page builds a chart
+    # No page, style or chart file may contain a colour literal of its own.
     colour = re.compile(r"#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b|rgba?\(")
     files = [ROOT / "app" / "style.css", ROOT / "app" / "Home.py", ROOT / "app" / "risk_gauge.py",
              ROOT / "src" / "viz.py", *sorted((ROOT / "app" / "pages").glob("*.py"))]
     for path in files:
         assert not colour.findall(path.read_text(encoding="utf-8")), f"colour literal in {path.name}"
+    # The CSS takes its colours from the palette.
     css = ui.stylesheet()
     assert f"--ink: {ui.PALETTE['ink']};" in css and f"--low-tint: {ui.PALETTE['low_tint']};" in css
+    # The Streamlit theme in config.toml matches the palette.
     theme = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text())["theme"]
     assert {theme["primaryColor"], theme["textColor"]} == {ui.PALETTE["ink"]}
     assert theme["backgroundColor"] == ui.PALETTE["paper"]
     assert theme["secondaryBackgroundColor"] == ui.PALETTE["paper_2"]
     assert theme["borderColor"] == ui.PALETTE["line"] and theme["linkColor"] == ui.PALETTE["accent_text"]
+    # A chart built by viz.py uses the palette's bar colour.
     with tempfile.TemporaryDirectory() as tmp:
         make_trials(Path(tmp) / "trials.parquet")
         df = viz.load_trials(Path(tmp) / "trials.parquet")
@@ -353,12 +501,19 @@ def test_one_palette():
 
 
 def test_ai_headers():
-    """Every source file cites the AI use in its first lines (HSG rule: AI-generated code is cited in the code)."""
+    """Check that every source file cites the AI use in its first lines (HSG rule).
+
+    Input: none.
+
+    Output: nothing; the assertions raise an AssertionError when a check fails.
+    """
+    # Load the checker from tools/ and expect no file with a missing header.
     sys.path.insert(0, str(ROOT / "tools"))
-    import ai_provenance
+    import ai_provenance  # the script that lists files without the AI-use header
     assert ai_provenance.missing_headers() == []
 
 
+# ---- Run all tests when the file is started directly ----
 if __name__ == "__main__":
     for name, test in sorted(globals().items()):
         if name.startswith("test_"):

@@ -1,6 +1,6 @@
-# AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share
-# of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
-"""Turns one trial from ClinicalTrials.gov into the numbers and categories the model uses.
+"""AI use: written with the help of Claude Code (Anthropic) as a coding assistant. What the AI was asked, the share of AI-written lines per file and what the team did by hand are recorded in docs/AI_USE.md.
+
+Turns one trial from ClinicalTrials.gov into the numbers and categories the model uses.
 
 build_features() gets ONE study record from the API (one element of the "studies" list) and returns a flat
 dictionary. Training and the app both call this function, so a trial is always described in the same way.
@@ -9,8 +9,8 @@ Leakage rule: we only read fields that are known when a trial is registered. Enr
 results and every date except the start date are never read here, so they cannot reach the model.
 """
 
-import re
-from datetime import date
+import re  # regular expressions: finding keywords in condition texts and reading ages and dates
+from datetime import date  # the date type for the start date
 
 # ---------------------------------------------------------------------------------------------------------------
 # Column lists
@@ -22,6 +22,7 @@ INTERVENTION_TYPES = [
     "GENETIC", "DIETARY_SUPPLEMENT", "COMBINATION_PRODUCT", "DIAGNOSTIC_TEST",
     "OTHER",
 ]
+# The column name of every intervention type, for example "DRUG" -> "intervention_drug".
 INTERVENTION_FEATURES = []
 for kind in INTERVENTION_TYPES:
     INTERVENTION_FEATURES.append("intervention_" + kind.lower())
@@ -122,6 +123,7 @@ MAX_AGE_FILL = 120.0
 # What we predict: 1 = stopped early, 0 = finished.
 LABELS = {"TERMINATED": 1, "COMPLETED": 0}
 
+# Readable names for the phase codes of the API.
 PHASE_NAMES = {
     "EARLY_PHASE1": "Early Phase 1", "PHASE1": "Phase 1", "PHASE2": "Phase 2",
     "PHASE3": "Phase 3", "PHASE4": "Phase 4", "NA": "Not Applicable",
@@ -143,7 +145,13 @@ DATE_PATTERN = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
 # ---------------------------------------------------------------------------------------------------------------
 
 def get_field(record, *keys):
-    """Go down a nested dictionary key by key. Returns None as soon as a key is missing."""
+    """Go down a nested dictionary key by key.
+
+    Input: record is a dictionary (or anything else); keys are the key names to follow, one after the other.
+
+    Output: the value at the end of the path. None as soon as a key is missing or a level is not a dictionary.
+    """
+    # Follow the path one key at a time and stop with None if the path breaks.
     value = record
     for key in keys:
         if not isinstance(value, dict):
@@ -153,14 +161,25 @@ def get_field(record, *keys):
 
 
 def count_items(items):
-    """Length of a list. A missing list counts as 0, because then nothing was registered."""
+    """Count the entries of a list. A missing list counts as 0, because then nothing was registered.
+
+    Input: items is a list or None (anything that is not a list counts as missing).
+
+    Output: the length of the list as an int, or 0 if it is not a list.
+    """
     if isinstance(items, list):
         return len(items)
     return 0
 
 
 def yes_no_flag(value):
-    """True/False (or the text "true"/"false") -> 1/0. Anything else -> None."""
+    """Turn True/False (or the text "true"/"false") into 1/0.
+
+    Input: value is a bool, a text such as "true" or "False", or anything else (for example None).
+
+    Output: 1 for true, 0 for false, None for anything else.
+    """
+    # A real bool first, then the text form.
     if isinstance(value, bool):
         return int(value)
     if isinstance(value, str):
@@ -173,9 +192,15 @@ def yes_no_flag(value):
 
 
 def phase_label(phases):
-    """Readable phase, for example ['PHASE2', 'PHASE3'] -> 'Phase 2/Phase 3'. No phases -> None."""
+    """Make a readable phase text, for example ['PHASE2', 'PHASE3'] -> 'Phase 2/Phase 3'.
+
+    Input: phases is a list of API phase codes, or None.
+
+    Output: the readable names joined by "/" (a text), or None if there are no phases.
+    """
     if not phases:
         return None
+    # Sorted, so the same phases always give the same text.
     names = []
     for phase in sorted(phases):
         names.append(PHASE_NAMES.get(phase, phase))
@@ -183,32 +208,44 @@ def phase_label(phases):
 
 
 def parse_age_years(text):
-    """'18 Years' -> 18.0 and '6 Months' -> 0.5. 'N/A' or a missing value -> None."""
+    """Turn an age text of the API into years: '18 Years' -> 18.0 and '6 Months' -> 0.5.
+
+    Input: text is the age text of the API (for example "18 Years"), or None.
+
+    Output: the age in years as a float. None for 'N/A', for other texts or for a missing value.
+    """
     if not isinstance(text, str):
         return None
     match = AGE_PATTERN.match(text)
     if not match:
         return None
+    # Number times the length of its unit in years.
     number = float(match.group(1))
     unit = match.group(2).lower()
     return number * YEARS_PER_UNIT[unit]
 
 
 def parse_start_date(text):
-    """'YYYY-MM' or 'YYYY-MM-DD' -> a date (without a day we take day 1).
+    """Turn 'YYYY-MM' or 'YYYY-MM-DD' into a date (without a day we take day 1).
 
     Everything else (only a year, nonsense, impossible dates) gives None. Such trials are dropped from the data.
+
+    Input: text is the start date text of the API, or None.
+
+    Output: a datetime.date, or None if the text is missing or not a valid date.
     """
     if not isinstance(text, str):
         return None
     match = DATE_PATTERN.match(text.strip())
     if not match:
         return None
+    # Day 1 if the API gave only year and month.
     year = int(match.group(1))
     month = int(match.group(2))
     day = 1
     if match.group(3):
         day = int(match.group(3))
+    # date() raises an error for impossible dates such as month 13.
     try:
         return date(year, month, day)
     except ValueError:
@@ -216,16 +253,21 @@ def parse_start_date(text):
 
 
 def condition_features(conditions):
-    """0/1 flag per condition category for one trial, plus how many categories matched.
+    """Make a 0/1 flag per condition category for one trial, plus how many categories matched.
 
-    conditions is the list of registered condition texts. None or an empty list gives all zeros.
     Example result: {"cond_oncology": 1, "cond_cardio": 0, ..., "n_condition_categories": 1}
+
+    Input: conditions is the list of registered condition texts. None or an empty list gives all zeros.
+
+    Output: a dictionary with the columns "cond_<category>" (0 or 1) and "n_condition_categories" (the sum).
     """
+    # Keep only real texts.
     texts = []
     for condition in conditions or []:
         if isinstance(condition, str):
             texts.append(condition)
 
+    # A category is 1 as soon as one condition text contains one of its keywords.
     row = {}
     for category in CONDITION_CATEGORIES:
         found = 0
@@ -248,6 +290,10 @@ def build_features(study_json):
     The result has the meta columns, the display columns and all FEATURE_COLUMNS. Missing fields become None,
     except counts (0) and the maximum age (120 plus the flag has_max_age = 0). "label" is 1 for TERMINATED,
     0 for COMPLETED and None for every other status (running trials are only scored, not used for training).
+
+    Input: study_json is one study record of the ClinicalTrials.gov API v2 (a nested dictionary).
+
+    Output: a flat dictionary with one entry per column (meta, design features and display columns).
     """
     proto = get_field(study_json, "protocolSection") or {}
 
@@ -274,6 +320,7 @@ def build_features(study_json):
         has_max_age = 0
         max_age = MAX_AGE_FILL
 
+    # Only the length of the eligibility text is used, never the text itself.
     eligibility_text_len = None
     if isinstance(criteria, str):
         eligibility_text_len = len(criteria)
@@ -284,6 +331,7 @@ def build_features(study_json):
         if isinstance(condition, str):
             condition_texts.append(condition)
 
+    # Put all values into one flat row.
     row = {
         # Meta columns (never model inputs).
         "nct_id": get_field(proto, "identificationModule", "nctId"),
@@ -344,12 +392,22 @@ def build_features(study_json):
 # ---------------------------------------------------------------------------------------------------------------
 
 def empty_entries(n):
-    """A list with n empty entries. build_features only counts such lists, the content does not matter."""
+    """Make a list with n empty entries. build_features only counts such lists, the content does not matter.
+
+    Input: n is the wanted number of entries (a whole number, or None for 0).
+
+    Output: a list of n empty dictionaries.
+    """
     return [{}] * int(n or 0)
 
 
 def age_text(years):
-    """Age the way the API writes it, for example 18 -> '18 Years'. None stays None."""
+    """Write an age the way the API writes it, for example 18 -> '18 Years'. None stays None.
+
+    Input: years is an age in years (a number), or None.
+
+    Output: the age text (for example "18 Years"), or None if years is None.
+    """
     if years is None:
         return None
     return f"{float(years):g} Years"
@@ -361,22 +419,27 @@ def study_from_design(design):
     This way a typed-in design goes through build_features() like a real trial, and we do not need a second copy
     of the rules (age text, the 120 stand-in, the 0/1 columns, the counts).
 
-    design is a dictionary. Every key is optional (missing or None = not stated):
+    The status is NOT_YET_RECRUITING, so the record never gets a label.
+
+    Input: design is a dictionary. Every key is optional (missing or None = not stated):
     phase (API code such as "PHASE2" or "PHASE1/PHASE2"), allocation, intervention_model, primary_purpose,
     masking, sponsor_class, sex (API codes); n_arms, n_primary_outcomes, n_secondary_outcomes (whole numbers);
     has_collaborators, has_dmc, healthy_volunteers (True/False); min_age_years, max_age_years (years, no maximum
     = None); eligibility_text_len (number of characters); intervention_types (list); conditions (list of texts).
 
-    The status is NOT_YET_RECRUITING, so the record never gets a label.
+    Output: a dictionary shaped like one study record of the API ({"protocolSection": {...}}).
     """
+    # "PHASE1/PHASE2" -> ["PHASE1", "PHASE2"], the form the API uses.
     phases = None
     if design.get("phase"):
         phases = design["phase"].split("/")
 
+    # One entry per chosen intervention type.
     interventions = []
     for kind in design.get("intervention_types") or []:
         interventions.append({"type": kind})
 
+    # Only "is the list empty or not" matters for has_collaborators.
     collaborators = []
     if design.get("has_collaborators"):
         collaborators = [{}]
@@ -386,6 +449,7 @@ def study_from_design(design):
     if design.get("eligibility_text_len") is not None:
         criteria = "x" * int(design["eligibility_text_len"])
 
+    # Build the nested record with the same paths that build_features() reads.
     protocol = {
         "statusModule": {"overallStatus": "NOT_YET_RECRUITING"},
         "designModule": {
@@ -424,5 +488,10 @@ def study_from_design(design):
 
 
 def features_from_design(design):
-    """The feature row for a design typed into the form (used by the page "Check your own trial")."""
+    """Build the feature row for a design typed into the form (used by the page "Check your own trial").
+
+    Input: design is the dictionary of form values described in study_from_design().
+
+    Output: the flat feature dictionary from build_features().
+    """
     return build_features(study_from_design(design))
