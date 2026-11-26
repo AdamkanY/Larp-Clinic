@@ -34,7 +34,7 @@ RUNNING = ["recruiting", "not_yet_recruiting", "active_not_recruiting", "enrolli
 STATUSES = ENDED + ["withdrawn"] + RUNNING + ["unknown"]
 
 
-def count(year: int, status: str) -> int:
+def count(year, status):
     """Count the interventional trials of one start year that have one status today (one API call).
 
     Input: year is the start year (integer); status is the status in lower case, for example "completed" (text).
@@ -53,7 +53,7 @@ def count(year: int, status: str) -> int:
     return int(response.json().get("totalCount", 0))
 
 
-def fetch_counts() -> pd.DataFrame:
+def fetch_counts():
     """Count every status for every start year (about 100 API calls, paced well below the limit).
 
     Input: none.
@@ -71,7 +71,7 @@ def fetch_counts() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def load_counts(path=COUNTS_PATH) -> pd.DataFrame:
+def load_counts(path=COUNTS_PATH):
     """Read the saved counts per start year.
 
     Input: path is the CSV file with the counts (default: data/processed/open_trials_by_year.csv).
@@ -82,7 +82,7 @@ def load_counts(path=COUNTS_PATH) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def tilt_table(counts: pd.DataFrame, predicted: pd.Series) -> pd.DataFrame:
+def tilt_table(counts, predicted):
     """Per start year: how many trials are still running, and the real share stopped with and without them.
 
     Input: counts is the table from load_counts(); predicted is the model's average prediction per start year

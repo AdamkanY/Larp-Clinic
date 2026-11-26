@@ -4,6 +4,8 @@ Trial-Radar estimates how likely a clinical trial is to be stopped early, using 
 It learns from 162,457 completed and terminated trials on [ClinicalTrials.gov](https://clinicaltrials.gov) (started 2008-2019)
 and scores trials that are still running. Streamlit app with a calibrated gradient-boosting model; HSG Computer Science group project.
 
+**Live app:** https://larp-clinic.streamlit.app (Streamlit Community Cloud, always the latest `main`).
+
 **Not medical advice.** It is a student project: do not use it to decide about treatment or participation.
 
 ## The problem
@@ -164,6 +166,9 @@ one in [`docs/PREDICTION_PROTOCOL.md`](docs/PREDICTION_PROTOCOL.md).
 4. Deploy. Dependencies come from `requirements.txt`; the data and model files are already in the repository.
 
 The first visit to "How the model works" scores the test trials once (a few seconds); after that it is cached.
+
+The deployed app of our team runs at https://larp-clinic.streamlit.app. Python 3.12 is set under *Advanced settings*; the app
+follows `main`, so a merge there updates it after a short build.
 
 ## Team
 

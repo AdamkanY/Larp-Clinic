@@ -227,9 +227,9 @@ script shortly before the Q&A.
 No. It is a count: 18,350 of the 162,457 finished trials were terminated. The model gives each single trial its own
 probability; on the test trials its mean prediction is 9.8% (real: 11.7%), see question 12.
 
-**33. Why is `PAGES` or `AUDIENCES` a list and not a tuple?**
-A style choice without effect: the data are constants that are only read, so a tuple would be just as correct and
-would show that they never change. The entries inside are already tuples.
+**33. Why are `PAGES` and `AUDIENCES` tuples and not lists?**
+Because they are constants that are only read: a tuple shows that they never change. (They were lists first; the
+change made no difference to how the app behaves.) The entries inside are tuples as well.
 
 **34. How do you show which code the AI wrote and which the team wrote?**
 Every Python file starts with a docstring that cites the AI, every function carries the comment "AI use: written

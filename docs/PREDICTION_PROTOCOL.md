@@ -60,8 +60,8 @@ must be explainable").
 
 | Method | In one sentence | Who explains it |
 |---|---|---|
-| `HistGradientBoostingClassifier` with native categories and early stopping | Boosting (DSF deck 17) on binned numbers; categories are split directly instead of one-hot coded; it stops adding trees when an inner 10% validation set stops improving. | **[team]** |
-| `class_weight="balanced"` | Each stopped trial counts about 8 times as much in training, so the rare class is not ignored (CS course 6.4.1, uneven class distribution). | **[team]** |
-| Isotonic calibration (`CalibratedClassifierCV`) | A step function that maps the raw scores to the observed share of stopped trials, learned on held-out folds; the ranking stays the same. | **[team]** |
-| Permutation importance | Shuffle one input in the test trials and measure how much worse the ranking gets (DSF deck 17: importance is predictive, not causal). | **[team]** |
-| Per-trial drivers (perturbation) | Set one input of a trial to the value of a typical training trial and measure how far the estimate moves. | **[team]** |
+| `HistGradientBoostingClassifier` with native categories and early stopping | Boosting (DSF deck 17) on binned numbers; categories are split directly instead of one-hot coded; it stops adding trees when an inner 10% validation set stops improving. | Adam |
+| `class_weight="balanced"` | Each stopped trial counts about 8 times as much in training, so the rare class is not ignored (CS course 6.4.1, uneven class distribution). | Adam |
+| Isotonic calibration (`CalibratedClassifierCV`) | A step function that maps the raw scores to the observed share of stopped trials, learned on held-out folds; the ranking stays the same. | Adam (Dominic backs up) |
+| Permutation importance | Shuffle one input in the test trials and measure how much worse the ranking gets (DSF deck 17: importance is predictive, not causal). | Dominic |
+| Per-trial drivers (perturbation) | Set one input of a trial to the value of a typical training trial and measure how far the estimate moves. | Dominic |
