@@ -28,7 +28,7 @@ METRICS = Path(__file__).resolve().parents[1] / "models" / "gbm_metrics.json"
 # ---- 2a. The page list ----
 # The five pages in the order people use them. Navigation and landing-page bands both come from this list, so
 # they cannot drift apart: (title, file, sentence for the band, action label).
-PAGES = [
+PAGES = (
     ("Find a trial", "pages/1_Find_a_Trial.py",
      "Search ongoing trials on ClinicalTrials.gov and see how likely each one is to stop early.", "Search trials"),
     ("Check your own trial", "pages/2_Check_Your_Trial.py",
@@ -39,7 +39,7 @@ PAGES = [
      "How well it works, how to read a score, what matters most and where it falls short.", "Read the details"),
     ("Play the game", "pages/5_Game.py",
      "Two past trials, one was stopped early. Can you spot it more often than the model?", "Start a game"),
-]
+)
 # ---- 2b. Lookups ----
 # The file of each page by its title, for the links on the landing page.
 PAGE_FILE = {}
@@ -48,14 +48,14 @@ for page_title, page_file, page_sentence, page_action in PAGES:
 
 # The use case in one place: who decides what with the app. The video and the README tell the same story, so a
 # change here should be mirrored there: (who, the decision they face, which page helps).
-AUDIENCES = [
+AUDIENCES = (
     ("Trial sponsors and study designers",
      "Before registering a trial, they can test the design and see which single change, such as blinding or a data "
      "monitoring committee, goes with a lower estimate in past trials.", "Check your own trial"),
     ("Investors and business analysts",
      "Screening a company's ongoing trials, they can see which ones look riskier than most and deserve a closer look "
      "before they weigh the pipeline.", "Find a trial"),
-]
+)
 # Why an app and not just another paper: what the published models do not offer. Sources are in the README.
 NOVELTY = ("Published models predict early termination well on paper, but the ones we found do not let you search "
            "live trials or change a design and watch the risk move. Trial-Radar does both, with a model that only "

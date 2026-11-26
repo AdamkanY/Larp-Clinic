@@ -4,10 +4,9 @@ The course allows generative AI for code if it is cited and quoted in the source
 the project"; HSG rules on AI use, citations and the declaration of authorship, applied to source code). This file is
 that record. Every source file points here in its first lines ("AI use: ...").
 
-> **Status: nearly final.** The facts come from the repository (git history, measurements, test runs). Three places still
-> need the team and are marked **[team]**: the list of functions written by hand (section 3.7) and the two drafts in
-> section 5 ("How we will use AI in future projects", "What AI could do next"). Confirm or correct them, then delete
-> this box.
+> **Status.** The facts come from the repository (git history, measurements, test runs); the team has confirmed the
+> reflection and the drafts in section 5. One place is still open and marked **[team]**: the list of the functions the
+> team wrote by hand (section 3.7). Fill it, then delete this box.
 
 ## 1. Tools
 
@@ -290,7 +289,7 @@ Written from the repository history.
   by script (identical syntax trees) and the tests were run, instead of relying on the AI's own summary.
 - Big jobs were split into helpers that each owned different files, and the result was checked with the same script.
 
-**How we will use AI in future projects** **[team]** Draft from what went wrong and right here; confirm it.
+**How we will use AI in future projects**
 
 - Write down the rules and the facts (deadlines, grading criteria) first, and check them against the source.
 - Treat every number and every claim the AI writes as a draft until someone has checked it.
@@ -302,7 +301,7 @@ Written from the repository history.
   that nothing but the style had changed.
 - Say in the project from the start which parts are AI-written, instead of measuring it at the end.
 
-**What AI could do next for Trial-Radar** **[team]** Ideas, none of them built.
+**What AI could do next for Trial-Radar** (ideas, none of them built)
 
 - Refresh the data and the saved example trials on a schedule and flag when the model's error grows, because new
   trials end and the years we tested on keep changing.
