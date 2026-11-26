@@ -28,7 +28,9 @@ Authorship") and the grading scheme. One person uploads; everyone checks this li
    fonts, README and docs (about 20 MB), without `.venv` or caches.
 3. **The declaration of authorship**, one for the whole group, filled in and signed: the HSG form linked in the course
    slides and in the grading sheet (II.A.07 "Declaration of Authorship", on the HSG student SharePoint). Download it
-   from there; the version on the SharePoint is the valid one.
+   from there; the version on the SharePoint is the valid one. Only the team can fill in and sign it. If the form
+   asks for the aids used (Hilfsmittelverzeichnis), copy them from `docs/AI_USE.md`, section 6: AI tools and models,
+   data, software, fonts, literature and course material. Say "none" for other AI tools only if that is true.
 
 ## Test the zip before uploading
 
@@ -47,15 +49,19 @@ Then switch off Wi-Fi and open "Find a trial": the saved example trials must app
 
 ## Content checks (each one is a grading point or a formal requirement)
 
-- [ ] **AI use declared and cited.** Every source file starts with the "AI use" line (`python tools/ai_provenance.py
-      --check`), `docs/AI_USE.md` is complete (no **[team]** left) and its table is re-measured
+- [ ] **AI use declared and cited.** Every Python file starts on line 1 with the "AI use" docstring
+      (`python tools/ai_provenance.py --check`), `docs/AI_USE.md` is complete (no **[team]** left, including the list
+      of the simple parts the team wrote by hand in section 3.7) and its table is re-measured
       (`python tools/ai_provenance.py`).
+- [ ] **Docstring format.** `python tools/check_docstrings.py` passes: every function has a summary, an `Input:` and
+      an `Output:` paragraph.
 - [ ] **AI on the list of aids in the video** (slide from `docs/AI_USE.md`, section 6).
 - [ ] **Other people's work cited.** Data source, libraries, fonts and the four papers are in the README
       ("Sources and credits" and "The problem").
 - [ ] **Contribution matrix complete** (`docs/CONTRIBUTIONS.md`, no **?** left) and shown in the video.
-- [ ] **Saved example trials** for the offline fallback: run `python src/save_examples.py` once while online and
-      commit `data/examples/ongoing_trials.json`. Re-run it shortly before the Q&A.
+- [ ] **Saved example trials** for the offline fallback: `data/examples/ongoing_trials.json` was saved and committed
+      on 2026-11-26 (28 trials). Check that it is in the zip, and re-run `python src/save_examples.py` while online
+      shortly before the Q&A so the date is recent.
 - [ ] **Numbers in the README, the app and the video agree** (162,457 trials, 11.3%, ROC-AUC 0.71, 42% at 20%).
 - [ ] **Deployed app (optional, not graded):** redeploy on Streamlit Community Cloud from `main` (README, "Deploy").
       A private repository works too.

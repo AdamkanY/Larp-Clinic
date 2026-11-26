@@ -11,5 +11,5 @@ records, or anything large.
 |---|---|---|---|
 | `ongoing_trials.json` | `{"saved_on": "YYYY-MM-DD", "studies": [...]}`: full API v2 records of about 30 ongoing interventional trials, the first six for each example search of the page (breast cancer, diabetes, asthma, depression, COVID-19), unchanged | `python src/save_examples.py` (run while online, then commit) | `src/api_client.py` (`load_examples`, `search_examples`, the fallback in `get_trial`) |
 
-The file is not in the repository until someone runs the script once; without it the page shows the plain
-"Could not reach ClinicalTrials.gov" message as before. Re-run the script before a demo so the date is recent.
+The file was saved and committed on 2026-11-26 (28 trials). Without it the page would show the plain
+"Could not reach ClinicalTrials.gov" message. Re-run the script before a demo so the date is recent.
