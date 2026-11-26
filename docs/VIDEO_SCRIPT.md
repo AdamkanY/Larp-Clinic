@@ -1,8 +1,8 @@
-# Video script (target 3:50, hard limit 4:00)
+# Video script (target 3:52, hard limit 4:00)
 
 Rules from the grading scheme, so nothing costs points:
 
-- **At most 4:00.** Longer gives at most 1 point for the video. Aim for 3:50 to leave room.
+- **At most 4:00.** Longer gives at most 1 point for the video. Aim for 3:52 to leave room.
 - **Own voices only.** An AI-generated voice-over gives 0 points for the video. No text-to-speech, no voice cloning.
 - **Must contain:** the idea, the development process and teamwork, the contributions, the aids, the use of AI,
   the results and a short demo of the app.
@@ -33,9 +33,9 @@ zoom, window 1440 px wide), then the voices over it. Rehearse once with a stopwa
 | 2:10-2:35 | Adam | Demo: How the model works, ROC-AUC tile, then move the review slider to 20% | "We trained gradient boosting, tuned it with cross-validation and calibrated it so the percentages are honest. We test on trials that started after every training trial. ROC-AUC is 0.71. In practice: if you review the riskiest 20% of trials, you find 42% of all stopped ones, twice as many as by chance. It is a ranking tool, not a crystal ball." (62 words) |
 | 2:35-2:50 | Raphael | Demo: the game, one round | "And you can play against the model: two trials, one was stopped. On two thousand pairs the model is right two times out of three. Can you beat it?" (30 words) |
 | 2:50-3:00 | Matteo | A source file in the editor, docstring and comments in view (for example `src/features.py`) | "Every file starts with a docstring that cites the AI, every function says what goes in and what comes out, and every block has a comment. A script checks this format." (30 words) |
-| 3:00-3:20 | Dominic | Slide: contribution matrix (`docs/CONTRIBUTIONS.md`), picture for about 3 seconds | "We split the work along the path of the data: data, model, evaluation, app, visuals. Each step ends in one thing the next step uses, so everyone could work in parallel and answers for their own part. **[team]** One sentence per person on why they took their area." (45 words + the team's sentences) **[team]** add one honest sentence about what was hard in the teamwork. |
-| 3:20-3:45 | Dominic | Slide: AI use and list of aids (`docs/AI_USE.md`, section 6), picture for about 3 seconds | "Most of the code was written with Claude Code. We set the rules, checked and corrected the output, and wrote some simple parts ourselves; they are listed in our AI record. Written rules and tests worked best. Unchecked wording and a wrong deadline did not. Next time we keep the prompt log from day one and let scripts check the AI's work." (60 words) **[team]** adjust to your real experience, name the parts written by hand. |
-| 3:45-3:50 | all / Matteo | Home page, team names | "Thank you. Trial-Radar: know the risk before the trial starts." (10 words) |
+| 3:00-3:22 | Dominic | Slide: contribution matrix (`docs/CONTRIBUTIONS.md`), picture for about 3 seconds | "We split the work along the path of the data. Simon built the pipeline, because everything depends on it. Adam owned the model, Dominic the evaluation and the explanations, Matteo the app that brings it together, Raphael the charts, the game and this video. Each owner answers for their own part." (50 words) **[team]** add one honest sentence about what was hard in the teamwork. |
+| 3:22-3:47 | Dominic | Slide: AI use and list of aids (`docs/AI_USE.md`, section 6), picture for about 3 seconds | "Most of the code was written with Claude Code. We set the rules, checked and corrected the output, and wrote some simple parts ourselves; they are listed in our AI record. Written rules and tests worked best. Unchecked wording and a wrong deadline did not. Next time we keep the prompt log from day one and let scripts check the AI's work." (60 words) **[team]** adjust to your real experience, name the parts written by hand. |
+| 3:47-3:52 | all / Matteo | Home page, team names | "Thank you. Trial-Radar: know the risk before the trial starts." (10 words) |
 
 ## Slides to prepare
 
